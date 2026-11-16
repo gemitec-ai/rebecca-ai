@@ -1,3 +1,6 @@
+import fs from 'node:fs';
+import path from 'node:path';
+import { precomputedPersonaPatternEmbeddings } from '@rebecca/persona';
 import { CopilotUseCase, extractStructuredCopilotResponse } from '../../src/features/copilot/usecase';
 import { CopilotToolRegistry } from '../../src/features/copilot/toolRegistry';
 import { SearchTimelinePostsTool } from '../../src/features/copilot/tools/postsTool';
@@ -917,6 +920,42 @@ describe('Copilot Autonomous Agent Suite (Redesign v3)', () => {
       expect(res.actionRequired?.payload['postId']).toBe('p1');
       expect(res.attachments?.length).toBe(1);
       expect(res.attachments?.[0].id).toBe('p1');
+    });
+
+    it('should inject dynamic 120-pattern situational anchors into Copilot systemInstruction via composeAnchoredChannelPrompt', async () => {
+      mockEmbedContent.mockResolvedValueOnce({
+        embeddings: [{ values: [...precomputedPersonaPatternEmbeddings[0].vector] }],
+      });
+      mockGenerateContent.mockResolvedValueOnce({
+        text: JSON.stringify({ reply: 'お疲れ様、マスター♡', suggestionChips: ['詳細を見る'] }),
+      });
+
+      const copilot = new CopilotUseCase();
+      const res = await copilot.processChat({
+        message: '今日も残業して疲れたよ',
+        currentContext: 'Dashboard',
+        language: 'ja',
+      });
+
+      expect(res.reply).toBe('お疲れ様、マスター♡');
+      expect(mockEmbedContent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          model: 'gemini-embedding-2',
+          config: { outputDimensionality: 768 },
+          contents: expect.stringContaining('今日も残業して疲れたよ'),
+        }),
+      );
+      const genConfig = mockGenerateContent.mock.calls[0][0].config;
+      expect(genConfig.systemInstruction).toContain('【動的Few-Shotペルソナアンカー');
+    });
+
+    it('should enforce grounded composeAnchoredChannelPrompt usage in CopilotUseCase without raw unanchored composePrompt', () => {
+      const copilotUseCaseSrc = fs.readFileSync(
+        path.resolve(__dirname, '../../src/features/copilot/usecase.ts'),
+        'utf8',
+      );
+      expect(copilotUseCaseSrc).toContain('composeAnchoredChannelPrompt(');
+      expect(copilotUseCaseSrc).not.toMatch(/activePersona\.(?:composePrompt|getBasePrompt)\s*\(/);
     });
   });
 });
