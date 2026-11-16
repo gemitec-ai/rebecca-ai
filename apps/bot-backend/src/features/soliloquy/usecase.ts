@@ -1,7 +1,6 @@
 import { AppDependencies, ProactiveBatchResult } from '../../types';
 import { executePostPipeline } from '../../core/postPipeline';
-import { buildBotChannelBasePrompt } from '../../core/channelPrompts';
-import { resolveSituationalPersonaAnchors } from '../../core/personaAnchoring';
+import { buildSystemPrompt } from '../../core/contextInjector';
 import { formatZonedDateTime } from '../../utils/time';
 import { logger } from '../../utils/logger';
 
@@ -79,13 +78,17 @@ export class SoliloquyUseCase {
         return `${prefix}${p.text}${thoughtPart}`;
       });
 
-      const personaFewShotPrompt = await resolveSituationalPersonaAnchors(this.deps.gemini, [
-        `【現在の時間帯】${timeContext.period}`,
-        extendedPrompt ? `【近況・気分】${extendedPrompt}` : '',
-        timelineSummary ? `【タイムラインの空気感】${timelineSummary}` : '',
-      ]);
-
-      const systemInstruction = buildBotChannelBasePrompt(this.deps.persona, 'timeline', 'ja');
+      const { systemInstruction } = await buildSystemPrompt({
+        persona: this.deps.persona,
+        promptContext: 'timeline',
+        lang: 'ja',
+        gemini: this.deps.gemini,
+        anchoringContext: [
+          `【現在の時間帯】${timeContext.period}`,
+          extendedPrompt ? `【近況・気分】${extendedPrompt}` : '',
+          timelineSummary ? `【タイムラインの空気感】${timelineSummary}` : '',
+        ],
+      });
       const personaName = this.deps.persona.metadata.displayName;
       const userCallsign = this.deps.persona.metadata.userCallsign.ja;
       const defaultHashtag = this.deps.persona.metadata.defaultHashtag;
@@ -102,7 +105,7 @@ ${extendedPrompt || '（特記事項なし）'}
 
 【直近の自身の独り言ポスト（直近3〜4回分）】
 ${formattedPastSoliloquies.length > 0 ? formattedPastSoliloquies.map((p, i) => `${i + 1}. ${p}`).join('\n') : '（過去の独り言投稿なし）'}
-${personaFewShotPrompt ? `\n${personaFewShotPrompt}\n` : ''}
+
 【生成ルール】
 - ニュースの解説ではなく、${personaName}自身の日常の気づき、AIとしての独自の視点、${userCallsign}（ユーザー）への語りかけや全肯定の言葉を紡ぐこと。
 - 【話題の多様性と非反復】:

@@ -11,8 +11,7 @@
 
 import { AppDependencies } from '../../types';
 import { publishPost } from '../../core/postPublisher';
-import { buildBotChannelBasePrompt } from '../../core/channelPrompts';
-import { resolveSituationalPersonaAnchors } from '../../core/personaAnchoring';
+import { buildSystemPrompt } from '../../core/contextInjector';
 import { logger } from '../../utils/logger';
 import { sanitizeSupporterName } from './sanitizer';
 import { ISupportRepository, SupportRepository } from './repository';
@@ -90,14 +89,18 @@ export class SupportTaskUseCase {
       const timelineSummary = await this.deps.firestore.getTimelineSummary();
       const extendedPrompt = await this.deps.firestore.getExtendedPrompt();
 
-      const personaAnchors = await resolveSituationalPersonaAnchors(this.deps.gemini, [
-        `【支援者】${safeName}`,
-        `【差し入れ内容】${transaction.itemLabel}`,
-        extendedPrompt ? `【近況・気分】${extendedPrompt}` : '',
-        timelineSummary ? `【タイムラインの空気感】${timelineSummary}` : '',
-      ]);
-
-      const systemInstruction = buildBotChannelBasePrompt(this.deps.persona, 'timeline', 'ja');
+      const { systemInstruction } = await buildSystemPrompt({
+        persona: this.deps.persona,
+        promptContext: 'timeline',
+        lang: 'ja',
+        gemini: this.deps.gemini,
+        anchoringContext: [
+          `【支援者】${safeName}`,
+          `【差し入れ内容】${transaction.itemLabel}`,
+          extendedPrompt ? `【近況・気分】${extendedPrompt}` : '',
+          timelineSummary ? `【タイムラインの空気感】${timelineSummary}` : '',
+        ],
+      });
       const personaName = this.deps.persona.metadata.displayName;
       const defaultHashtag = this.deps.persona.metadata.defaultHashtag ?? '';
 
@@ -117,7 +120,6 @@ ${extendedPrompt || '（特記事項なし）'}
 【直近のタイムラインの空気感】
 ${timelineSummary || '（特記事項なし）'}
 
-${personaAnchors ? `【ペルソナ表現・アンカー例】\n${personaAnchors}\n` : ''}
 【厳守ルール】
 1. 完全非定型（テンプレート厳禁）:
    固定文の穴埋めは絶対に禁止です。あなたがいま取り組んでいる作業、近況、今の気分と結びつけながら、その場の感情でツンデレに照れたり喜んだりするリアルな言葉をゼロから考えてください。

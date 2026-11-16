@@ -1,6 +1,6 @@
 import { XApiUser } from '@rebecca/types';
 import { AppDependencies } from '../../types';
-import { buildGroundedBotChannelPrompt } from '../../core/channelPrompts';
+import { buildSystemPrompt } from '../../core/contextInjector';
 import { checkAndIncrementRateLimits } from '../../core/rateLimiter';
 import { executePostPipeline } from '../../core/postPipeline';
 import { downloadImage } from '../../utils/image';
@@ -153,9 +153,9 @@ ${description}
       const detectPrompt = `このテキストは何語ですか？日本語（ローマ字表記を含む）であれば'ja'、それ以外（主に英語）であれば'en'と、2文字の言語コードのみを出力してください。\nテキスト: "${description + tweetContext}"`;
       const lang = await this.deps.gemini.detectLanguage(detectPrompt);
 
-      const { systemInstruction: systemPrompt } = await buildGroundedBotChannelPrompt({
+      const { systemInstruction: systemPrompt } = await buildSystemPrompt({
         persona: this.deps.persona,
-        context: 'random_engagement',
+        promptContext: 'random_engagement',
         lang,
         gemini: this.deps.gemini,
         anchoringContext: [

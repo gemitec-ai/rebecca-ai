@@ -1,7 +1,6 @@
 import { AppDependencies } from '../../types';
 import { executePostPipeline } from '../../core/postPipeline';
-import { buildBotChannelBasePrompt } from '../../core/channelPrompts';
-import { resolveSituationalPersonaAnchors } from '../../core/personaAnchoring';
+import { buildSystemPrompt } from '../../core/contextInjector';
 import {
   INewsProvider,
   NewsResult,
@@ -96,13 +95,17 @@ export class ProactiveNewsUseCase {
       const timelineSummary = await this.deps.firestore.getTimelineSummary();
       const extendedPrompt = await this.deps.firestore.getExtendedPrompt();
 
-      const personaFewShotPrompt = await resolveSituationalPersonaAnchors(this.deps.gemini, [
-        `【今日のニュース候補（${targetCategory}）】\n${freshHeadlineTexts.join('\n')}`,
-        extendedPrompt ? `【近況・気分】${extendedPrompt}` : '',
-        timelineSummary ? `【タイムラインの空気感】${timelineSummary}` : '',
-      ]);
-
-      const systemInstruction = buildBotChannelBasePrompt(this.deps.persona, 'timeline', 'ja');
+      const { systemInstruction } = await buildSystemPrompt({
+        persona: this.deps.persona,
+        promptContext: 'timeline',
+        lang: 'ja',
+        gemini: this.deps.gemini,
+        anchoringContext: [
+          `【今日のニュース候補（${targetCategory}）】\n${freshHeadlineTexts.join('\n')}`,
+          extendedPrompt ? `【近況・気分】${extendedPrompt}` : '',
+          timelineSummary ? `【タイムラインの空気感】${timelineSummary}` : '',
+        ],
+      });
       const personaName = this.deps.persona.metadata.displayName;
       const userCallsign = this.deps.persona.metadata.userCallsign.ja;
       const interestsStr = this.deps.persona.metadata.interests.join('・');
@@ -114,7 +117,7 @@ export class ProactiveNewsUseCase {
 ${formattedNewsContext}
 ${timelineSummary ? `\n【直近のタイムライン要約】\n${timelineSummary}\n` : ''}
 ${extendedPrompt ? `\n【拡張ペルソナ・近況】\n${extendedPrompt}\n` : ''}
-${personaFewShotPrompt ? `\n${personaFewShotPrompt}\n` : ''}
+
 【トピック選定の重要ルール】
 - 殺人や痛ましい事故など、過度に暗いニュースや人が亡くなっているニュースは絶対に選ばないこと。必ず明るい話題を選んでください。
 - 選定したニュースの【具体的な対象・固有名詞】（商品名、技術名、サービス名、店名・施設名など）を、ツイート本文の冒頭または文中に必ず明記すること（何についての話題かフォロワーが一目で理解できるようにすること）。

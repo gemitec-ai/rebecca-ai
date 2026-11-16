@@ -1,7 +1,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-const BOT_FEATURES_ROOT = path.resolve(__dirname, '../../../src/features');
+const BOT_SRC_ROOT = path.resolve(__dirname, '../../../src');
+const BOT_FEATURES_ROOT = path.join(BOT_SRC_ROOT, 'features');
 
 /**
  * Collects all `usecase.ts` files under `apps/bot-backend/src/features`.
@@ -21,15 +22,13 @@ const findFeatureUseCases = (dir: string): string[] => {
   return results;
 };
 
-describe('Bot Feature Prompt Architecture Guards', () => {
-  it('ensures every persona-speaking feature usecase enforces 120-pattern anchoring without raw prompt bypasses', () => {
+describe('Bot Single-Pipeline Prompt Architecture Guards', () => {
+  it('ensures every persona-speaking feature usecase uses the single unified buildSystemPrompt pipeline without bypasses', () => {
     const useCaseFiles = findFeatureUseCases(BOT_FEATURES_ROOT);
     expect(useCaseFiles.length).toBeGreaterThanOrEqual(8);
 
     const generationMethodPattern =
       /gemini\.(?:generateStructuredReply|generateStructuredTimelinePost|generateStructuredNewsPost|generateStructuredPollPost|generateStructuredSupportPost)\s*\(/;
-    const anchoringPattern =
-      /\b(?:resolveSituationalPersonaAnchors|buildGroundedBotChannelPrompt|composeAnchoredChannelPrompt|composeGroundedSystemPrompt)\s*\(/;
 
     for (const filePath of useCaseFiles) {
       const source = fs.readFileSync(filePath, 'utf8');
@@ -38,22 +37,35 @@ describe('Bot Feature Prompt Architecture Guards', () => {
       if (generationMethodPattern.test(source)) {
         expect({
           file: relative,
-          hasMandatoryAnchoring: anchoringPattern.test(source),
+          usesUnifiedBotPromptPipeline: /\bbuildSystemPrompt\s*\(/.test(source),
         }).toEqual({
           file: relative,
-          hasMandatoryAnchoring: true,
+          usesUnifiedBotPromptPipeline: true,
         });
       }
 
-      // Guard against calling unanchored Layer 0 composePrompt or deprecated getBasePrompt directly inside features
+      // Guard against multiple prompt pipelines or unanchored persona calls inside features
       expect({
         file: relative,
-        usesRawComposeOrDeprecatedBase:
-          /persona\.(?:composePrompt|getBasePrompt)\s*\(/.test(source),
+        hasForbiddenBypassOrSplitPipeline:
+          /(?:persona\.(?:composePrompt|getBasePrompt)|buildBotChannelBasePrompt|resolveSituationalPersonaAnchors|composeAnchoredChannelPrompt|composeGroundedSystemPrompt|composeSystemPrompt)\s*\(/.test(
+            source,
+          ),
       }).toEqual({
         file: relative,
-        usesRawComposeOrDeprecatedBase: false,
+        hasForbiddenBypassOrSplitPipeline: false,
       });
     }
+  });
+
+  it('keeps redundant wrapper modules removed from core/', () => {
+    expect(fs.existsSync(path.join(BOT_SRC_ROOT, 'core/personaAnchoring.ts'))).toBe(false);
+    expect(fs.existsSync(path.join(BOT_SRC_ROOT, 'core/personaEmbeddingCache.ts'))).toBe(false);
+    const channelPromptsSrc = fs.readFileSync(
+      path.join(BOT_SRC_ROOT, 'core/channelPrompts.ts'),
+      'utf8',
+    );
+    expect(channelPromptsSrc).not.toContain('buildBotChannelBasePrompt');
+    expect(channelPromptsSrc).not.toContain('buildGroundedBotChannelPrompt');
   });
 });

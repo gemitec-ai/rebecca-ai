@@ -140,7 +140,15 @@ runEval('LLM as a Judge: Prompt Evaluation', () => {
         // 1. Generate Rebecca's response with retry
         const userData = { episodicBuffer: [] }; // Mock empty memory
         const lang: Language = (tc.lang as Language) || 'ja';
-        const systemPrompt = buildSystemPrompt(persona, 'reply', userData as unknown as any, tc.input, '', '', [], lang);
+        const { systemInstruction: systemPrompt } = await buildSystemPrompt({
+            persona,
+            promptContext: 'reply',
+            lang,
+            gemini,
+            anchoringContext: [tc.input],
+            includeTemporalContext: true,
+            userData: userData as unknown as any,
+        });
         const structured = await retryAsync(() => gemini.generateStructuredReply(systemPrompt, [], tc.input));
         const reply = structured.reply;
 

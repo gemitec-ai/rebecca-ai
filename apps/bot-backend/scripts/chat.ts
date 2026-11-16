@@ -74,20 +74,16 @@ const chatLoop = async () => {
             const workingMemory = getWorkingMemory(userData.episodicBuffer);
             const extendedPrompt = '';
 
-            // Dynamic Few-Shot Persona Anchors extraction
-            let personaFewShotPrompt = '';
-            try {
-                const userEmbedding = await gemini.generateEmbedding(input);
-                if (userEmbedding && userEmbedding.length > 0) {
-                    const topPatterns = persona.findTopPatterns(userEmbedding, 3);
-                    personaFewShotPrompt = persona.buildFewShotPrompt(topPatterns, 'ja');
-                    console.log(`\n[🔍 抽出されたペルソナアンカー Top 3: ${topPatterns.map(p => `#${p.id} ${p.category}`).join(', ')}]`);
-                }
-            } catch (embedError) {
-                console.warn('[Embedding Warning] 動的アンカー抽出スキップ:', (embedError as Error).message);
-            }
-
-            const systemPrompt = buildSystemPrompt(persona, 'chat', userData, input, extendedPrompt, '', [], 'ja', personaFewShotPrompt);
+            const { systemInstruction: systemPrompt } = await buildSystemPrompt({
+                persona,
+                promptContext: 'chat',
+                lang: 'ja',
+                gemini,
+                anchoringContext: [input],
+                includeTemporalContext: true,
+                userData,
+                extendedPrompt,
+            });
             
             // Fetch Structured Reply from Gemini
             const result = await gemini.generateStructuredReply(systemPrompt, workingMemory, input);

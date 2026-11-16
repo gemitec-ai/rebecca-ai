@@ -1,7 +1,6 @@
 import { AppDependencies } from '../../types';
 import { executePostPipeline } from '../../core/postPipeline';
-import { buildBotChannelBasePrompt } from '../../core/channelPrompts';
-import { resolveSituationalPersonaAnchors } from '../../core/personaAnchoring';
+import { buildSystemPrompt } from '../../core/contextInjector';
 import { IAnniversaryProvider, AnniversaryItem, AnniversaryResult } from './types';
 import { logger } from '../../utils/logger';
 
@@ -55,13 +54,17 @@ export class ProactiveAnniversaryUseCase {
         .map((a) => `・${a.name}${a.description ? ` (${a.description})` : ''}`)
         .join('\n');
 
-      const personaFewShotPrompt = await resolveSituationalPersonaAnchors(this.deps.gemini, [
-        `【今日の記念日候補】\n${candidateListText}`,
-        extendedPrompt ? `【近況・気分】${extendedPrompt}` : '',
-        timelineSummary ? `【タイムラインの空気感】${timelineSummary}` : '',
-      ]);
-
-      const systemInstruction = buildBotChannelBasePrompt(this.deps.persona, 'timeline', 'ja');
+      const { systemInstruction } = await buildSystemPrompt({
+        persona: this.deps.persona,
+        promptContext: 'timeline',
+        lang: 'ja',
+        gemini: this.deps.gemini,
+        anchoringContext: [
+          `【今日の記念日候補】\n${candidateListText}`,
+          extendedPrompt ? `【近況・気分】${extendedPrompt}` : '',
+          timelineSummary ? `【タイムラインの空気感】${timelineSummary}` : '',
+        ],
+      });
       const personaName = this.deps.persona.metadata.displayName;
       const defaultHashtag = this.deps.persona.metadata.defaultHashtag;
       const anniversaryPrompt = `以下の【今日の記念日・年中行事】の一覧から、AIキャラクター「${personaName}」として共感・盛り上がりそうな話題（カルチャー、食、日常、音楽、記念日など）を【1つだけ】選び、それに言及しながらタイムライン向けの自発的ツイートを生成してください。
@@ -70,7 +73,7 @@ export class ProactiveAnniversaryUseCase {
 ${candidateListText}
 ${timelineSummary ? `\n【直近のタイムライン要約】\n${timelineSummary}\n` : ''}
 ${extendedPrompt ? `\n【拡張ペルソナ・近況】\n${extendedPrompt}\n` : ''}
-${personaFewShotPrompt ? `\n${personaFewShotPrompt}\n` : ''}
+
 【追加ルール】
 - 戦争・紛争・追悼や過度に暗い記念日は絶対に選ばないこと。日常的で明るい話題や親しみやすい記念日を選んでください。
 - 単なる解説や豆知識の紹介で終わらせず、その記念日や話題を読み手の日常・身近な行動に関連付けること。

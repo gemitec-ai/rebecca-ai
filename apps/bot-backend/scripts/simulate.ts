@@ -4,7 +4,7 @@ import path from 'path';
 import { GoogleGenAI  } from '@google/genai';
 import config from '../src/config';
 import { getActivePersona } from '@rebecca/persona';
-import { buildBotChannelBasePrompt } from '../src/core/channelPrompts';
+import { buildSystemPrompt } from '../src/core/contextInjector';
 
 // Initialize GenAI for Persona Generation
 const ai = new GoogleGenAI({ apiKey: config.gemini.apiKey });
@@ -99,8 +99,13 @@ const runSimulation = async () => {
 
             // 2. Generate Rebecca's response
             const workingMemory = getWorkingMemory(episodicBuffer);
-            // Test with base system prompt
-            const systemPrompt = buildBotChannelBasePrompt(getActivePersona(), 'reply', 'ja');
+            const { systemInstruction: systemPrompt } = await buildSystemPrompt({
+                persona: getActivePersona(),
+                promptContext: 'reply',
+                lang: 'ja',
+                gemini,
+                anchoringContext: [userText],
+            });
             
             const structured = await withRetry(() => gemini.generateStructuredReply(systemPrompt, workingMemory, userText));
             const rebeccaText = structured.reply;

@@ -4,8 +4,7 @@
 
 import { AppDependencies, PollData } from '../../types';
 import { executePostPipeline } from '../../core/postPipeline';
-import { buildBotChannelBasePrompt } from '../../core/channelPrompts';
-import { resolveSituationalPersonaAnchors } from '../../core/personaAnchoring';
+import { buildSystemPrompt } from '../../core/contextInjector';
 import { getTimeOfDayGreetingContext } from '../soliloquy/usecase';
 import { formatZonedDateTime } from '../../utils/time';
 import { logger } from '../../utils/logger';
@@ -61,14 +60,18 @@ export class PollUseCase {
 
       const interestsStr = this.deps.persona.metadata.interests.join('・');
 
-      const personaFewShotPrompt = await resolveSituationalPersonaAnchors(this.deps.gemini, [
-        `【現在の時間帯】${timeContext.period}`,
-        `【シチュエーション】タイムラインのフォロワーに向けたアンケート出題（関心領域: ${interestsStr}）`,
-        extendedPrompt ? `【近況・気分】${extendedPrompt}` : '',
-        timelineSummary ? `【タイムラインの空気感】${timelineSummary}` : '',
-      ]);
-
-      const systemInstruction = buildBotChannelBasePrompt(this.deps.persona, 'timeline', 'ja');
+      const { systemInstruction } = await buildSystemPrompt({
+        persona: this.deps.persona,
+        promptContext: 'timeline',
+        lang: 'ja',
+        gemini: this.deps.gemini,
+        anchoringContext: [
+          `【現在の時間帯】${timeContext.period}`,
+          `【シチュエーション】タイムラインのフォロワーに向けたアンケート出題（関心領域: ${interestsStr}）`,
+          extendedPrompt ? `【近況・気分】${extendedPrompt}` : '',
+          timelineSummary ? `【タイムラインの空気感】${timelineSummary}` : '',
+        ],
+      });
       const personaName = this.deps.persona.metadata.displayName;
       const defaultHashtag = this.deps.persona.metadata.defaultHashtag;
 
@@ -88,7 +91,7 @@ ${extendedPrompt || '（特記事項なし）'}
 
 【過去に出題済みのアンケート履歴（直近最大30件）】
 ${formattedPastPolls.length > 0 ? formattedPastPolls.map((p, i) => `${i + 1}. ${p}`).join('\n') : '（過去のアンケート履歴なし）'}
-${personaFewShotPrompt ? `\n${personaFewShotPrompt}\n` : ''}
+
 【生成ルール】
 - 【過去問との重複厳禁】: 上記【過去に出題済みのアンケート履歴】にある質問や選択肢の切り口と被らない、新鮮な問いかけをあなた自身で考案すること。
 - 【思わず投票＆リプライしたくなる設計】: 専門知識がなくても直感で1タップ投票でき、「自分はこれ！なぜなら〜」とリプライ欄で理由やこだわりを語りたくなる身近で楽しいテーマにすること。
@@ -225,14 +228,18 @@ ${personaFewShotPrompt ? `\n${personaFewShotPrompt}\n` : ''}
         this.deps.firestore.getExtendedPrompt(),
       ]);
 
-      const personaFewShotPrompt = await resolveSituationalPersonaAnchors(this.deps.gemini, [
-        `【現在の時間帯】${timeContext.period}`,
-        `【シチュエーション】アンケート結果発表と感想トーク`,
-        `【アンケート内容】${pendingPoll.text}`,
-        `【最終投票結果（合計 ${totalVotes}票）】\n${formattedOptions}`,
-      ]);
-
-      const systemInstruction = buildBotChannelBasePrompt(this.deps.persona, 'timeline', 'ja');
+      const { systemInstruction } = await buildSystemPrompt({
+        persona: this.deps.persona,
+        promptContext: 'timeline',
+        lang: 'ja',
+        gemini: this.deps.gemini,
+        anchoringContext: [
+          `【現在の時間帯】${timeContext.period}`,
+          `【シチュエーション】アンケート結果発表と感想トーク`,
+          `【アンケート内容】${pendingPoll.text}`,
+          `【最終投票結果（合計 ${totalVotes}票）】\n${formattedOptions}`,
+        ],
+      });
       const personaName = this.deps.persona.metadata.displayName;
       const defaultHashtag = this.deps.persona.metadata.defaultHashtag;
 
@@ -252,7 +259,7 @@ ${timelineSummary || '（特記事項なし）'}
 
 【拡張ペルソナ・近況】
 ${extendedPrompt || '（特記事項なし）'}
-${personaFewShotPrompt ? `\n${personaFewShotPrompt}\n` : ''}
+
 【生成ルール】
 - 投票してくれたフォロワーへの感謝やリアクションを入れつつ、最終投票結果（各選択肢の得票数や票の割れ方、全体の傾向など）を踏まえて、${personaName}自身の視点・価値観で感想を語ること。
 - 元のアンケートツイートを引用リポスト（Quote Post）する形で投稿されるため、結果の数字を機械的に全部読み上げるのではなく、結果を見た素直なリアクションとフォロワーへの自然な語りかけにすること。

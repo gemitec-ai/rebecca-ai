@@ -12,7 +12,6 @@ import {
     getTwitterTextWeightedLength,
     TWITTER_MAX_WEIGHTED_LENGTH,
 } from '../../utils/text';
-import { resolveSituationalPersonaAnchors } from '../../core/personaAnchoring';
 import { logger } from '../../utils/logger';
 
 /**
@@ -257,14 +256,6 @@ ${processedText}
             ragMemories = await searchVectorMemories(deps.gemini, deps.firestore, authorId, query);
         }
 
-        // Dynamic Few-Shot Persona Anchors
-        const personaFewShotPrompt = await resolveSituationalPersonaAnchors(
-            deps.gemini,
-            [processedText],
-            lang,
-            3
-        );
-
         // Check for active narrative event campaign to inject story context
         const activeCampaign = await deps.firestore.getActiveCampaign();
         let campaignContext = '';
@@ -272,22 +263,23 @@ ${processedText}
             campaignContext = activeCampaign.replyContextSummary.trim();
         }
 
-        let systemPrompt = buildSystemPrompt(
-            this.deps.persona,
-            'reply',
+        const platformGuidelines = lang === 'en' ? REPLY_PLATFORM_GUIDELINES_EN : REPLY_PLATFORM_GUIDELINES_JA;
+        const { systemInstruction: systemPrompt } = await buildSystemPrompt({
+            persona: this.deps.persona,
+            promptContext: 'reply',
+            lang,
+            gemini: deps.gemini,
+            anchoringContext: [processedText],
+            topK: 3,
+            includeTemporalContext: true,
             userData,
-            processedText,
             extendedPrompt,
             timelineSummary,
             ragMemories,
-            lang,
-            personaFewShotPrompt,
             campaignContext,
-            parentPostContext
-        );
-
-        const platformGuidelines = lang === 'en' ? REPLY_PLATFORM_GUIDELINES_EN : REPLY_PLATFORM_GUIDELINES_JA;
-        systemPrompt += `\n\n${platformGuidelines}`;
+            parentPostContext,
+            platformGuidelines,
+        });
 
         // Generate the structured AI response (thought + reply) based on the contextualized prompt
         const structuredReply = await deps.gemini.generateStructuredReply(systemPrompt, workingMemory, processedText);

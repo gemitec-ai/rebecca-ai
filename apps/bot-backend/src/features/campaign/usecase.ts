@@ -3,8 +3,7 @@ import { CampaignSlot, SlotTimePeriod } from '@rebecca/types';
 import { CampaignPostResult } from './types';
 import { getZonedDateParts } from '../../utils/time';
 import { downloadImage } from '../../utils/image';
-import { buildBotChannelBasePrompt } from '../../core/channelPrompts';
-import { resolveSituationalPersonaAnchors } from '../../core/personaAnchoring';
+import { buildSystemPrompt } from '../../core/contextInjector';
 import { logger } from '../../utils/logger';
 
 /**
@@ -183,9 +182,12 @@ export class CampaignPostUseCase {
         const timelineSummary = await this.deps.firestore.getTimelineSummary();
         const extendedPrompt = await this.deps.firestore.getExtendedPrompt();
 
-        const personaFewShotPrompt = await resolveSituationalPersonaAnchors(
-          this.deps.gemini,
-          [
+        const { systemInstruction } = await buildSystemPrompt({
+          persona: this.deps.persona,
+          promptContext: 'timeline',
+          lang: 'ja',
+          gemini: this.deps.gemini,
+          anchoringContext: [
             `【イベント・ストーリー設定】${campaign.masterContext}`,
             `【本日のテーマ】${targetSlot.theme}`,
             `【時間帯】${targetSlot.timePeriod}`,
@@ -195,11 +197,8 @@ export class CampaignPostUseCase {
             extendedPrompt ? `【拡張ペルソナ・近況】${extendedPrompt}` : '',
             timelineSummary ? `【タイムラインの空気感】${timelineSummary}` : '',
           ].filter(Boolean),
-          'ja',
-          3,
-        );
-
-        const systemInstruction = buildBotChannelBasePrompt(this.deps.persona, 'timeline', 'ja');
+          topK: 3,
+        });
         const captionHintText = targetSlot.captionPromptHint && targetSlot.captionPromptHint.trim()
           ? targetSlot.captionPromptHint.trim()
           : '（特記事項なし）';
@@ -218,7 +217,7 @@ ${campaign.masterContext}
 - このスロットのテーマ: ${targetSlot.theme}
 - 描写・演出ヒント: ${captionHintText}
 ${targetSlot.mediaUrl ? '- 本投稿にはイラスト写真が添付されます。写真に写っている情景を自然に共有するトーンで語りかけてください。' : '- 本投稿はテキストのみのつぶやきです。'}
-${personaFewShotPrompt ? `\n${personaFewShotPrompt}\n` : ''}
+
 【生成ルール】
 - Master Contextの世界観と現在のスロットのテーマを自然に織り込み、生き生きとした実況感や日常の体験を${userCallsign}（ユーザー）に伝えてください。
 - 一方的な報告にならず、${personaName}らしい親しみやすい語りかけや問いかけを交えてください。

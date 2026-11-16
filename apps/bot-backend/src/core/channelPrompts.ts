@@ -1,8 +1,4 @@
-import { composeAnchoredChannelPrompt, type AnchoredChannelPromptResult } from '@rebecca/prompt';
-import type { IPersonaDefinition, Language } from '@rebecca/persona';
-import type { IGeminiService } from '../types';
-import { logger } from '../utils/logger';
-import { getPersonaPatternEmbeddings } from './personaEmbeddingCache';
+import type { Language } from '@rebecca/persona';
 
 /**
  * Execution context determining which Bot/CLI platform rules are layered onto Layer 0 core persona prompts.
@@ -162,67 +158,4 @@ export const getBotChannelGuidelines = (
   if (context === 'random_engagement') return BOT_CONTEXT_RANDOM_ENGAGEMENT_JA;
   if (context === 'chat') return BOT_CONTEXT_CHAT_JA;
   return BOT_CONTEXT_TIMELINE_JA;
-};
-
-/**
- * Composes Layer 0 persona core identity with X Bot channel-specific behavioral rules.
- *
- * @param persona - Active persona definition supplying immutable Layer 0 identity.
- * @param context - X Bot operation mode (`reply`, `timeline`, or `random_engagement`).
- * @param lang - Target natural language (`'ja'` or `'en'`).
- * @returns Combined base system instruction ready for timeline/mention LLM calls.
- */
-export const buildBotChannelBasePrompt = (
-  persona: Pick<IPersonaDefinition, 'getCoreIdentityPrompt'>,
-  context: BotChannelContext,
-  lang: Language = 'ja',
-): string => {
-  const coreIdentity = persona.getCoreIdentityPrompt(lang);
-  const channelRules = getBotChannelGuidelines(context, lang);
-  return `${coreIdentity}\n\n${channelRules}`;
-};
-
-/**
- * Options for constructing a grounded Bot channel prompt with guaranteed 120-pattern anchoring.
- */
-export interface GroundedBotChannelPromptOptions {
-  readonly persona: IPersonaDefinition;
-  readonly context: BotChannelContext;
-  readonly lang?: Language;
-  readonly gemini: IGeminiService;
-  readonly anchoringContext: readonly string[];
-  readonly topK?: number;
-}
-
-/**
- * Canonical entrypoint for building Bot channel system prompts with guaranteed
- * 120-pattern situational anchoring via `@rebecca/prompt`'s {@link composeAnchoredChannelPrompt}.
- *
- * All Bot generation use cases must use this builder (or `buildSystemPrompt` with resolved
- * situational anchors) rather than bypassing 120-pattern anchoring with raw base prompts.
- */
-export const buildGroundedBotChannelPrompt = async (
-  options: GroundedBotChannelPromptOptions,
-): Promise<AnchoredChannelPromptResult> => {
-  const {
-    persona,
-    context,
-    lang = 'ja',
-    gemini,
-    anchoringContext,
-    topK = 3,
-  } = options;
-
-  return composeAnchoredChannelPrompt({
-    persona,
-    channelInstruction: getBotChannelGuidelines(context, lang),
-    lang,
-    anchoring: {
-      embedder: gemini,
-      contextElements: anchoringContext,
-      patternVectors: getPersonaPatternEmbeddings(),
-      topK,
-      logger,
-    },
-  });
 };

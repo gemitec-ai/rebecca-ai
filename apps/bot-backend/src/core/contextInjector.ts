@@ -1,13 +1,19 @@
-import { composeSystemPrompt, PromptSection } from '@rebecca/prompt';
-import { getZonedDateParts, formatZonedDateTime } from '../utils/time';
+import type { IMemoryVectorEmbedder } from '@rebecca/memory';
+import {
+  composeSystemPrompt,
+  type ComposedSystemPrompt,
+  type PromptSection,
+} from '@rebecca/prompt';
+import type { IPersonaDefinition, Language } from '@rebecca/persona';
 import config from '../config';
-import { Language, IPersonaDefinition } from '@rebecca/persona';
-import { FirestoreUser } from '../types';
-import { BotChannelContext, getBotChannelGuidelines } from './channelPrompts';
+import type { FirestoreUser } from '../types';
+import { logger } from '../utils/logger';
+import { formatZonedDateTime, getZonedDateParts } from '../utils/time';
+import { type BotChannelContext, getBotChannelGuidelines } from './channelPrompts';
 
 /**
  * Formats X-specific contextual sections (active campaign narratives and replied-to root posts)
- * for injection into `@rebecca/prompt`'s channel-agnostic `composeSystemPrompt`.
+ * for injection into `@rebecca/prompt`'s unified `composeSystemPrompt`.
  */
 const buildBotAdditionalSections = (
   personaDisplayName: string,
@@ -49,67 +55,109 @@ const buildBotAdditionalSections = (
 };
 
 /**
- * Builds the comprehensive system prompt by combining the base persona prompt
- * with X channel rules, contextual injections, X campaign/reply sections, and timeline summaries.
- *
- * Delegates core composition to `@rebecca/prompt`'s `composeSystemPrompt` while preserving
- * `bot-backend`'s positional signature and X-specific section builders.
- *
- * @param persona - The active persona definition.
- * @param promptContext - The X Bot channel context (`reply`, `timeline`, or `random_engagement`).
- * @param userData - The current user's profile and state from Firestore.
- * @param _userInput - The user's input string (retained for call-site signature compatibility).
- * @param extendedPrompt - An optional extended prompt generated through evolution.
- * @param timelineSummary - An optional summary of the AI's recent timeline activity.
- * @param ragMemories - Optional retrieved memories relevant to the current conversation.
- * @param lang - The language for the prompt, defaults to `'ja'`.
- * @param personaFewShotPrompt - Optional dynamically selected few-shot examples.
- * @param campaignContext - Optional narrative event context summary when a campaign is active.
- * @param parentPostContext - Optional original timeline post content when the user is replying to a root post.
- * @returns The fully constructed system prompt string.
+ * Unified input contract for building every X Bot / CLI persona system prompt.
+ * Requires `gemini` and `anchoringContext` so 120-pattern situational grounding
+ * is consistently enforced across all features.
  */
-const buildSystemPrompt = (
-  persona: IPersonaDefinition,
-  promptContext: BotChannelContext,
-  userData: FirestoreUser | null,
-  _userInput: string,
-  extendedPrompt = '',
-  timelineSummary = '',
-  ragMemories: string[] = [],
-  lang: Language = 'ja',
-  personaFewShotPrompt = '',
-  campaignContext = '',
-  parentPostContext = '',
-): string => {
+export interface BuildBotSystemPromptOptions {
+  readonly persona: IPersonaDefinition;
+  readonly promptContext: BotChannelContext;
+  readonly gemini: IMemoryVectorEmbedder;
+  readonly anchoringContext: readonly string[];
+  readonly lang?: Language;
+  readonly topK?: number;
+  readonly includeTemporalContext?: boolean;
+  readonly userData?: FirestoreUser | null;
+  readonly extendedPrompt?: string;
+  readonly timelineSummary?: string;
+  readonly ragMemories?: readonly string[];
+  readonly campaignContext?: string;
+  readonly parentPostContext?: string;
+  readonly platformGuidelines?: string;
+}
+
+/**
+ * Single canonical entrypoint for building all Bot system prompts across replies,
+ * proactive timeline posts, polls, campaigns, supporter messages, and random engagement.
+ *
+ * Delegates Layer 0 + channel composition, 120-pattern situational anchoring,
+ * localized temporal awareness, and memory assembly to `@rebecca/prompt`'s unified `composeSystemPrompt`.
+ *
+ * @param options - Grounded bot prompt assembly parameters.
+ * @returns Structured prompt bundle containing `baseSystemInstruction`, `personaFewShotPrompt`, and `systemInstruction`.
+ */
+const buildSystemPrompt = async (
+  options: BuildBotSystemPromptOptions,
+): Promise<ComposedSystemPrompt> => {
+  const {
+    persona,
+    promptContext,
+    gemini,
+    anchoringContext,
+    lang = 'ja',
+    topK = 3,
+    includeTemporalContext = false,
+    userData = null,
+    extendedPrompt = '',
+    timelineSummary = '',
+    ragMemories = [],
+    campaignContext = '',
+    parentPostContext = '',
+    platformGuidelines = '',
+  } = options;
+
+  const hasMemoryContext =
+    userData !== null ||
+    extendedPrompt.trim() !== '' ||
+    timelineSummary.trim() !== '' ||
+    ragMemories.length > 0;
+
   return composeSystemPrompt({
     persona,
     channelInstruction: getBotChannelGuidelines(promptContext, lang),
-    userData,
-    extendedPrompt,
-    activitySummary: timelineSummary,
-    ragMemories,
     lang,
-    personaFewShotPrompt,
-    accountHandleLabel: lang === 'en' ? 'X Handle' : 'XユーザーID',
-    activitySummaryHeader: lang === 'en' ? '[My Recent Posts (Context)]' : '【最近の自分の投稿（参考）】',
-    activitySummaryLead:
-      lang === 'en'
-        ? 'Recently, I posted this:'
-        : `${persona.metadata.displayName}は最近以下のようにつぶやいていた。`,
+    anchoring: {
+      embedder: gemini,
+      contextElements: anchoringContext,
+      topK,
+      logger,
+    },
+    ...(includeTemporalContext
+      ? {
+          temporal: {
+            timezone: config.appTimezone,
+            timeResolver: {
+              getZonedDateParts,
+              formatZonedDateTime,
+            },
+          },
+        }
+      : {}),
+    ...(hasMemoryContext
+      ? {
+          memory: {
+            userData,
+            extendedPrompt,
+            activitySummary: timelineSummary,
+            ragMemories,
+            accountHandleLabel: lang === 'en' ? 'X Handle' : 'XユーザーID',
+            activitySummaryHeader:
+              lang === 'en' ? '[My Recent Posts (Context)]' : '【最近の自分の投稿（参考）】',
+            activitySummaryLead:
+              lang === 'en'
+                ? 'Recently, I posted this:'
+                : `${persona.metadata.displayName}は最近以下のようにつぶやいていた。`,
+          },
+        }
+      : {}),
     additionalSections: buildBotAdditionalSections(
       persona.metadata.displayName,
       lang,
       campaignContext,
       parentPostContext,
     ),
-    timezone: config.appTimezone,
-    timeResolver: {
-      getZonedDateParts,
-      formatZonedDateTime,
-    },
+    platformGuidelines,
   });
 };
 
-export {
-  buildSystemPrompt,
-};
+export { buildSystemPrompt };
