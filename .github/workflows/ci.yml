@@ -84,6 +84,8 @@ jobs:
           path: |
             coverage-summary.md
             packages/persona/coverage/
+            packages/memory/coverage/
+            packages/tools/coverage/
             packages/db/coverage/
             apps/bot-backend/coverage/
             apps/dashboard-backend/coverage/
