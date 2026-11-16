@@ -299,6 +299,9 @@ describe('@rebecca/prompt building blocks and composer', () => {
     [19, 'ja', '【状況コンテキスト：夕方・夜】'],
     [2, 'ja', '【状況コンテキスト：深夜】'],
   ] as const)('injects expected time context for hour %i (%s)', (hour, lang, expectedHeader) => {
+    const section = formatTimeBracketSection(hour, lang);
+    expect(section.header).toBe(expectedHeader);
+
     const prompt = composeSystemPrompt({
       persona,
       userData: { lastReplyDate: 'invalid-date-ignored' },
