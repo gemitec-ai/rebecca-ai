@@ -181,8 +181,8 @@ POLL_DURATION_MINUTES=1380
 - **`packages/types`**: Shared TypeScript definitions, interaction schemas, and global configurations.
 - **`packages/db`**: Shared database repository classes and connection pool managers.
 - **`packages/persona`**: The core repository for Rebecca's persona definition prompts and JST-focused system rules.
-- **`packages/memory`**: Shared cognitive memory engine (`@rebecca/memory`) providing Tatemae/Honne working memory, Layer 1 Global Evolution, Layer 2 Self-Reflection, Layer 3 Dreaming consolidation, vector/RAG primitives, situational anchoring, and asymmetric memory overlay.
-- **`packages/tools`**: Shared runtime tool orchestration package (`@rebecca/tools`) providing Google Search Grounding (`executeGoogleWebSearch`, `SEARCH_WEB_TOOL`) and extensible Function Calling dialogue (`PersonaToolRegistry`, `runStructuredDialogueWithTools`).
+- **`packages/memory`**: Channel-agnostic cognitive memory engine (`@rebecca/memory`) providing Tatemae/Honne working memory, Layer 1 Global Evolution, Layer 2 Self-Reflection, Layer 3 Dreaming consolidation, vector/RAG primitives, situational anchoring, and asymmetric memory overlay.
+- **`packages/tools`**: Provider-agnostic runtime tool contract and orchestration package (`@rebecca/tools`) providing standard JSON Schema tool declarations, web lookup ports (`IWebSearchProvider`, `createSearchWebTool`), tool registration (`PersonaToolRegistry`), and dialogue loop dispatch (`runToolDialogueLoop`).
 
 
 ## Global Monorepo Operations
