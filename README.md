@@ -69,6 +69,8 @@ graph TD
         Types[packages/types]
         DB[packages/db]
         Persona[packages/persona]
+        Memory[packages/memory]
+        Tools[packages/tools]
 
     end
     
@@ -179,6 +181,8 @@ POLL_DURATION_MINUTES=1380
 - **`packages/types`**: Shared TypeScript definitions, interaction schemas, and global configurations.
 - **`packages/db`**: Shared database repository classes and connection pool managers.
 - **`packages/persona`**: The core repository for Rebecca's persona definition prompts and JST-focused system rules.
+- **`packages/memory`**: Shared cognitive memory engine (`@rebecca/memory`) providing Tatemae/Honne working memory, Layer 1 Global Evolution, Layer 2 Self-Reflection, Layer 3 Dreaming consolidation, vector/RAG primitives, situational anchoring, and asymmetric memory overlay.
+- **`packages/tools`**: Shared runtime tool orchestration package (`@rebecca/tools`) providing Google Search Grounding (`executeGoogleWebSearch`, `SEARCH_WEB_TOOL`) and extensible Function Calling dialogue (`PersonaToolRegistry`, `runStructuredDialogueWithTools`).
 
 
 ## Global Monorepo Operations

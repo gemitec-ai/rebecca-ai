@@ -9,6 +9,8 @@ Scoped architectural and contract rules for shared internal monorepo packages. I
   - `@rebecca/types` (`packages/types`): Zero-dependency domain interfaces, DTOs, and type guards. **Never** import `@google-cloud/firestore`, `firebase-admin`, `express`, or `@angular/*` into `@rebecca/types`. Represent all domain dates/timestamps as **ISO 8601 strings**.
   - `@rebecca/logger` (`packages/logger`): Structured JSON logging library compatible with Google Cloud Logging severity levels.
   - `@rebecca/persona` (`packages/persona`): Persona abstractions (`basePersona.ts`), active Japanese persona prompt rules (`personas/`), situational exemplars (`data/personaPatterns.json`), and precomputed embedding vectors (`personaPatternVectors.ts`).
+  - `@rebecca/memory` (`packages/memory`): Depends on `@rebecca/types` and `@rebecca/persona`. Shared SDK-agnostic cognitive memory engine covering Tatemae/Honne working memory reconstruction, core vectorization/RAG primitives, Layer 1 Global Evolution (`GlobalEvolutionEngine`), Layer 2 Self-Reflection (`SelfReflectionEngine`), Layer 3 Dreaming consolidation (`DreamingConsolidationEngine`), asymmetric public-to-private overlay, and dynamic persona anchoring.
+  - `@rebecca/tools` (`packages/tools`): Depends on `@rebecca/types`, `@rebecca/persona`, and `@rebecca/memory`. Shared Google Search Grounding runner (`executeGoogleWebSearch`, `SEARCH_WEB_TOOL`) and extensible Function Calling dialogue orchestration (`PersonaToolRegistry`, `runStructuredDialogueWithTools`).
   - `@rebecca/db` (`packages/db`): Depends on `@rebecca/types` and `@google-cloud/firestore`. Owns collection names, `FirestoreDataConverter<T>` boundary adapters (bridging Firestore `Timestamp`/`VectorValue` <-> domain models), `firestore.rules`, and `firestore.indexes.json`.
 - **Topological Compilation**: Downstream workspaces consume compiled `dist/` outputs and `.d.ts` declarations. After editing any file under `packages/*`, run `npm run build` from the repository root before running downstream builds or tests.
 
@@ -31,8 +33,10 @@ Scoped architectural and contract rules for shared internal monorepo packages. I
 | `npm run build` | Safe Local (Root) | Builds `@rebecca/types`, `@rebecca/logger`, `@rebecca/persona`, `@rebecca/db`, and all downstream workspaces in topological order |
 | `npm test --workspace=@rebecca/db` | Safe Local | Runs `@rebecca/db` Jest unit tests (`>= 80.0%` C0/C1 coverage gate) |
 | `npm test --workspace=@rebecca/persona` | Safe Local | Runs `@rebecca/persona` Jest unit tests (`>= 80.0%` C0/C1 coverage gate) |
+| `npm test --workspace=@rebecca/memory` | Safe Local | Runs `@rebecca/memory` Jest unit tests (`>= 80.0%` C0/C1 coverage gate) |
+| `npm test --workspace=@rebecca/tools` | Safe Local | Runs `@rebecca/tools` Jest unit tests (`>= 80.0%` C0/C1 coverage gate) |
 | `npm test --workspace=@rebecca/logger` | Safe Local | Runs `@rebecca/logger` Jest unit tests |
-| `npm run lint --workspace=@rebecca/<pkg>` | Safe Local | Runs ESLint for the specified shared package (`types`, `db`, `logger`, `persona`) |
+| `npm run lint --workspace=@rebecca/<pkg>` | Safe Local | Runs ESLint for the specified shared package (`types`, `db`, `logger`, `persona`, `memory`, `tools`) |
 | `npm run secret-check --workspace=@rebecca/<pkg>` | Safe Local | Runs Secretlint on the target package |
 | `npm run license-check --workspace=@rebecca/<pkg>` | Safe Local | Checks package dependency licenses against the OSI allowlist |
 | `npm run deploy:db` | **Cloud-Mutating** | Deploys Firestore rules and indexes via Firebase CLI — **requires explicit human approval** |
