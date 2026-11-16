@@ -24,7 +24,11 @@ export class GlobalDreamingUseCase {
   ) {
     this.engine = new DreamingConsolidationEngine<FirestoreUser>(
       {
-        store: deps.firestore,
+        store: {
+          listConsolidationCandidates: () => deps.firestore.getAllUsers(),
+          updateCoreProfile: (userId, profile, retainedBuffer, lastDreamedAt) =>
+            deps.firestore.updateCoreProfile(userId, profile, retainedBuffer, lastDreamedAt),
+        },
         synthesizer: deps.gemini,
         persona: deps.persona,
         logger,

@@ -12,7 +12,7 @@ export interface SelfReflectionConfig {
 
 /**
  * Orchestrates Rebecca's self-reflection batch process (Layer 2).
- * Delegates activity summarization and fail-fast empty checks to `@rebecca/memory`'s
+ * Delegates activity summarization and fail-fast guards to `@rebecca/memory`'s
  * {@link SelfReflectionEngine} backed by X timeline Firestore and Gemini adapters.
  */
 export class SelfReflectionUseCase {
@@ -36,7 +36,7 @@ export class SelfReflectionUseCase {
           saveSummary: (summary) => deps.firestore.saveTimelineSummary(summary),
         },
         synthesizer: {
-          generateSummary: (prompt) => deps.gemini.generateTimelineSummary(prompt),
+          generateSummary: ({ prompt }) => deps.gemini.generateTimelineSummary(prompt),
         },
         personaDisplayName: deps.persona.metadata.displayName,
         activitySectionLabel: '最近のツイート（古い順）',
@@ -54,6 +54,25 @@ export class SelfReflectionUseCase {
    * @throws Error if Gemini API fails or returns invalid/empty content, preventing data corruption.
    */
   async execute(): Promise<SelfReflectionResult> {
-    return this.engine.execute();
+    try {
+      const result = await this.engine.execute();
+      if (result.status === 'skipped' && result.reason === 'no_recent_activities') {
+        return {
+          ...result,
+          reason: 'no_recent_timeline_posts',
+        };
+      }
+      return result;
+    } catch (error: unknown) {
+      if (
+        error instanceof Error &&
+        error.message === '[SelfReflectionUseCase] Generated summary was empty.'
+      ) {
+        throw new Error('[SelfReflectionUseCase] Generated timeline summary was empty.', {
+          cause: error,
+        });
+      }
+      throw error;
+    }
   }
 }

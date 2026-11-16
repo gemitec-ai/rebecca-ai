@@ -4,14 +4,88 @@
  * and performing various semantic NLP tasks using Google's generative AI models.
  */
 
-import { GoogleGenAI, Content, Tool, ThinkingLevel } from '@google/genai';
+import { GoogleGenAI, Content, Schema, ThinkingLevel, Tool, Type } from '@google/genai';
+import {
+  DEFAULT_SELF_REFLECTION_SYSTEM_INSTRUCTION,
+  formatHistoryWithInnerThought,
+} from '@rebecca/memory';
 import {
   createSearchWebTool,
-  executeGoogleWebSearch,
+  EmptyDialogueResponseError,
+  type JsonSchemaPrimitiveType,
   PersonaToolRegistry,
-  runStructuredDialogueWithTools,
-  type IGeminiWebSearchClient,
+  runToolDialogueLoop,
+  type ToolDeclaration,
+  type ToolDialogueStepContext,
 } from '@rebecca/tools';
+
+const JSON_SCHEMA_TO_GEMINI_TYPE: Readonly<Record<JsonSchemaPrimitiveType, Type>> = {
+  string: Type.STRING,
+  number: Type.NUMBER,
+  integer: Type.INTEGER,
+  boolean: Type.BOOLEAN,
+  array: Type.ARRAY,
+  object: Type.OBJECT,
+};
+
+const toGeminiTools = (declarations: ReadonlyArray<ToolDeclaration>): Tool[] => {
+  if (declarations.length === 0) {
+    return [];
+  }
+
+  return [
+    {
+      functionDeclarations: declarations.map((decl) => {
+        const properties: Record<string, Schema> = {};
+        for (const [key, prop] of Object.entries(decl.parameters.properties)) {
+          properties[key] = {
+            type: JSON_SCHEMA_TO_GEMINI_TYPE[prop.type],
+            description: prop.description,
+            ...(prop.enum ? { enum: [...prop.enum] } : {}),
+          };
+        }
+        return {
+          name: decl.name,
+          description: decl.description,
+          parameters: {
+            type: Type.OBJECT,
+            properties,
+            required: [...decl.parameters.required],
+          },
+        };
+      }),
+    },
+  ];
+};
+
+const isGeminiContent = (value: unknown): value is Content => {
+  return typeof value === 'object' && value !== null && 'parts' in value;
+};
+
+const toGeminiContents = (ctx: ToolDialogueStepContext): Content[] => {
+  const contents: Content[] = ctx.initialTurns.map((turn) => ({
+    role: turn.role,
+    parts: [{ text: turn.text }],
+  }));
+  contents.push({ role: 'user', parts: [{ text: ctx.userInput }] });
+
+  for (const round of ctx.rounds) {
+    if (isGeminiContent(round.rawAssistantTurn)) {
+      contents.push(round.rawAssistantTurn);
+    }
+    contents.push({
+      role: 'user',
+      parts: round.outcomes.map((outcome) => ({
+        functionResponse: {
+          name: outcome.name,
+          response: outcome.result,
+        },
+      })),
+    });
+  }
+
+  return contents;
+};
 import { ConversationLogEntry, UserCoreProfile, IGeminiService } from '../types';
 import { parsePersonaResponse, cleanJsonString, StructuredPersonaResponse, PERSONA_RESPONSE_SCHEMA } from '@rebecca/persona';
 import { StructuredNewsPostResponse } from '../features/news/types';
@@ -537,8 +611,7 @@ export class GeminiService implements IGeminiService {
         model: this.config.model,
         contents: contentStr,
         config: {
-          systemInstruction:
-            'あなたはAIキャラクターの長期記憶管理システムです。与えられたキャラクター自身の投稿履歴と過去の要約を元に、最近どのようなニュース、技術、社会トレンドや日常のトピックについて言及していたかを客観的に400文字以内で要約してください。言及されたトピックの内容や関心の推移を中心に記述し、語尾や過剰な感情表現の模倣ではなく、対話や思考の知的背景となる文脈を自然な日本語の文章で整理してください（箇条書きや記号は使用しないでください）。',
+          systemInstruction: DEFAULT_SELF_REFLECTION_SYSTEM_INSTRUCTION,
           maxOutputTokens: 400,
         },
       });
@@ -740,28 +813,42 @@ ${imageCaption}
    * Executes Google Search Grounding for an arbitrary user query.
    *
    * @param query - Search keywords or question to look up.
-   * @returns Grounded search summary or fallback message.
+   * @returns Grounded search summary or localized fallback message.
    */
   async executeWebSearch(query: string): Promise<string> {
-    const searchClient: IGeminiWebSearchClient | null = this.ai
-      ? {
-          models: {
-            generateContent: (params) => this.ai!.models.generateContent(params),
-          },
-        }
-      : null;
+    if (!this.ai) {
+      return '検索クライアントが未初期化です。';
+    }
 
-    return executeGoogleWebSearch(
-      searchClient,
-      this.config.searchModel ?? this.config.model,
-      query,
-      logger,
-    );
+    const trimmed = query.trim();
+    if (!trimmed) {
+      return '検索クエリが空です。';
+    }
+
+    const searchModel = this.config.searchModel ?? this.config.model;
+    try {
+      const res = await this.ai.models.generateContent({
+        model: searchModel,
+        contents: [{ role: 'user', parts: [{ text: trimmed }] }],
+        config: {
+          tools: [{ googleSearch: {} }],
+          safetySettings: [],
+        },
+      });
+      return res.text?.trim() || '該当する検索結果が見つかりませんでした。';
+    } catch (err) {
+      logger.warn('[executeWebSearch] Failed to search for query', {
+        query: trimmed,
+        error: err instanceof Error ? err.message : String(err),
+      });
+      return '一時的なネットワークまたは検索エラーにより情報を取得できませんでした。';
+    }
   }
 
   /**
    * Generates a structured conversational reply with internal monologue using Gemini API Structured Outputs.
-   * Delegates Tatemae/Honne history reconstruction and `search_web` tool orchestration to `@rebecca/memory`.
+   * Delegates Tatemae/Honne turn reconstruction to `@rebecca/memory` and provider-agnostic
+   * `search_web` tool dialogue orchestration to `@rebecca/tools`.
    *
    * @param systemInstruction - The system persona and behavioral guidelines.
    * @param history - Conversation history log entries.
@@ -791,44 +878,65 @@ ${imageCaption}
       },
     };
 
+    const initialTurns = formatHistoryWithInnerThought(history, this.config.appTimezone);
     const toolRegistry = new PersonaToolRegistry().register(
-      createSearchWebTool((q) => this.executeWebSearch(q)),
+      createSearchWebTool({ search: (q) => this.executeWebSearch(q) }),
     );
 
     try {
-      return await runStructuredDialogueWithTools({
-        history,
+      return await runToolDialogueLoop({
+        initialTurns,
         userInput,
-        timezone: this.config.appTimezone,
         toolRegistry,
         maxToolRounds: 1,
-        generateStep: async (contents, tools) => {
-          const genAiTools = tools.map((group) => ({
-            functionDeclarations: group.functionDeclarations.map((decl) => ({
-              name: decl.name,
-              description: decl.description,
-              parameters: {
-                type: decl.parameters.type,
-                properties: { ...decl.parameters.properties },
-                required: [...decl.parameters.required],
-              },
-            })),
-          })) as Tool[];
-
+        generateStep: async (ctx) => {
+          const genAiTools = toGeminiTools(ctx.declarations);
           const response = await aiClient.models.generateContent({
             model: this.config.model,
-            contents: contents as Content[],
-            config: tools.length > 0 ? { ...baseConfig, tools: genAiTools } : baseConfig,
+            contents: toGeminiContents(ctx),
+            config: genAiTools.length > 0 ? { ...baseConfig, tools: genAiTools } : baseConfig,
           });
+
+          const rawModelContent = response.candidates?.[0]?.content;
+          const mappedCalls = (response.functionCalls ?? [])
+            .filter((call): call is { name: string; args?: Record<string, unknown> } =>
+              typeof call.name === 'string' && call.name.length > 0,
+            )
+            .map((call) => ({
+              name: call.name,
+              args: call.args,
+            }));
 
           return {
             text: response.text,
-            functionCalls: response.functionCalls,
-            modelContent: response.candidates?.[0]?.content,
+            toolCalls: mappedCalls,
+            rawAssistantTurn: rawModelContent,
           };
+        },
+        parseOutput: (rawText, afterToolExecution) => {
+          const parsed = parsePersonaResponse(rawText);
+          if (!parsed.reply || !parsed.reply.trim()) {
+            throw new Error(
+              afterToolExecution
+                ? 'Gemini API returned structured response with empty reply after function execution.'
+                : 'Gemini API returned structured response with empty reply.',
+            );
+          }
+          return parsed;
         },
       });
     } catch (error) {
+      if (error instanceof EmptyDialogueResponseError) {
+        return rethrowUpstreamApiError(
+          new Error(
+            error.afterToolExecution
+              ? 'Gemini API returned empty structured response after function execution.'
+              : 'Gemini API returned empty structured response or content was filtered.',
+            { cause: error },
+          ),
+          'Error generating structured reply with Gemini',
+        );
+      }
       return rethrowUpstreamApiError(error, 'Error generating structured reply with Gemini');
     }
   }
