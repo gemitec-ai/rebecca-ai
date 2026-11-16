@@ -10,8 +10,8 @@ export interface ToolLogger {
 /** Canonical function name for the shared web lookup tool. */
 export const SEARCH_WEB_TOOL_NAME = 'search_web';
 
-/** Localized message returned to the model when `search_web` is invoked without a query. */
-export const EMPTY_WEB_SEARCH_QUERY_RESULT = '検索クエリが指定されていません。';
+/** Default localized fallback returned when `search_web` is invoked without a query. */
+export const DEFAULT_EMPTY_WEB_SEARCH_QUERY_RESULT = '検索クエリが指定されていません。';
 
 /**
  * Provider-agnostic JSON Schema primitive types for tool parameter definitions.
@@ -35,8 +35,8 @@ export interface ToolParameterProperty {
 
 /**
  * Provider-agnostic Function Calling declaration using standard JSON Schema types.
- * Infrastructure adapters (e.g., Gemini, OpenAI, Anthropic) translate this schema
- * into their SDK-specific wire representation at the application boundary.
+ * Infrastructure adapters (Gemini, Azure OpenAI, Bedrock, etc.) translate this contract
+ * into their wire schema representation at the application boundary.
  */
 export interface ToolDeclaration {
   readonly name: string;
@@ -53,6 +53,14 @@ export interface ToolDeclaration {
  */
 export interface IWebSearchProvider {
   search(query: string): Promise<string>;
+}
+
+/**
+ * Optional configuration overrides for {@link createSearchWebTool}.
+ */
+export interface SearchWebToolOptions {
+  /** Message returned to the model when `query` is missing or whitespace-only. */
+  readonly emptyQueryResult?: string;
 }
 
 /**
@@ -84,24 +92,27 @@ export const SEARCH_WEB_TOOL_DECLARATION: ToolDeclaration = {
 
 /**
  * Creates a `ToolDefinition` for `search_web` backed by an injected {@link IWebSearchProvider}
- * (or async search function). Normalizes whitespace queries and supplies a deterministic
- * fallback payload when no query string is provided.
+ * (or async lookup callback). Normalizes whitespace queries and returns a configurable fallback
+ * message when no query string is provided.
  *
  * @param provider - Web search infrastructure adapter or async lookup callback.
+ * @param options - Optional localized fallback message overrides.
  * @returns Configured `ToolDefinition` ready for registration in `PersonaToolRegistry`.
  */
 export const createSearchWebTool = (
   provider: IWebSearchProvider | ((query: string) => Promise<string>),
+  options?: SearchWebToolOptions,
 ): ToolDefinition => {
   const executeLookup =
     typeof provider === 'function' ? provider : (query: string) => provider.search(query);
+  const emptyQueryResult = options?.emptyQueryResult ?? DEFAULT_EMPTY_WEB_SEARCH_QUERY_RESULT;
 
   return {
     declaration: SEARCH_WEB_TOOL_DECLARATION,
     execute: async (args) => {
       const rawQuery = args?.query;
       const query = typeof rawQuery === 'string' ? rawQuery.trim() : '';
-      const result = query ? await executeLookup(query) : EMPTY_WEB_SEARCH_QUERY_RESULT;
+      const result = query ? await executeLookup(query) : emptyQueryResult;
       return { result };
     },
   };

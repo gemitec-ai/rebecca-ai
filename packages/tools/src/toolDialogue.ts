@@ -1,10 +1,17 @@
 import type { ToolDeclaration, ToolDefinition } from './webSearch';
 
 /**
+ * Provider-agnostic conversational role used across LLM dialogue adapters.
+ * Adapters map `'assistant'` to provider-specific identifiers (e.g., Gemini `'model'`
+ * or Azure OpenAI `'assistant'`) at the application infrastructure boundary.
+ */
+export type DialogueRole = 'user' | 'assistant';
+
+/**
  * Provider-agnostic conversational turn input consumed by tool dialogue orchestration.
  */
 export interface DialogueTurn {
-  readonly role: 'user' | 'model';
+  readonly role: DialogueRole;
   readonly text: string;
 }
 
@@ -12,6 +19,7 @@ export interface DialogueTurn {
  * Normalized tool invocation request emitted by an LLM generation step.
  */
 export interface ToolCallRequest {
+  /** Provider-assigned tool invocation identifier (required by Chat Completions APIs such as Azure OpenAI). */
   readonly id?: string;
   readonly name: string;
   readonly args?: Readonly<Record<string, unknown>>;
@@ -21,6 +29,7 @@ export interface ToolCallRequest {
  * Normalized execution result for a single invoked tool call.
  */
 export interface ToolCallOutcome {
+  /** Matching invocation identifier echoed from {@link ToolCallRequest.id}. */
   readonly id?: string;
   readonly name: string;
   readonly result: Record<string, unknown>;
@@ -30,7 +39,8 @@ export interface ToolCallOutcome {
  * Immutable record of one completed tool-calling round (model calls paired with tool results).
  */
 export interface ToolRoundRecord {
-  readonly rawAssistantTurn?: unknown;
+  /** Opaque provider-native assistant turn payload (e.g., Gemini Content with thought signatures or OpenAI assistant tool_calls message). */
+  readonly opaqueProviderTurn?: unknown;
   readonly calls: ReadonlyArray<ToolCallRequest>;
   readonly outcomes: ReadonlyArray<ToolCallOutcome>;
 }
@@ -52,7 +62,16 @@ export interface ToolDialogueStepContext {
 export interface ToolDialogueStepResult {
   readonly text?: string;
   readonly toolCalls?: ReadonlyArray<ToolCallRequest>;
-  readonly rawAssistantTurn?: unknown;
+  /** Optional opaque assistant turn object preserved verbatim for subsequent rounds in the same conversation turn. */
+  readonly opaqueProviderTurn?: unknown;
+}
+
+/**
+ * Infrastructure port implemented by host application LLM clients (e.g., Gemini, Azure OpenAI)
+ * to execute single-step inference within a provider-agnostic tool loop.
+ */
+export interface ILLMToolDialogueClient {
+  generateStep(context: ToolDialogueStepContext): Promise<ToolDialogueStepResult>;
 }
 
 /**
@@ -140,18 +159,19 @@ export interface RunToolDialogueOptions<TOutput> {
   readonly toolRegistry?: PersonaToolRegistry;
   /** Maximum consecutive tool-calling rounds before forcing final text generation. Defaults to `1`. */
   readonly maxToolRounds?: number;
-  readonly generateStep: (context: ToolDialogueStepContext) => Promise<ToolDialogueStepResult>;
+  /** Model step executor callback or {@link ILLMToolDialogueClient} adapter instance. */
+  readonly client: ILLMToolDialogueClient | ((context: ToolDialogueStepContext) => Promise<ToolDialogueStepResult>);
   readonly parseOutput: (rawText: string, afterToolExecution: boolean) => TOutput;
 }
 
 /**
  * Orchestrates a provider-agnostic multi-turn tool-calling loop and final output parsing:
- * 1. Invokes `generateStep` with active tool declarations from `toolRegistry`.
- * 2. Executes all valid registered tool calls emitted in the round and records outcomes.
+ * 1. Invokes the injected LLM adapter with active JSON Schema tool declarations.
+ * 2. Executes all valid registered tool calls emitted in the round and records correlated `id`/outcomes.
  * 3. Forces a final generation step without tool declarations once tool calls conclude or `maxToolRounds` is reached.
  * 4. Delegates raw text validation and parsing to the injected `parseOutput` callback.
  *
- * @param options - Preformatted dialogue turns, user input, optional registry, step adapter, and parser.
+ * @param options - Preformatted neutral turns, user input, optional registry, LLM adapter, and parser.
  * @returns Parsed structured output produced by `parseOutput`.
  * @throws {@link EmptyDialogueResponseError} when the final model text is empty or whitespace.
  */
@@ -163,9 +183,12 @@ export const runToolDialogueLoop = async <TOutput>(
     userInput,
     toolRegistry,
     maxToolRounds = 1,
-    generateStep,
+    client,
     parseOutput,
   } = options;
+
+  const generateStep =
+    typeof client === 'function' ? client : (ctx: ToolDialogueStepContext) => client.generateStep(ctx);
 
   const declarations = toolRegistry ? toolRegistry.getDeclarations() : [];
   const rounds: ToolRoundRecord[] = [];
@@ -202,7 +225,7 @@ export const runToolDialogueLoop = async <TOutput>(
       }
 
       rounds.push({
-        rawAssistantTurn: step.rawAssistantTurn,
+        opaqueProviderTurn: step.opaqueProviderTurn,
         calls: executableCalls,
         outcomes,
       });

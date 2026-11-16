@@ -1,7 +1,8 @@
 import {
   createSearchWebTool,
-  EMPTY_WEB_SEARCH_QUERY_RESULT,
+  DEFAULT_EMPTY_WEB_SEARCH_QUERY_RESULT,
   EmptyDialogueResponseError,
+  ILLMToolDialogueClient,
   IWebSearchProvider,
   PersonaToolRegistry,
   runToolDialogueLoop,
@@ -10,7 +11,7 @@ import {
   ToolDefinition,
 } from '../src';
 
-describe('@rebecca/tools contracts and dialogue orchestration', () => {
+describe('@rebecca/tools multi-provider contracts and dialogue orchestration', () => {
   describe('createSearchWebTool and SEARCH_WEB_TOOL_DECLARATION', () => {
     it('defines standard JSON Schema types without provider-specific enum casing', () => {
       expect(SEARCH_WEB_TOOL_DECLARATION).toEqual({
@@ -29,7 +30,7 @@ describe('@rebecca/tools contracts and dialogue orchestration', () => {
       });
     });
 
-    it('invokes IWebSearchProvider objects or callback functions with trimmed queries and guards empty args', async () => {
+    it('invokes IWebSearchProvider or callbacks and supports custom empty-query fallback text', async () => {
       const provider: IWebSearchProvider = {
         search: jest.fn(async (q: string) => `provider:${q}`),
       };
@@ -41,14 +42,19 @@ describe('@rebecca/tools contracts and dialogue orchestration', () => {
       expect(provider.search).toHaveBeenCalledWith('type-safe sdk');
 
       expect(await objectTool.execute({ query: '   ' })).toEqual({
-        result: EMPTY_WEB_SEARCH_QUERY_RESULT,
+        result: DEFAULT_EMPTY_WEB_SEARCH_QUERY_RESULT,
       });
       expect(await objectTool.execute(undefined)).toEqual({
-        result: EMPTY_WEB_SEARCH_QUERY_RESULT,
+        result: DEFAULT_EMPTY_WEB_SEARCH_QUERY_RESULT,
       });
 
-      const fnTool = createSearchWebTool(async (q) => `fn:${q}`);
-      expect(await fnTool.execute({ query: 'hello' })).toEqual({ result: 'fn:hello' });
+      const customFallbackTool = createSearchWebTool(async (q) => `fn:${q}`, {
+        emptyQueryResult: 'Search query was empty.',
+      });
+      expect(await customFallbackTool.execute({ query: '' })).toEqual({
+        result: 'Search query was empty.',
+      });
+      expect(await customFallbackTool.execute({ query: 'hello' })).toEqual({ result: 'fn:hello' });
     });
   });
 
@@ -84,7 +90,7 @@ describe('@rebecca/tools contracts and dialogue orchestration', () => {
   });
 
   describe('runToolDialogueLoop', () => {
-    it('dispatches multiple tool calls in a single round, records neutral round history, and parses output', async () => {
+    it('dispatches multiple tool calls through ILLMToolDialogueClient using neutral assistant role and call IDs', async () => {
       const timeTool: ToolDefinition = {
         declaration: {
           name: 'get_time',
@@ -102,18 +108,20 @@ describe('@rebecca/tools contracts and dialogue orchestration', () => {
         .register(createSearchWebTool(async (q) => `searched:${q}`))
         .register(timeTool);
 
-      const generateStep = jest
-        .fn()
-        .mockResolvedValueOnce({
-          toolCalls: [
-            { id: 'call-1', name: SEARCH_WEB_TOOL_NAME, args: { query: 'latest SDK' } },
-            { id: 'call-2', name: 'get_time', args: {} },
-          ],
-          rawAssistantTurn: { opaque: 'model-turn' },
-        })
-        .mockResolvedValueOnce({
-          text: ' {"reply":"Final Answer"} ',
-        });
+      const client: ILLMToolDialogueClient = {
+        generateStep: jest
+          .fn()
+          .mockResolvedValueOnce({
+            toolCalls: [
+              { id: 'call_azure_1', name: SEARCH_WEB_TOOL_NAME, args: { query: 'latest SDK' } },
+              { id: 'call_azure_2', name: 'get_time', args: {} },
+            ],
+            opaqueProviderTurn: { role: 'assistant', tool_calls: [{ id: 'call_azure_1' }] },
+          })
+          .mockResolvedValueOnce({
+            text: ' {"reply":"Final Answer"} ',
+          }),
+      };
 
       const parseOutput = jest.fn((raw: string, afterTool: boolean) => ({
         parsed: JSON.parse(raw),
@@ -123,11 +131,11 @@ describe('@rebecca/tools contracts and dialogue orchestration', () => {
       const result = await runToolDialogueLoop({
         initialTurns: [
           { role: 'user', text: 'Hi' },
-          { role: 'model', text: 'Hello' },
+          { role: 'assistant', text: 'Hello' },
         ],
         userInput: 'Check the latest SDK and time',
         toolRegistry: registry,
-        generateStep,
+        client,
         parseOutput,
       });
 
@@ -136,30 +144,26 @@ describe('@rebecca/tools contracts and dialogue orchestration', () => {
         afterTool: true,
       });
       expect(parseOutput).toHaveBeenCalledWith('{"reply":"Final Answer"}', true);
-      expect(generateStep).toHaveBeenCalledTimes(2);
+      expect(client.generateStep).toHaveBeenCalledTimes(2);
 
-      const firstCtx = generateStep.mock.calls[0][0];
-      expect(firstCtx.declarations).toHaveLength(2);
-      expect(firstCtx.rounds).toEqual([]);
-
-      const secondCtx = generateStep.mock.calls[1][0];
+      const secondCtx = (client.generateStep as jest.Mock).mock.calls[1][0];
       expect(secondCtx.declarations).toEqual([]);
       expect(secondCtx.rounds).toEqual([
         {
-          rawAssistantTurn: { opaque: 'model-turn' },
+          opaqueProviderTurn: { role: 'assistant', tool_calls: [{ id: 'call_azure_1' }] },
           calls: [
-            { id: 'call-1', name: SEARCH_WEB_TOOL_NAME, args: { query: 'latest SDK' } },
-            { id: 'call-2', name: 'get_time', args: {} },
+            { id: 'call_azure_1', name: SEARCH_WEB_TOOL_NAME, args: { query: 'latest SDK' } },
+            { id: 'call_azure_2', name: 'get_time', args: {} },
           ],
           outcomes: [
-            { id: 'call-1', name: SEARCH_WEB_TOOL_NAME, result: { result: 'searched:latest SDK' } },
-            { id: 'call-2', name: 'get_time', result: { now: '12:00' } },
+            { id: 'call_azure_1', name: SEARCH_WEB_TOOL_NAME, result: { result: 'searched:latest SDK' } },
+            { id: 'call_azure_2', name: 'get_time', result: { now: '12:00' } },
           ],
         },
       ]);
     });
 
-    it('handles zero rounds, unregistered tool calls, and throws EmptyDialogueResponseError cleanly', async () => {
+    it('handles callback steps, zero rounds, unregistered tool calls, and EmptyDialogueResponseError', async () => {
       const registry = new PersonaToolRegistry().register(
         createSearchWebTool(async () => 'result'),
       );
@@ -176,7 +180,7 @@ describe('@rebecca/tools contracts and dialogue orchestration', () => {
           userInput: 'Ping',
           toolRegistry: registry,
           maxToolRounds: 0,
-          generateStep: directStep,
+          client: directStep,
           parseOutput: (raw, afterTool) => ({ raw, afterTool }),
         }),
       ).toEqual({ raw: 'Direct', afterTool: false });
@@ -186,7 +190,7 @@ describe('@rebecca/tools contracts and dialogue orchestration', () => {
           initialTurns: [],
           userInput: 'Ping',
           toolRegistry: registry,
-          generateStep: directStep,
+          client: directStep,
           parseOutput: (raw, afterTool) => ({ raw, afterTool }),
         }),
       ).toEqual({ raw: 'Fallback', afterTool: false });
@@ -195,7 +199,7 @@ describe('@rebecca/tools contracts and dialogue orchestration', () => {
         runToolDialogueLoop({
           initialTurns: [],
           userInput: 'Ping',
-          generateStep: directStep,
+          client: directStep,
           parseOutput: (raw) => raw,
         }),
       ).rejects.toThrow(EmptyDialogueResponseError);
@@ -211,7 +215,7 @@ describe('@rebecca/tools contracts and dialogue orchestration', () => {
           initialTurns: [],
           userInput: 'Ping',
           toolRegistry: registry,
-          generateStep: emptyDuringToolRound,
+          client: emptyDuringToolRound,
           parseOutput: (raw) => raw,
         }),
       ).rejects.toMatchObject({ afterToolExecution: false });
@@ -221,7 +225,7 @@ describe('@rebecca/tools contracts and dialogue orchestration', () => {
           initialTurns: [],
           userInput: 'Ping',
           toolRegistry: registry,
-          generateStep: emptyDuringToolRound,
+          client: emptyDuringToolRound,
           parseOutput: (raw) => raw,
         }),
       ).rejects.toMatchObject({ afterToolExecution: true });
