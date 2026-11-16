@@ -1,9 +1,8 @@
 import { CopilotAction, CopilotAttachment, CopilotRequest, CopilotResponse } from '@rebecca/types';
 import { Content, GoogleGenAI, Schema, Type } from '@google/genai';
-import { DateTime } from 'luxon';
 import { config } from '../../config';
 import { getActivePersona } from '@rebecca/persona';
-import { composeAnchoredChannelPrompt } from '@rebecca/prompt';
+import { composeSystemPrompt, formatZonedDateTime } from '@rebecca/prompt';
 import { TimelineRepository } from '../timeline/repository';
 import { UsersRepository } from '../users/repository';
 import { AssetsRepository } from '../assets/repository';
@@ -11,6 +10,7 @@ import { SystemMemoryRepository } from '../system-memory/repository';
 import { SupportersRepository } from '../supporters/repository';
 import { CopilotToolRegistry } from './toolRegistry';
 import { CopilotToolContext } from './types';
+import { createCopilotEmbeddingProvider } from './embeddingAdapter';
 import { getCopilotChannelContext } from './prompts';
 import { logger } from '../../utils/logger';
 
@@ -111,15 +111,6 @@ export class CopilotUseCase {
     const activePersona = getActivePersona(config.persona.activeId);
     const targetLang = isEn ? 'en' : 'ja';
 
-    const nowJst = DateTime.now().setZone('Asia/Tokyo');
-    const currentTimestampJst = nowJst.toFormat('yyyy/MM/dd HH:mm:ss +09:00');
-
-    const temporalInstruction = isEn
-      ? `【Current Timestamp】
-Current Date & Time: ${currentTimestampJst} (JST / UTC+9)`
-      : `【現在日時】
-現在日時: ${currentTimestampJst} (JST / 日本標準時)`;
-
     const languageInstruction = isEn
       ? `【Language Requirement】
 Output ALL text in reply and suggestionChips in ENGLISH.`
@@ -128,8 +119,6 @@ Output ALL text in reply and suggestionChips in ENGLISH.`
 
     const copilotOperationalRules = `【Mode: Admin Copilot Support】
 You are interacting 1-on-1 with the operator on the Admin Dashboard.
-
-${temporalInstruction}
 
 ${languageInstruction}
 
@@ -147,24 +136,16 @@ ${languageInstruction}
    - If the operator asks to synchronize timeline posts (\`SYNC_POSTS\`), trigger mention replies (\`TRIGGER_REPLY\`), run memory consolidation (\`FORCE_DREAMING\`), or regenerate failed image captions (\`REGENERATE_CAPTIONS\`), invoke \`propose_destructive_action\` with the corresponding \`actionType\`.
 5. **Final Output Schema**: You must provide your final answer strictly as a valid JSON object matching the schema: {"reply": "<your conversational answer>", "suggestionChips": ["<chip 1>", "<chip 2>", "<chip 3>"]}. Do NOT wrap the JSON in backticks or markdown code fences (e.g. no \`\`\`json). Output raw JSON only.`;
 
-    const { systemInstruction } = await composeAnchoredChannelPrompt({
+    const { systemInstruction } = await composeSystemPrompt({
       persona: activePersona,
       channelInstruction: getCopilotChannelContext(targetLang),
       lang: targetLang,
+      temporal: {
+        timezone: 'Asia/Tokyo',
+        includeTimeBracket: true,
+      },
       anchoring: {
-        embedder: {
-          generateEmbedding: async (text: string): Promise<number[]> => {
-            if (typeof aiClient.models?.embedContent !== 'function') {
-              return [];
-            }
-            const embRes = await aiClient.models.embedContent({
-              model: config.gemini.embeddingModel,
-              contents: text,
-              config: { outputDimensionality: 768 },
-            });
-            return embRes.embeddings?.[0]?.values ?? [];
-          },
-        },
+        embedder: createCopilotEmbeddingProvider(aiClient),
         contextElements: [
           currentContext ? `【表示画面コンテキスト】\n${currentContext}` : '',
           `【管理者からのメッセージ】\n${userMessage}`,
@@ -211,6 +192,7 @@ ${languageInstruction}
     }
 
     // 2. Latest user turn
+    const currentTimestampJst = formatZonedDateTime(new Date(), 'Asia/Tokyo');
     contents.push({
       role: 'user',
       parts: [{ text: `[Active View: ${currentContext}] [Current Time: ${currentTimestampJst}]\n\n${userMessage}` }]

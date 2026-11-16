@@ -922,7 +922,7 @@ describe('Copilot Autonomous Agent Suite (Redesign v3)', () => {
       expect(res.attachments?.[0].id).toBe('p1');
     });
 
-    it('should inject dynamic 120-pattern situational anchors into Copilot systemInstruction via composeAnchoredChannelPrompt', async () => {
+    it('should inject dynamic 120-pattern situational anchors into Copilot systemInstruction via composeSystemPrompt', async () => {
       mockEmbedContent.mockResolvedValueOnce({
         embeddings: [{ values: [...precomputedPersonaPatternEmbeddings[0].vector] }],
       });
@@ -947,15 +947,17 @@ describe('Copilot Autonomous Agent Suite (Redesign v3)', () => {
       );
       const genConfig = mockGenerateContent.mock.calls[0][0].config;
       expect(genConfig.systemInstruction).toContain('【動的Few-Shotペルソナアンカー');
+      expect(genConfig.systemInstruction).toContain('【現在時刻】');
     });
 
-    it('should enforce grounded composeAnchoredChannelPrompt usage in CopilotUseCase without raw unanchored composePrompt', () => {
+    it('should enforce unified composeSystemPrompt usage in CopilotUseCase without raw unanchored composePrompt or custom clock formatting', () => {
       const copilotUseCaseSrc = fs.readFileSync(
         path.resolve(__dirname, '../../src/features/copilot/usecase.ts'),
         'utf8',
       );
-      expect(copilotUseCaseSrc).toContain('composeAnchoredChannelPrompt(');
+      expect(copilotUseCaseSrc).toContain('composeSystemPrompt(');
       expect(copilotUseCaseSrc).not.toMatch(/activePersona\.(?:composePrompt|getBasePrompt)\s*\(/);
+      expect(copilotUseCaseSrc).not.toContain('DateTime.now');
     });
   });
 });
