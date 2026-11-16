@@ -2,6 +2,7 @@ import {
   buildEvolutionAuditPrompt,
   buildEvolutionSynthesisPrompt,
   buildSelfReflectionPrompt,
+  DEFAULT_SELF_REFLECTION_SYSTEM_INSTRUCTION,
   formatEvolutionConversationLogs,
   GlobalEvolutionEngine,
   IEvolutionMemoryStore,
@@ -136,7 +137,7 @@ describe('Layer 1 GlobalEvolutionEngine & Layer 2 SelfReflectionEngine', () => {
       ).rejects.toThrow('DB Offline');
 
       expect(deps.logger.error).toHaveBeenCalledWith(
-        '[CustomEvolution] Error in runGlobalEvolutionBatch',
+        '[CustomEvolution] Error executing global evolution',
         expect.any(Error),
       );
     });
@@ -173,7 +174,7 @@ describe('Layer 1 GlobalEvolutionEngine & Layer 2 SelfReflectionEngine', () => {
 
       expect(result).toEqual({
         status: 'skipped',
-        reason: 'no_recent_timeline_posts',
+        reason: 'no_recent_activities',
         postsCount: 0,
       });
       expect(deps.store.getRecentActivities).toHaveBeenCalledWith(15);
@@ -181,7 +182,7 @@ describe('Layer 1 GlobalEvolutionEngine & Layer 2 SelfReflectionEngine', () => {
       expect(deps.store.saveSummary).not.toHaveBeenCalled();
     });
 
-    it('builds chronological activity prompt with default and custom labels, and saves trimmed summary', async () => {
+    it('builds chronological activity prompt with default and custom labels, passes shared systemInstruction, and saves trimmed summary', async () => {
       const defaultPrompt = buildSelfReflectionPrompt({
         previousSummary: '',
         personaDisplayName: 'レベッカ',
@@ -205,9 +206,11 @@ describe('Layer 1 GlobalEvolutionEngine & Layer 2 SelfReflectionEngine', () => {
       }).execute();
 
       expect(deps.store.getRecentActivities).toHaveBeenCalledWith(20);
-      expect(deps.synthesizer.generateSummary).toHaveBeenCalledWith(
-        '【過去の要約】\nPrevious summary\n\n【レベッカの最近のツイート（古い順）】\n[1] Checked AI papers (内心: Very promising)\n[2] Evening coffee break',
-      );
+      expect(deps.synthesizer.generateSummary).toHaveBeenCalledWith({
+        systemInstruction: DEFAULT_SELF_REFLECTION_SYSTEM_INSTRUCTION,
+        prompt:
+          '【過去の要約】\nPrevious summary\n\n【レベッカの最近のツイート（古い順）】\n[1] Checked AI papers (内心: Very promising)\n[2] Evening coffee break',
+      });
       expect(deps.store.saveSummary).toHaveBeenCalledWith('Updated summary text');
       expect(result).toEqual({
         status: 'success',
@@ -225,11 +228,11 @@ describe('Layer 1 GlobalEvolutionEngine & Layer 2 SelfReflectionEngine', () => {
 
       await expect(
         new SelfReflectionEngine({ ...deps, logTag: '[SelfReflectionUseCase]' }).execute(),
-      ).rejects.toThrow('[SelfReflectionUseCase] Generated timeline summary was empty.');
+      ).rejects.toThrow('[SelfReflectionUseCase] Generated summary was empty.');
 
       expect(deps.store.saveSummary).not.toHaveBeenCalled();
       expect(deps.logger.error).toHaveBeenCalledWith(
-        '[SelfReflectionUseCase] Timeline summary generation failed',
+        '[SelfReflectionUseCase] Activity summary generation failed',
         expect.any(Error),
       );
     });

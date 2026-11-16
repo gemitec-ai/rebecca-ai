@@ -45,8 +45,7 @@ export interface MemoryTimeResolver {
 }
 
 /**
- * Storage-agnostic projection of a user's persistent memory record.
- * Compatible with both public X `FirestoreUser` and isolated private Lounge user profiles.
+ * Storage-agnostic projection of a user's persistent memory state.
  */
 export interface MemoryUserSnapshot {
   readonly id?: string;
@@ -54,7 +53,7 @@ export interface MemoryUserSnapshot {
   readonly username?: string;
   readonly coreProfile?: UserCoreProfile;
   readonly episodicBuffer?: readonly ConversationLogEntry[];
-  /** ISO 8601 date/datetime of the user's most recent conversational exchange. */
+  /** ISO 8601 date or datetime of the user's most recent conversational exchange. */
   readonly lastReplyDate?: string;
   /** ISO 8601 datetime of the user's latest recorded activity. */
   readonly lastSeen?: string;
@@ -70,8 +69,8 @@ export interface IMemoryEpisodicStore {
 }
 
 /**
- * Provider-agnostic conversational turn after Tatemae/Honne reconstruction.
- * Keeps `thought` (inner monologue) paired with `content` (spoken reply) on model turns.
+ * Provider-agnostic conversational turn after inner-thought reconstruction.
+ * Keeps private `thought` paired with spoken `content` on model turns.
  */
 export interface TurnWithInnerThought {
   readonly role: 'user' | 'model';
@@ -79,91 +78,124 @@ export interface TurnWithInnerThought {
 }
 
 /**
- * Read-only snapshot of public X Bot memories bridged one-way into a private session.
+ * Named contextual block appended to composed system instructions by host applications.
  */
-export interface PublicMemorySnapshot {
-  readonly user?: MemoryUserSnapshot | null;
-  readonly ragMemories?: readonly string[];
-  readonly timelineSummary?: string;
+export interface PromptSection {
+  readonly header?: string;
+  readonly body: string;
 }
 
 /**
- * Isolated private-session memory snapshot belonging strictly to the target private channel.
+ * Read-only snapshot of an upstream memory channel bridged one-way into a target session.
  */
-export interface PrivateMemorySnapshot {
+export interface ReadOnlySourceMemorySnapshot {
+  readonly user?: MemoryUserSnapshot | null;
+  readonly ragMemories?: readonly string[];
+  readonly activitySummary?: string;
+}
+
+/**
+ * Isolated memory snapshot belonging exclusively to the active target session/channel.
+ */
+export interface TargetSessionMemorySnapshot {
   readonly user?: MemoryUserSnapshot | null;
   readonly ragMemories?: readonly string[];
 }
 
 /**
- * Inputs for composing an asymmetric one-way memory overlay (Public X -> Private Session).
+ * Custom provenance tags applied when merging source and target RAG episodes.
  */
-export interface CompositeMemoryOverlayInput {
-  readonly publicMemory?: PublicMemorySnapshot | null;
-  readonly privateMemory: PrivateMemorySnapshot;
-  /** Maximum recent turn pairs to retain from private episodic buffer. Defaults to 10. */
+export interface MemoryOverlayLabels {
+  readonly sourceTag?: string;
+  readonly targetTag?: string;
+}
+
+/**
+ * Inputs for composing a one-way asymmetric memory overlay (Source Channel -> Target Channel).
+ */
+export interface AsymmetricOverlayInput {
+  readonly sourceMemory?: ReadOnlySourceMemorySnapshot | null;
+  readonly targetMemory: TargetSessionMemorySnapshot;
+  /** Maximum recent turn pairs to retain from target episodic buffer. Defaults to `10`. */
   readonly workingMemoryLimit?: number;
-  /** Maximum recent turn pairs to surface read-only from public X episodic buffer. Defaults to 4. */
-  readonly publicWorkingMemoryLimit?: number;
-  /** Language used when annotating merged memory headers. Defaults to 'ja'. */
+  /** Maximum recent turn pairs surfaced read-only from source episodic buffer. Defaults to `4`. */
+  readonly sourceWorkingMemoryLimit?: number;
+  /** Language used for default provenance headers when `labels` is omitted. Defaults to `'ja'`. */
   readonly lang?: Language;
+  /** Optional channel-specific provenance tags overriding neutral defaults. */
+  readonly labels?: MemoryOverlayLabels;
 }
 
 /**
- * Immutable, strictly segregated memory overlay view for private session prompt synthesis.
- * Never mutates public snapshots or writes private data back into public memory stores.
+ * Immutable, segregated memory overlay view for downstream prompt synthesis.
+ * Source snapshots are defensively cloned and never mutated or written back.
  */
-export interface ComposedMemoryOverlay {
-  readonly privateUser: MemoryUserSnapshot | null;
-  readonly publicUser: MemoryUserSnapshot | null;
+export interface AsymmetricOverlayView {
+  readonly targetUser: MemoryUserSnapshot | null;
+  readonly sourceUser: MemoryUserSnapshot | null;
   readonly effectiveLastReplyDate?: string;
-  readonly privateWorkingMemory: readonly ConversationLogEntry[];
-  readonly publicRecentTurns: readonly ConversationLogEntry[];
+  readonly targetWorkingMemory: readonly ConversationLogEntry[];
+  readonly sourceRecentTurns: readonly ConversationLogEntry[];
   readonly ragMemories: readonly string[];
-  readonly timelineSummary: string;
+  readonly activitySummary: string;
 }
 
 /**
- * Read-only public X context injected into Private Lounge system prompts.
+ * Customizable headings and privacy notice for rendering read-only external memory overlays.
  */
-export interface PublicMemoryOverlayContext {
+export interface ReadOnlyOverlayPromptLabels {
+  readonly intro?: string;
+  readonly profileHeader?: string;
+  readonly turnsHeader?: string;
+}
+
+/**
+ * Read-only external memory context injected into system prompts without reverse write-back.
+ */
+export interface ReadOnlyOverlayPromptContext {
   readonly coreProfile?: UserCoreProfile;
   readonly recentTurns?: readonly ConversationLogEntry[];
+  readonly labels?: ReadOnlyOverlayPromptLabels;
   readonly displayName?: string;
   readonly username?: string;
 }
 
 /**
- * Options for composing a full 3-tier system prompt for either public or private channels.
+ * Options for composing a complete multi-tier system prompt for any host channel.
  */
 export interface SystemPromptCompositionOptions {
   readonly persona: IPersonaDefinition;
   readonly promptContext: PromptContext;
   readonly userData: MemoryUserSnapshot | null;
   readonly extendedPrompt?: string;
-  readonly timelineSummary?: string;
+  readonly activitySummary?: string;
   readonly ragMemories?: readonly string[];
   readonly lang?: Language;
   readonly personaFewShotPrompt?: string;
-  readonly campaignContext?: string;
-  readonly parentPostContext?: string;
-  /** Read-only X public memory overlay for one-way continuity in private sessions. */
-  readonly publicMemoryOverlay?: PublicMemoryOverlayContext | null;
-  /** Optional channel-specific platform guidelines appended at the end of the prompt. */
+  /** Label prefix used before `@username` in interlocutor metadata (defaults to `'Handle'` / `'ユーザーID'`). */
+  readonly accountHandleLabel?: string;
+  /** Optional custom heading and lead-in text for Layer 2 `activitySummary`. */
+  readonly activitySummaryHeader?: string;
+  readonly activitySummaryLead?: string;
+  /** Optional host-specific contextual sections (e.g., social root post, event campaigns). */
+  readonly additionalSections?: readonly PromptSection[];
+  /** Optional read-only external memory overlay for one-way continuity. */
+  readonly readOnlyMemoryOverlay?: ReadOnlyOverlayPromptContext | null;
+  /** Optional channel-specific behavioral guidelines appended after context sections. */
   readonly platformGuidelines?: string;
-  /** IANA timezone used for clock and birthday evaluation. Defaults to 'Asia/Tokyo'. */
+  /** IANA timezone used for clock and birthday evaluation. Defaults to `'Asia/Tokyo'`. */
   readonly timezone?: string;
   /** Reference clock timestamp. Defaults to `new Date()`. */
   readonly now?: Date;
-  /** Optional custom time resolver (useful for deterministic unit tests). */
+  /** Optional custom time resolver for deterministic testing. */
   readonly timeResolver?: MemoryTimeResolver;
 }
 
 /**
- * Persistence port for reading unconsolidated user memories and saving dreaming results.
+ * Persistence port for retrieving consolidation candidates and saving dreaming outputs.
  */
 export interface IDreamingMemoryStore<TUser extends MemoryUserSnapshot = MemoryUserSnapshot> {
-  getAllUsers(): Promise<TUser[]>;
+  listConsolidationCandidates(): Promise<TUser[]>;
   updateCoreProfile(
     userId: string,
     profile: UserCoreProfile,
@@ -173,7 +205,7 @@ export interface IDreamingMemoryStore<TUser extends MemoryUserSnapshot = MemoryU
 }
 
 /**
- * LLM synthesis port for integrating episodic buffers into a user's CoreProfile.
+ * LLM synthesis port for integrating episodic buffers into a user's `UserCoreProfile`.
  */
 export interface IDreamingSynthesizer {
   generateDreaming(
@@ -193,12 +225,12 @@ export interface MemoryLogger {
 }
 
 /**
- * Execution tuning options for batch memory consolidation (Dreaming).
+ * Execution tuning options for batch memory consolidation (Layer 3 Dreaming).
  */
 export interface DreamingConfig {
-  /** Inter-user throttle delay in milliseconds (default 4500ms for 15 RPM quota safety). */
+  /** Inter-user throttle delay in milliseconds (default `4500` ms). */
   readonly throttleMs?: number;
-  /** Number of recent episodic entries retained as sliding window (default 20 = 10 pairs). */
+  /** Number of recent episodic entries retained as sliding window (default `20` = 10 pairs). */
   readonly retainedBufferEntries?: number;
 }
 
@@ -258,7 +290,7 @@ export interface EvolutionConversationLog {
 }
 
 /**
- * Outcome returned by the LLM-as-a-Judge safety & persona alignment audit for Layer 1 evolution.
+ * Outcome returned by the safety and persona-alignment audit for Layer 1 evolution.
  */
 export interface EvolutionAuditResult {
   readonly pass: boolean;
@@ -266,7 +298,7 @@ export interface EvolutionAuditResult {
 }
 
 /**
- * Persistence port for reading recent multi-user interactions and storing the Layer 1 extended prompt.
+ * Persistence port for reading recent cross-user interactions and storing the Layer 1 extended prompt.
  */
 export interface IEvolutionMemoryStore {
   getRecentConversationLogs(lookbackDays: number): Promise<ReadonlyArray<EvolutionConversationLog>>;
@@ -286,6 +318,8 @@ export interface IEvolutionSynthesizer {
  */
 export interface GlobalEvolutionConfig {
   readonly lookbackDays: number;
+  /** Optional character length guideline embedded in the synthesis prompt. */
+  readonly lengthGuideline?: string;
 }
 
 /**
@@ -299,7 +333,7 @@ export interface GlobalEvolutionResult {
 }
 
 /**
- * Activity item (e.g., timeline post or lounge broadcast) summarized into Layer 2 memory.
+ * Activity item summarized into Layer 2 long-term summary memory.
  */
 export interface SelfReflectionActivityEntry {
   readonly text: string;
@@ -316,17 +350,25 @@ export interface ISelfReflectionStore {
 }
 
 /**
+ * Synthesis payload passed to {@link ISelfReflectionSynthesizer.generateSummary}.
+ */
+export interface SelfReflectionSynthesisInput {
+  readonly systemInstruction: string;
+  readonly prompt: string;
+}
+
+/**
  * LLM synthesis port for distilling Layer 2 global activity summaries.
  */
 export interface ISelfReflectionSynthesizer {
-  generateSummary(prompt: string): Promise<string>;
+  generateSummary(input: SelfReflectionSynthesisInput): Promise<string>;
 }
 
 /**
  * Execution tuning options for Layer 2 Self-Reflection summarization.
  */
 export interface SelfReflectionConfig {
-  /** Maximum number of recent activities to fetch for summarization (default 20). */
+  /** Maximum number of recent activities to fetch for summarization (default `20`). */
   readonly postLimit?: number;
 }
 

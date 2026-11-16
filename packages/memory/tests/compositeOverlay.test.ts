@@ -1,110 +1,129 @@
-import { composeAsymmetricMemoryOverlay, PublicMemorySnapshot } from '../src';
+import { composeAsymmetricMemoryOverlay, ReadOnlySourceMemorySnapshot } from '../src';
 
 describe('composeAsymmetricMemoryOverlay', () => {
-  it('bridges read-only public X memories into private session without mutating public inputs', () => {
-    const publicUserBuffer = [
-      { role: 'user' as const, content: 'x-msg-1' },
-      { role: 'model' as const, content: 'x-reply-1', thought: 'x-thought-1' },
+  it('bridges read-only source memories into target session without mutating source inputs', () => {
+    const sourceBuffer = [
+      { role: 'user' as const, content: 'src-msg-1' },
+      { role: 'model' as const, content: 'src-reply-1', thought: 'src-thought-1' },
     ];
-    const publicSnapshot: PublicMemorySnapshot = {
+    const sourceSnapshot: ReadOnlySourceMemorySnapshot = {
       user: {
-        id: 'x_user_001',
+        id: 'user_001',
         name: 'Test User',
         username: 'test_user',
         coreProfile: { hobby: 'music' },
-        episodicBuffer: publicUserBuffer,
+        episodicBuffer: sourceBuffer,
         lastReplyDate: '2026-11-10T10:00:00.000Z',
       },
       ragMemories: ['User likes jazz', '  '],
-      timelineSummary: '  Posted about studio practice  ',
+      activitySummary: '  Posted about studio practice  ',
     };
 
     const overlay = composeAsymmetricMemoryOverlay({
-      publicMemory: publicSnapshot,
-      privateMemory: {
+      sourceMemory: sourceSnapshot,
+      targetMemory: {
         user: {
-          id: 'x_user_001',
-          coreProfile: { secretPreference: 'late-night talks' },
+          id: 'user_001',
+          coreProfile: { preference: 'late-night talks' },
           episodicBuffer: [
-            { role: 'user', content: 'priv-1' },
-            { role: 'model', content: 'priv-reply-1' },
+            { role: 'user', content: 'target-1' },
+            { role: 'model', content: 'target-reply-1' },
           ],
           lastReplyDate: '2026-11-12T10:00:00.000Z',
         },
-        ragMemories: ['Private shared secret'],
+        ragMemories: ['Target shared memory'],
       },
       lang: 'en',
     });
 
-    expect(overlay.privateWorkingMemory).toHaveLength(2);
-    expect(overlay.publicRecentTurns).toHaveLength(2);
+    expect(overlay.targetWorkingMemory).toHaveLength(2);
+    expect(overlay.sourceRecentTurns).toHaveLength(2);
     expect(overlay.effectiveLastReplyDate).toBe('2026-11-12T10:00:00.000Z');
-    expect(overlay.timelineSummary).toBe('Posted about studio practice');
+    expect(overlay.activitySummary).toBe('Posted about studio practice');
     expect(overlay.ragMemories).toEqual([
-      '[Private Lounge Memory] Private shared secret',
-      '[Public X Memory] User likes jazz',
+      '[Session Memory] Target shared memory',
+      '[External Memory] User likes jazz',
     ]);
 
-    // Verify defensive copy preserves public isolation even if private overlay fields are inspected/mutated
-    expect(overlay.publicUser).not.toBe(publicSnapshot.user);
-    expect(overlay.publicUser?.coreProfile).toEqual({ hobby: 'music' });
+    expect(overlay.sourceUser).not.toBe(sourceSnapshot.user);
+    expect(overlay.sourceUser?.coreProfile).toEqual({ hobby: 'music' });
   });
 
-  it('handles missing public memory cleanly without adding redundant tags to private RAG memories', () => {
+  it('supports custom channel provenance labels', () => {
     const overlay = composeAsymmetricMemoryOverlay({
-      publicMemory: null,
-      privateMemory: {
-        user: {
-          id: 'x_user_002',
-          coreProfile: {},
-          episodicBuffer: [],
-        },
-        ragMemories: ['Only private memory', ''],
+      sourceMemory: {
+        ragMemories: ['From channel A'],
+      },
+      targetMemory: {
+        ragMemories: ['In channel B'],
+      },
+      labels: {
+        sourceTag: '[Channel A]',
+        targetTag: '[Channel B]',
       },
     });
 
-    expect(overlay.publicUser).toBeNull();
-    expect(overlay.publicRecentTurns).toEqual([]);
-    expect(overlay.privateWorkingMemory).toEqual([]);
-    expect(overlay.effectiveLastReplyDate).toBeUndefined();
-    expect(overlay.ragMemories).toEqual(['Only private memory']);
+    expect(overlay.ragMemories).toEqual([
+      '[Channel B] In channel B',
+      '[Channel A] From channel A',
+    ]);
   });
 
-  it('uses public lastReplyDate when private lastReplyDate is missing or older, and ignores invalid dates', () => {
-    const fromPublicOnly = composeAsymmetricMemoryOverlay({
-      publicMemory: {
+  it('handles missing source memory cleanly without adding redundant tags to target RAG memories', () => {
+    const overlay = composeAsymmetricMemoryOverlay({
+      sourceMemory: null,
+      targetMemory: {
+        user: {
+          id: 'user_002',
+          coreProfile: {},
+          episodicBuffer: [],
+        },
+        ragMemories: ['Only target memory', ''],
+      },
+    });
+
+    expect(overlay.sourceUser).toBeNull();
+    expect(overlay.sourceRecentTurns).toEqual([]);
+    expect(overlay.targetWorkingMemory).toEqual([]);
+    expect(overlay.effectiveLastReplyDate).toBeUndefined();
+    expect(overlay.ragMemories).toEqual(['Only target memory']);
+  });
+
+  it('uses source lastReplyDate when target lastReplyDate is missing or older, and ignores invalid dates', () => {
+    const fromSourceOnly = composeAsymmetricMemoryOverlay({
+      sourceMemory: {
         user: {
           lastReplyDate: '2026-11-14T08:00:00.000Z',
         },
       },
-      privateMemory: {
+      targetMemory: {
         user: {
           lastReplyDate: 'invalid-date',
         },
       },
       lang: 'ja',
     });
-    expect(fromPublicOnly.effectiveLastReplyDate).toBe('2026-11-14T08:00:00.000Z');
+    expect(fromSourceOnly.effectiveLastReplyDate).toBe('2026-11-14T08:00:00.000Z');
 
-    const privateOnly = composeAsymmetricMemoryOverlay({
-      publicMemory: {
+    const targetNewer = composeAsymmetricMemoryOverlay({
+      sourceMemory: {
         user: {
           lastReplyDate: '2026-11-01T00:00:00.000Z',
         },
-        ragMemories: ['X episode'],
+        ragMemories: ['Source episode'],
       },
-      privateMemory: {
+      targetMemory: {
         user: {
           lastReplyDate: '2026-11-15T00:00:00.000Z',
         },
-        ragMemories: ['Private episode'],
+        ragMemories: ['Target episode'],
       },
       lang: 'ja',
     });
-    expect(privateOnly.effectiveLastReplyDate).toBe('2026-11-15T00:00:00.000Z');
-    expect(privateOnly.ragMemories).toEqual([
-      '【ラウンジ秘密対話の記憶】 Private episode',
-      '【X公開対話の記憶】 X episode',
+    expect(targetNewer.effectiveLastReplyDate).toBe('2026-11-15T00:00:00.000Z');
+    expect(targetNewer.ragMemories).toEqual([
+      '【現在セッションの記憶】 Target episode',
+      '【外部チャネルの記憶】 Source episode',
     ]);
   });
 });

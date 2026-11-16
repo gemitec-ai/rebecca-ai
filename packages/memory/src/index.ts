@@ -7,8 +7,8 @@
  * and situational persona anchoring.
  *
  * Designed as an SDK-agnostic domain core parameterized via `@rebecca/persona`
- * and Hexagonal storage/model ports so public bots and isolated private lounges
- * share unified cognition without leaking private data or character traits.
+ * and Hexagonal storage/model ports so consuming services share unified cognition
+ * without coupling to persistence SDKs, LLM clients, or specific delivery channels.
  */
 
 export * from './types';

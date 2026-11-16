@@ -1,12 +1,12 @@
 import { DEFAULT_APP_TIMEZONE, formatZonedDateTime, getZonedDateParts, resolveTimeContextPeriod } from './time';
-import type { PublicMemoryOverlayContext, SystemPromptCompositionOptions } from './types';
+import type { ReadOnlyOverlayPromptContext, SystemPromptCompositionOptions } from './types';
 
 /**
- * Formats the read-only public X overlay block injected into Private Lounge prompts.
- * Preserves conversational continuity while forbidding reverse leakage back to public posts.
+ * Formats a read-only external memory overlay block injected into target session prompts.
+ * Preserves conversational continuity while allowing callers to customize channel labels.
  */
-const formatPublicOverlayBlock = (
-  overlay: PublicMemoryOverlayContext,
+const formatReadOnlyOverlayBlock = (
+  overlay: ReadOnlyOverlayPromptContext,
   callsign: string,
   lang: 'ja' | 'en',
   timezone: string,
@@ -20,18 +20,18 @@ const formatPublicOverlayBlock = (
     return '';
   }
 
-  parts.push(
-    lang === 'en'
-      ? `[Public X Memory Overlay (Read-Only Continuity)]\nThe following context comes from your prior public interactions with ${callsign} on X. You naturally remember this continuity, but keep private lounge conversations strictly confidential here.`
-      : `【X公開アカウントの記憶（参照専用・引き継ぎコンテキスト）】\n以下は${callsign}とのX公開タイムライン上での過去の記憶です。記憶は自然に引き継いで会話できますが、このプライベートラウンジでの秘密の対話内容がXの公開記憶へ混ざることはありません。`,
-  );
+  const intro =
+    overlay.labels?.intro ??
+    (lang === 'en'
+      ? `[External Memory Overlay (Read-Only Continuity)]\nThe following context comes from prior interactions with ${callsign} in an external channel. Inherit this continuity naturally while keeping the current session strictly isolated.`
+      : `【参照専用メモリ（外部チャネル引き継ぎコンテキスト）】\n以下は${callsign}との外部チャネルにおける過去の記憶です。記憶は自然に引き継いで会話できますが、現在セッションの対話内容が外部記憶へ書き戻されることはありません。`);
+  parts.push(intro);
 
   if (hasProfile) {
-    parts.push(
-      lang === 'en'
-        ? `[Public X Core Profile]\n${JSON.stringify(overlay.coreProfile, null, 2)}`
-        : `【X側のプロファイル（参考）】\n${JSON.stringify(overlay.coreProfile, null, 2)}`,
-    );
+    const profileHeader =
+      overlay.labels?.profileHeader ??
+      (lang === 'en' ? '[External Core Profile]' : '【外部チャネル側のプロファイル（参考）】');
+    parts.push(`${profileHeader}\n${JSON.stringify(overlay.coreProfile, null, 2)}`);
   }
 
   if (hasRecentTurns && overlay.recentTurns) {
@@ -41,23 +41,22 @@ const formatPublicOverlayBlock = (
       const speaker = entry.role === 'user' ? callsign : 'AI';
       return `- ${timePrefix}${speaker}: ${entry.content}`;
     });
-    parts.push(
-      lang === 'en'
-        ? `[Recent Public X Exchanges]\n${formattedLines.join('\n')}`
-        : `【直近のX上でのやり取り】\n${formattedLines.join('\n')}`,
-    );
+    const turnsHeader =
+      overlay.labels?.turnsHeader ??
+      (lang === 'en' ? '[Recent External Exchanges]' : '【外部チャネルでの直近のやり取り】');
+    parts.push(`${turnsHeader}\n${formattedLines.join('\n')}`);
   }
 
   return `\n\n${parts.join('\n\n')}`;
 };
 
 /**
- * Builds a complete multi-tier persona system prompt from 3-tier memory,
- * localized temporal/anniversary context, retrieved RAG episodes, and optional
- * asymmetric X public memory overlay.
+ * Builds a complete multi-tier persona system prompt from 3-layer memory,
+ * localized temporal/anniversary context, retrieved RAG episodes, optional
+ * read-only memory overlay, and host-supplied contextual sections.
  *
  * Character traits, callsigns, birthdays, and base instructions are read strictly
- * from the injected `persona` definition so no character lore leaks into this engine.
+ * from the injected `persona` definition so no character lore or channel logic leaks into this engine.
  *
  * @param options - Structured prompt composition options and memory slices.
  * @returns Fully assembled system instruction string.
@@ -68,13 +67,15 @@ export const composeSystemPrompt = (options: SystemPromptCompositionOptions): st
     promptContext,
     userData,
     extendedPrompt = '',
-    timelineSummary = '',
+    activitySummary = '',
     ragMemories = [],
     lang = 'ja',
     personaFewShotPrompt = '',
-    campaignContext = '',
-    parentPostContext = '',
-    publicMemoryOverlay = null,
+    accountHandleLabel,
+    activitySummaryHeader,
+    activitySummaryLead,
+    additionalSections = [],
+    readOnlyMemoryOverlay = null,
     platformGuidelines = '',
     timezone = DEFAULT_APP_TIMEZONE,
     now = new Date(),
@@ -110,10 +111,11 @@ export const composeSystemPrompt = (options: SystemPromptCompositionOptions): st
 
   if (userData) {
     if (userData.name && userData.username) {
+      const handleLabel = accountHandleLabel ?? (lang === 'en' ? 'Handle' : 'ユーザーID');
       prompt +=
         lang === 'en'
-          ? `\n\n[Interlocutor Account Info (${callsign})]\nDisplay Name: ${userData.name}\nX Handle: @${userData.username}`
-          : `\n\n【対話相手のアカウント情報（${callsign}）】\n表示名: ${userData.name}\nXユーザーID: @${userData.username}`;
+          ? `\n\n[Interlocutor Account Info (${callsign})]\nDisplay Name: ${userData.name}\n${handleLabel}: @${userData.username}`
+          : `\n\n【対話相手のアカウント情報（${callsign}）】\n表示名: ${userData.name}\n${handleLabel}: @${userData.username}`;
     }
 
     if (userData.coreProfile) {
@@ -125,15 +127,15 @@ export const composeSystemPrompt = (options: SystemPromptCompositionOptions): st
     }
   }
 
-  if (publicMemoryOverlay) {
-    prompt += formatPublicOverlayBlock(publicMemoryOverlay, callsign, lang, timezone, resolveFormatted);
+  if (readOnlyMemoryOverlay) {
+    prompt += formatReadOnlyOverlayBlock(readOnlyMemoryOverlay, callsign, lang, timezone, resolveFormatted);
   }
 
   if (ragMemories.length > 0) {
     prompt +=
       lang === 'en'
-        ? `\n\n[RAG Memories (Past Episodes)]\nHere are past conversation logs retrieved by topic similarity. Notice their recorded timestamps: they represent past history, distinct from the immediate conversation turns (Contents). Keep them in mind when replying:\n`
-        : `\n\n【関連する過去のエピソード記憶（RAG Memories）】\n話題の類似度によって取得された過去の会話ログです。記録された日時に着目してください（直前の対話履歴Contentsとは異なり、過去の出来事です）。これらを踏まえて返答してください。\n`;
+        ? `\n\n[RAG Memories (Past Episodes)]\nHere are past conversation logs retrieved by topic similarity. Notice their recorded timestamps: they represent past history, distinct from the immediate conversation turns. Keep them in mind when replying:\n`
+        : `\n\n【関連する過去のエピソード記憶（RAG Memories）】\n話題の類似度によって取得された過去の会話ログです。記録された日時に着目してください（直前の対話履歴とは異なり、過去の出来事です）。これらを踏まえて返答してください。\n`;
     prompt += ragMemories.join('\n\n');
   }
 
@@ -187,27 +189,25 @@ export const composeSystemPrompt = (options: SystemPromptCompositionOptions): st
         : `\n\n【集合無意識トレンド】\n${extendedPrompt}`;
   }
 
-  if (timelineSummary && timelineSummary.trim() !== '') {
-    const personaName = persona.metadata.displayName;
-    prompt +=
-      lang === 'en'
-        ? `\n\n[My Recent Posts (Context)]\nRecently, I posted this:\n${timelineSummary}`
-        : `\n\n【最近の自分の投稿（参考）】\n${personaName}は最近以下のようにつぶやいていた。\n${timelineSummary}`;
+  if (activitySummary && activitySummary.trim() !== '') {
+    const header =
+      activitySummaryHeader ??
+      (lang === 'en' ? '[Recent Activity Summary]' : '【最近の活動要約（参考）】');
+    const lead =
+      activitySummaryLead ??
+      (lang === 'en'
+        ? 'Recent activity overview:'
+        : '直近の活動サマリー：');
+    prompt += `\n\n${header}\n${lead}\n${activitySummary}`;
   }
 
-  if (campaignContext && campaignContext.trim() !== '') {
-    prompt +=
-      lang === 'en'
-        ? `\n\n[Current Ongoing Campaign / Special Narrative Event]\n${campaignContext}\n\n[CRITICAL: Empathy Priority Rule]\nAlways prioritize the user's emotional state, troubles, or immediate question before mentioning the campaign. Never derail a serious or melancholic conversation with bubbly event talk unless the user asked about it or it naturally fits.`
-        : `\n\n【現在進行中のイベント・キャンペーン状況（Special Narrative Event）】\n${campaignContext}\n\n【最優先ルール：共感・ユーザーファースト（Empathy Priority）】\nユーザーの悩み、相談、質問、感情の機微を最優先で受け止めて返信してください。ユーザーが真剣な話や落ち込んでいる時に、イベントの話題（旅行や浮かれた話など）を無理やり割り込ませて話の腰を折ることは厳禁です。ユーザーからイベントについて尋ねられた場合、または自然な雑談の流れでのみ触れてください。`;
-  }
-
-  if (parentPostContext && parentPostContext.trim() !== '') {
-    const personaName = persona.metadata.displayName;
-    prompt +=
-      lang === 'en'
-        ? `\n\n[Context: Your Original Post Being Replied To]\nThe user is directly replying to your following post:\n"${parentPostContext}"\n[Instruction for Root Post Replies]\nTake into account your original post and the question/topic you raised, and naturally acknowledge the user's reaction. *Always match the interlocutor's language regardless of the original post language.`
-        : `\n\n【文脈：ユーザーが返信している${personaName}の元ポスト】\nユーザーはあなたの以下の投稿に対して直接リプライしています：\n「${parentPostContext}」\n【元ポスト返信時の指針】\nあなたが元ポストで投げかけた話題や問いかけを踏まえた上で、相手の反応を自然に受け止めて会話を繋げてください（※返信言語は元ポストではなく、必ず相手の発言言語に合わせてください）。`;
+  for (const section of additionalSections) {
+    const trimmedBody = section.body.trim();
+    if (!trimmedBody) {
+      continue;
+    }
+    const trimmedHeader = section.header?.trim();
+    prompt += trimmedHeader ? `\n\n${trimmedHeader}\n${trimmedBody}` : `\n\n${trimmedBody}`;
   }
 
   if (platformGuidelines && platformGuidelines.trim() !== '') {

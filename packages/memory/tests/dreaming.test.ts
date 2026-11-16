@@ -57,7 +57,7 @@ describe('DreamingConsolidationEngine and hasUnconsolidatedActivity', () => {
         { profile: UserCoreProfile; retainedBuffer: ConversationLogEntry[]; lastDreamedAt: string }
       >();
       const store: IDreamingMemoryStore = {
-        getAllUsers: jest.fn(async () => users),
+        listConsolidationCandidates: jest.fn(async () => users),
         updateCoreProfile: jest.fn(async (userId, profile, retainedBuffer, lastDreamedAt) => {
           updated.set(userId, { profile, retainedBuffer, lastDreamedAt });
         }),

@@ -53,11 +53,10 @@ export interface DreamingEngineDeps<TUser extends MemoryUserSnapshot = MemoryUse
 }
 
 /**
- * Cognitive memory consolidation (Dreaming) engine shared across public X Bot
- * and isolated private session channels.
+ * Cognitive memory consolidation (Dreaming) engine for periodic per-user memory synthesis.
  *
  * Assimilates unconsolidated episodic buffers into durable `coreProfile` traits
- * while preserving a bounded sliding window and applying rate-limit throttling.
+ * while preserving a bounded sliding window and applying configurable inter-user throttling.
  */
 export class DreamingConsolidationEngine<TUser extends MemoryUserSnapshot = MemoryUserSnapshot> {
   private readonly throttleMs: number;
@@ -82,14 +81,14 @@ export class DreamingConsolidationEngine<TUser extends MemoryUserSnapshot = Memo
   }
 
   /**
-   * Executes batch memory consolidation across all users with unconsolidated episodic activity.
+   * Executes batch memory consolidation across all candidates with unconsolidated episodic activity.
    * Failures for an individual user are isolated and reported in `status` / `failed` counts.
    *
    * @returns Summary metrics describing total, processed, succeeded, failed, and skipped users.
    */
   async execute(): Promise<DreamingExecutionResult> {
     this.logger.info(`${this.logTag} Starting user memory consolidation (dreaming)`);
-    const users = await this.deps.store.getAllUsers();
+    const users = await this.deps.store.listConsolidationCandidates();
     const targetUsers = users.filter((user) => hasUnconsolidatedActivity(user));
 
     if (targetUsers.length === 0) {

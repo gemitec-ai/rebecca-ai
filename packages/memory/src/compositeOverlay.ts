@@ -1,13 +1,13 @@
 import type { ConversationLogEntry } from '@rebecca/types';
 import { DEFAULT_WORKING_MEMORY_LIMIT, getWorkingMemory } from './workingMemory';
 import type {
-  ComposedMemoryOverlay,
-  CompositeMemoryOverlayInput,
+  AsymmetricOverlayInput,
+  AsymmetricOverlayView,
   MemoryUserSnapshot,
 } from './types';
 
-/** Default sliding window of recent public X turns surfaced read-only in private sessions. */
-export const DEFAULT_PUBLIC_OVERLAY_TURN_LIMIT = 4;
+/** Default sliding window of recent turns surfaced read-only from the source channel. */
+export const DEFAULT_SOURCE_OVERLAY_TURN_LIMIT = 4;
 
 /**
  * Resolves the most recent valid ISO timestamp between two optional date strings.
@@ -32,7 +32,7 @@ const resolveLatestIsoTimestamp = (
 
 /**
  * Creates a shallow defensive copy of a user snapshot so downstream prompt composition
- * cannot mutate underlying public or private store objects.
+ * cannot mutate underlying storage objects.
  */
 const cloneUserSnapshot = (
   user: MemoryUserSnapshot | null | undefined,
@@ -46,7 +46,7 @@ const cloneUserSnapshot = (
 };
 
 /**
- * Strips empty entries and optionally annotates memory snippets with channel provenance tags.
+ * Strips blank entries and optionally prefixes memory snippets with provenance tags.
  */
 const formatTaggedMemories = (
   memories: readonly string[] | undefined,
@@ -59,65 +59,66 @@ const formatTaggedMemories = (
   return memories
     .map((m) => m.trim())
     .filter((m) => m.length > 0)
-    .map((m) => (shouldTag ? `${tag} ${m}` : m));
+    .map((m) => (shouldTag && tag ? `${tag} ${m}` : m));
 };
 
 /**
- * Composes an asymmetric one-way memory overlay for Private Lounge sessions.
+ * Composes an asymmetric one-way memory overlay between an isolated target session and an
+ * optional read-only external source channel.
  *
- * Architectural Invariant:
- * - **Public X -> Private Lounge (Read-Only)**: Bridges X account identity, public `coreProfile`,
- *   recent public turns, public `rag_memories`, and `timeline_history` summary into private context.
- * - **Zero Reverse Flow**: Public objects are defensively cloned and never modified or written back.
+ * Source snapshots are defensively cloned so target prompt synthesis can inherit prior
+ * continuity without mutating or leaking target state back to the source store.
  *
- * @param input - Isolated private session memory combined with optional read-only public X snapshot.
+ * @param input - Isolated target session memory combined with optional read-only source snapshot.
  * @returns Immutable overlay view ready for `composeSystemPrompt`.
  */
 export const composeAsymmetricMemoryOverlay = (
-  input: CompositeMemoryOverlayInput,
-): ComposedMemoryOverlay => {
+  input: AsymmetricOverlayInput,
+): AsymmetricOverlayView => {
   const workingLimit = input.workingMemoryLimit ?? DEFAULT_WORKING_MEMORY_LIMIT;
-  const publicLimit = input.publicWorkingMemoryLimit ?? DEFAULT_PUBLIC_OVERLAY_TURN_LIMIT;
+  const sourceLimit = input.sourceWorkingMemoryLimit ?? DEFAULT_SOURCE_OVERLAY_TURN_LIMIT;
   const lang = input.lang ?? 'ja';
 
-  const privateUser = cloneUserSnapshot(input.privateMemory.user);
-  const publicUser = cloneUserSnapshot(input.publicMemory?.user);
+  const targetUser = cloneUserSnapshot(input.targetMemory.user);
+  const sourceUser = cloneUserSnapshot(input.sourceMemory?.user);
 
-  const privateWorkingMemory: readonly ConversationLogEntry[] = getWorkingMemory(
-    privateUser?.episodicBuffer,
+  const targetWorkingMemory: readonly ConversationLogEntry[] = getWorkingMemory(
+    targetUser?.episodicBuffer,
     workingLimit,
   );
-  const publicRecentTurns: readonly ConversationLogEntry[] = getWorkingMemory(
-    publicUser?.episodicBuffer,
-    publicLimit,
+  const sourceRecentTurns: readonly ConversationLogEntry[] = getWorkingMemory(
+    sourceUser?.episodicBuffer,
+    sourceLimit,
   );
 
-  const publicTag = lang === 'en' ? '[Public X Memory]' : '【X公開対話の記憶】';
-  const privateTag = lang === 'en' ? '[Private Lounge Memory]' : '【ラウンジ秘密対話の記憶】';
+  const defaultSourceTag = lang === 'en' ? '[External Memory]' : '【外部チャネルの記憶】';
+  const defaultTargetTag = lang === 'en' ? '[Session Memory]' : '【現在セッションの記憶】';
+  const sourceTag = input.labels?.sourceTag ?? defaultSourceTag;
+  const targetTag = input.labels?.targetTag ?? defaultTargetTag;
 
-  const rawPublicRag = input.publicMemory?.ragMemories;
-  const rawPrivateRag = input.privateMemory.ragMemories;
-  const hasPublicRag = Boolean(rawPublicRag && rawPublicRag.some((m) => m.trim().length > 0));
+  const rawSourceRag = input.sourceMemory?.ragMemories;
+  const rawTargetRag = input.targetMemory.ragMemories;
+  const hasSourceRag = Boolean(rawSourceRag && rawSourceRag.some((m) => m.trim().length > 0));
 
   const mergedRagMemories = [
-    ...formatTaggedMemories(rawPrivateRag, privateTag, hasPublicRag),
-    ...formatTaggedMemories(rawPublicRag, publicTag, true),
+    ...formatTaggedMemories(rawTargetRag, targetTag, hasSourceRag),
+    ...formatTaggedMemories(rawSourceRag, sourceTag, true),
   ];
 
   const effectiveLastReplyDate = resolveLatestIsoTimestamp(
-    privateUser?.lastReplyDate,
-    publicUser?.lastReplyDate,
+    targetUser?.lastReplyDate,
+    sourceUser?.lastReplyDate,
   );
 
-  const timelineSummary = input.publicMemory?.timelineSummary?.trim() ?? '';
+  const activitySummary = input.sourceMemory?.activitySummary?.trim() ?? '';
 
   return {
-    privateUser,
-    publicUser,
+    targetUser,
+    sourceUser,
     ...(effectiveLastReplyDate ? { effectiveLastReplyDate } : {}),
-    privateWorkingMemory,
-    publicRecentTurns,
+    targetWorkingMemory,
+    sourceRecentTurns,
     ragMemories: mergedRagMemories,
-    timelineSummary,
+    activitySummary,
   };
 };

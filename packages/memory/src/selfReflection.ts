@@ -14,13 +14,21 @@ export const DEFAULT_SELF_REFLECTION_POST_LIMIT = 20;
 export const DEFAULT_SELF_REFLECTION_ACTIVITY_LABEL = '最近の投稿（古い順）';
 
 /**
+ * Canonical Layer 2 long-term memory summarization system instruction shared across host services.
+ */
+export const DEFAULT_SELF_REFLECTION_SYSTEM_INSTRUCTION =
+  'あなたはAIキャラクターの長期記憶管理システムです。与えられたキャラクター自身の投稿履歴と過去の要約を元に、最近どのようなニュース、技術、社会トレンドや日常のトピックについて言及していたかを客観的に400文字以内で要約してください。言及されたトピックの内容や関心の推移を中心に記述し、語尾や過剰な感情表現の模倣ではなく、対話や思考の知的背景となる文脈を自然な日本語の文章で整理してください（箇条書きや記号は使用しないでください）。';
+
+/**
  * Dependency bundle injected into {@link SelfReflectionEngine}.
  */
 export interface SelfReflectionEngineDependencies {
   readonly store: ISelfReflectionStore;
   readonly synthesizer: ISelfReflectionSynthesizer;
   readonly personaDisplayName: string;
-  /** Heading label describing recent activity items (e.g., `'最近のツイート（古い順）'`). */
+  /** Optional override for Layer 2 summarization system instruction. */
+  readonly systemInstruction?: string;
+  /** Heading label describing recent activity items. */
   readonly activitySectionLabel?: string;
   readonly logger?: MemoryLogger;
   /** Optional log/error prefix override (defaults to `'[SelfReflectionEngine]'`). */
@@ -32,7 +40,7 @@ export interface SelfReflectionEngineDependencies {
  * with indexed recent persona activities and inner thoughts.
  *
  * @param params - Previous summary, persona display name, ordered activities, and optional label.
- * @returns Prompt sent to {@link ISelfReflectionSynthesizer.generateSummary}.
+ * @returns Prompt sent alongside the system instruction to {@link ISelfReflectionSynthesizer.generateSummary}.
  */
 export const buildSelfReflectionPrompt = (params: {
   readonly previousSummary: string;
@@ -47,26 +55,27 @@ export const buildSelfReflectionPrompt = (params: {
     activitySectionLabel = DEFAULT_SELF_REFLECTION_ACTIVITY_LABEL,
   } = params;
 
-  const formattedPosts = activities.map((post, index) => {
-    const thoughtSuffix = post.thought ? ` (内心: ${post.thought})` : '';
-    return `[${index + 1}] ${post.text}${thoughtSuffix}`;
+  const formattedEntries = activities.map((entry, index) => {
+    const thoughtSuffix = entry.thought ? ` (内心: ${entry.thought})` : '';
+    return `[${index + 1}] ${entry.text}${thoughtSuffix}`;
   });
 
   return `【過去の要約】
 ${previousSummary ? previousSummary : '（まだ要約なし）'}
 
 【${personaDisplayName}の${activitySectionLabel}】
-${formattedPosts.join('\n')}`;
+${formattedEntries.join('\n')}`;
 };
 
 /**
  * Core Layer 2 cognitive engine that summarizes recent autonomous persona activity into
- * `system/persona.timeline_summary`. Enforces fail-fast semantics so blank or failed LLM
- * responses never overwrite existing Layer 2 long-term memory.
+ * global summary memory. Enforces fail-fast semantics so blank or failed synthesis
+ * responses never overwrite existing Layer 2 long-term state.
  */
 export class SelfReflectionEngine {
   private readonly postLimit: number;
   private readonly activitySectionLabel: string;
+  private readonly systemInstruction: string;
   private readonly logTag: string;
 
   constructor(
@@ -76,22 +85,24 @@ export class SelfReflectionEngine {
     this.postLimit = config?.postLimit ?? DEFAULT_SELF_REFLECTION_POST_LIMIT;
     this.activitySectionLabel =
       deps.activitySectionLabel ?? DEFAULT_SELF_REFLECTION_ACTIVITY_LABEL;
+    this.systemInstruction =
+      deps.systemInstruction ?? DEFAULT_SELF_REFLECTION_SYSTEM_INSTRUCTION;
     this.logTag = deps.logTag ?? '[SelfReflectionEngine]';
   }
 
   /**
-   * Executes one Layer 2 timeline/activity self-reflection summarization pass.
+   * Executes one Layer 2 activity self-reflection summarization pass.
    *
-   * @returns Summary result detailing `skipped` or `success` state and activity count.
+   * @returns Summary result detailing `skipped` or `success` state and processed item count.
    * @throws Error if summarization yields empty text or upstream dependencies throw.
    */
   async execute(): Promise<SelfReflectionExecutionResult> {
-    this.deps.logger?.info(`${this.logTag} Starting timeline self-reflection`);
+    this.deps.logger?.info(`${this.logTag} Starting activity self-reflection`);
 
     const recentActivities = await this.deps.store.getRecentActivities(this.postLimit);
     if (!recentActivities || recentActivities.length === 0) {
-      this.deps.logger?.info(`${this.logTag} No recent timeline posts found. Skipping summarization`);
-      return { status: 'skipped', reason: 'no_recent_timeline_posts', postsCount: 0 };
+      this.deps.logger?.info(`${this.logTag} No recent activities found. Skipping summarization`);
+      return { status: 'skipped', reason: 'no_recent_activities', postsCount: 0 };
     }
 
     const previousSummary = await this.deps.store.getSummary();
@@ -103,15 +114,18 @@ export class SelfReflectionEngine {
     });
 
     try {
-      const rawSummary = await this.deps.synthesizer.generateSummary(prompt);
+      const rawSummary = await this.deps.synthesizer.generateSummary({
+        systemInstruction: this.systemInstruction,
+        prompt,
+      });
       const trimmedSummary = rawSummary ? rawSummary.trim() : '';
 
       if (trimmedSummary.length === 0) {
-        throw new Error(`${this.logTag} Generated timeline summary was empty.`);
+        throw new Error(`${this.logTag} Generated summary was empty.`);
       }
 
       await this.deps.store.saveSummary(trimmedSummary);
-      this.deps.logger?.info(`${this.logTag} Timeline summary successfully updated`);
+      this.deps.logger?.info(`${this.logTag} Activity summary successfully updated`);
 
       return {
         status: 'success',
@@ -120,7 +134,7 @@ export class SelfReflectionEngine {
         postsCount: recentActivities.length,
       };
     } catch (error: unknown) {
-      this.deps.logger?.error(`${this.logTag} Timeline summary generation failed`, error);
+      this.deps.logger?.error(`${this.logTag} Activity summary generation failed`, error);
       throw error;
     }
   }

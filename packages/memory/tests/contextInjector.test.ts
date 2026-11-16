@@ -156,14 +156,17 @@ describe('composeSystemPrompt', () => {
       personaFewShotPrompt: 'FEW_SHOT_BLOCK',
       ragMemories: ['Episode 1'],
       extendedPrompt: 'EVOLUTION_TREND',
-      timelineSummary: 'Posted about studio coffee',
-      campaignContext: 'Summer Fest',
-      parentPostContext: 'Did you sleep well?',
-      publicMemoryOverlay: {
-        coreProfile: { xInterest: 'synthwave' },
+      activitySummary: 'Posted about studio coffee',
+      additionalSections: [
+        { header: '【イベント】', body: 'Summer Fest' },
+        { body: 'Trailing untitled section' },
+        { header: '【空白スキップ】', body: '   ' },
+      ],
+      readOnlyMemoryOverlay: {
+        coreProfile: { interest: 'synthwave' },
         recentTurns: [
-          { role: 'user', content: 'Hi on X', timestamp: '2026-04-20T01:00:00.000Z' },
-          { role: 'model', content: 'Hey on X' },
+          { role: 'user', content: 'Hi earlier', timestamp: '2026-04-20T01:00:00.000Z' },
+          { role: 'model', content: 'Hey earlier' },
         ],
       },
       platformGuidelines: 'CUSTOM_GUIDELINES',
@@ -175,35 +178,43 @@ describe('composeSystemPrompt', () => {
     expect(prompt).toContain('BASE_reply_ja');
     expect(prompt).toContain('Unit-Test-99');
     expect(prompt).toContain('FEW_SHOT_BLOCK');
-    expect(prompt).toContain('Display Name: Test Master'.replace('Display Name: ', '表示名: '));
-    expect(prompt).toContain('@test_master');
+    expect(prompt).toContain('表示名: Test Master');
+    expect(prompt).toContain('ユーザーID: @test_master');
     expect(prompt).toContain('"topic": "robotics"');
-    expect(prompt).toContain('【X公開アカウントの記憶（参照専用・引き継ぎコンテキスト）】');
-    expect(prompt).toContain('"xInterest": "synthwave"');
+    expect(prompt).toContain('【参照専用メモリ（外部チャネル引き継ぎコンテキスト）】');
+    expect(prompt).toContain('"interest": "synthwave"');
     expect(prompt).toContain('Episode 1');
     expect(prompt).toContain('現在は早朝です。');
     expect(prompt).toContain('4日ぶりですね。');
     expect(prompt).toContain('EVOLUTION_TREND');
-    expect(prompt).toContain('TestPersonaは最近以下のようにつぶやいていた。');
-    expect(prompt).toContain('Summer Fest');
-    expect(prompt).toContain('Did you sleep well?');
+    expect(prompt).toContain('【最近の活動要約（参考）】');
+    expect(prompt).toContain('Posted about studio coffee');
+    expect(prompt).toContain('【イベント】\nSummer Fest');
+    expect(prompt).toContain('Trailing untitled section');
+    expect(prompt).not.toContain('【空白スキップ】');
     expect(prompt).toContain('CUSTOM_GUIDELINES');
   });
 
-  it('handles English localization, time brackets, and exact absence boundary (diffDays = 2 vs 3)', () => {
+  it('handles English localization, custom labels, time brackets, and absence boundary', () => {
     const now = new Date('2026-06-10T12:00:00.000Z');
     const twoDaysAgo = new Date(now.getTime() - 2 * 24 * 60 * 60 * 1000).toISOString();
 
     const enPrompt = composeSystemPrompt({
       persona,
       promptContext: 'chat',
-      userData: { lastReplyDate: twoDaysAgo },
+      userData: {
+        name: 'Member',
+        username: 'member_01',
+        lastReplyDate: twoDaysAgo,
+      },
+      accountHandleLabel: 'Member Handle',
       ragMemories: ['Past EN memory'],
-      campaignContext: 'Anniversary Live',
-      parentPostContext: 'Thoughts?',
       extendedPrompt: 'Global trend',
-      timelineSummary: 'Good evening post',
-      publicMemoryOverlay: {
+      activitySummary: 'Evening summary text',
+      activitySummaryHeader: '[Custom Summary Header]',
+      activitySummaryLead: 'Recent overview:',
+      additionalSections: [{ header: '[Session Context]', body: 'Focus topic' }],
+      readOnlyMemoryOverlay: {
         coreProfile: {},
         recentTurns: [],
       },
@@ -213,14 +224,14 @@ describe('composeSystemPrompt', () => {
     });
 
     expect(enPrompt).toContain('BASE_chat_en');
+    expect(enPrompt).toContain('Member Handle: @member_01');
     expect(enPrompt).toContain('[Time Context: Late Night]');
     expect(enPrompt).toContain('[RAG Memories (Past Episodes)]');
     expect(enPrompt).toContain('[Collective Unconscious Trend]');
-    expect(enPrompt).toContain('[My Recent Posts (Context)]');
-    expect(enPrompt).toContain('[Current Ongoing Campaign / Special Narrative Event]');
-    expect(enPrompt).toContain('[Context: Your Original Post Being Replied To]');
+    expect(enPrompt).toContain('[Custom Summary Header]\nRecent overview:\nEvening summary text');
+    expect(enPrompt).toContain('[Session Context]\nFocus topic');
     expect(enPrompt).not.toContain('[Context: Absence Reaction]');
-    expect(enPrompt).not.toContain('[Public X Memory Overlay');
+    expect(enPrompt).not.toContain('[External Memory Overlay');
   });
 
   it.each([
