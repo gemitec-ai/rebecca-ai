@@ -1,5 +1,5 @@
 import {
-  getBasePrompt,
+  composePersonaPrompt,
   getCoreIdentityPrompt,
   getDreamingPrompt,
   persona,
@@ -17,8 +17,8 @@ import {
 } from '../src/index';
 
 describe('persona package exports verification', () => {
-  test('should export getBasePrompt, getCoreIdentityPrompt, and getDreamingPrompt functions', () => {
-    expect(typeof getBasePrompt).toBe('function');
+  test('should export composePersonaPrompt, getCoreIdentityPrompt, and getDreamingPrompt functions', () => {
+    expect(typeof composePersonaPrompt).toBe('function');
     expect(typeof getCoreIdentityPrompt).toBe('function');
     expect(typeof getDreamingPrompt).toBe('function');
   });
@@ -201,36 +201,22 @@ describe('persona package exports verification', () => {
     expect(pattern77?.sample_response).toContain('ワイヤレス給電スポット');
   });
 
-  test('getBasePrompt should return string with context for all branches including copilot', () => {
-    expect(getBasePrompt('reply', 'ja')).toContain('【文字数注釈・解説の禁止】');
-    expect(getBasePrompt('timeline', 'ja')).toContain('【文字数注釈の禁止】');
-    expect(getBasePrompt('random_engagement', 'ja')).toContain('【公開SNSにおける健全性と節度】');
-    expect(getBasePrompt('random_engagement', 'ja')).toContain('【Xプラットフォーム制約】');
-    expect(getBasePrompt('copilot', 'ja')).toContain('【コンテキスト：管理ダッシュボード・専属コパイロット対話】');
+  test('composePersonaPrompt should combine Layer 0 identity with host-supplied channel rules without embedding platform constraints', () => {
+    const jaCoreOnly = composePersonaPrompt('', 'ja');
+    expect(jaCoreOnly).toBe(getCoreIdentityPrompt('ja'));
+    expect(jaCoreOnly).not.toContain('130文字');
+    expect(jaCoreOnly).not.toContain('@rebecca_ai_gal');
 
-    expect(getBasePrompt('reply', 'en')).toContain('[NO CHARACTER COUNT ANNOTATION]');
-    expect(getBasePrompt('timeline', 'en')).toContain('Do not include character count notes');
-    expect(getBasePrompt('random_engagement', 'en')).toContain('[Public Etiquette & Non-Coercive Stance]');
-    expect(getBasePrompt('random_engagement', 'en')).toContain('[No URLs]');
-    expect(getBasePrompt('copilot', 'en')).toContain('[Context: Admin Dashboard Copilot]');
-    expect(getBasePrompt('copilot', 'en')).toContain('Comprehensive Data Analytics');
+    const jaWithChannel = composePersonaPrompt('【カスタムルール】テスト指示', 'ja');
+    expect(jaWithChannel).toContain(getCoreIdentityPrompt('ja'));
+    expect(jaWithChannel.endsWith('\n\n【カスタムルール】テスト指示')).toBe(true);
 
-    expect(getBasePrompt('chat', 'ja')).toContain('【コンテキスト：マスターとの1対1対話】');
-    expect(getBasePrompt('chat', 'ja')).toContain('【対話履歴（Contents）と過去記憶（RAG）の活用】');
-    expect(getBasePrompt('chat', 'ja')).toContain('【情報検索】');
-    expect(getBasePrompt('chat', 'ja')).not.toContain('130文字');
+    const enCoreOnly = composePersonaPrompt('   ', 'en');
+    expect(enCoreOnly).toBe(getCoreIdentityPrompt('en'));
 
-    expect(getBasePrompt('chat', 'en')).toContain('[Context: 1-on-1 Dialogue with Master]');
-    expect(getBasePrompt('chat', 'en')).toContain('[Dialogue History (Contents) & Memory (RAG) Utilization]');
-    expect(getBasePrompt('chat', 'en')).toContain('[Information Search]');
-    expect(getBasePrompt('chat', 'en')).not.toContain('130');
-
-    expect(getBasePrompt('reply', 'ja')).toContain('【情報検索】');
-    expect(getBasePrompt('reply', 'ja')).toContain('【メンション（@ID）の正しい理解と使用ルール】');
-    expect(getBasePrompt('reply', 'ja')).toContain('@rebecca_ai_gal');
-    expect(getBasePrompt('reply', 'en')).toContain('[Information Search]');
-    expect(getBasePrompt('reply', 'en')).toContain('[Proper @Mention Semantics]');
-    expect(getBasePrompt('reply', 'en')).toContain('@rebecca_ai_gal');
+    const enWithChannel = composePersonaPrompt('[Custom Rule] Stay helpful.', 'en');
+    expect(enWithChannel).toContain(getCoreIdentityPrompt('en'));
+    expect(enWithChannel.endsWith('\n\n[Custom Rule] Stay helpful.')).toBe(true);
   });
 
   test('cosineSimilarity should compute vector similarity correctly', () => {
@@ -362,13 +348,13 @@ describe('persona package exports verification', () => {
       expect(fallback[0].id).toBe(1);
     });
 
-    test('getBasePrompt should support fallback contexts for both languages', () => {
+    test('composePrompt should support default arguments and optional channel overrides in both languages', () => {
       const p = getActivePersona('rebecca');
-      const jaTimeline = p.getBasePrompt('timeline', 'ja');
-      expect(jaTimeline).toContain('【コンテキスト：タイムラインへの自発的ポスト】');
+      expect(p.composePrompt()).toBe(p.getCoreIdentityPrompt('ja'));
 
-      const enTimeline = p.getBasePrompt('timeline', 'en');
-      expect(enTimeline).toContain('[Context: Spontaneous Timeline Post]');
+      const enWithChannel = p.composePrompt('[Channel Context]', 'en');
+      expect(enWithChannel).toContain(p.getCoreIdentityPrompt('en'));
+      expect(enWithChannel).toContain('[Channel Context]');
     });
   });
 });

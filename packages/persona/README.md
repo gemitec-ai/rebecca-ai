@@ -26,12 +26,7 @@ The module exports the persona definition, structured metadata, and helper utili
 - **`REBECCA_METADATA` / `persona.metadata`**: Strongly typed `PersonaMetadata` object for direct programmatic access without string parsing.
 - **`getActivePersona(id?: string)`**: Resolves the active persona implementation (e.g. `rebeccaPersona`).
 - **`getCoreIdentityPrompt(lang?: Language)`**: Synthesizes the pure Layer 0 core identity prompt (`ja` or `en`) directly from structured `metadata`.
-- **`getBasePrompt(context: PromptContext, lang: Language)`**: Combines `getCoreIdentityPrompt(lang)` with channel-specific behavioral rules:
-  - `reply`: 1-to-1 conversation replies on X (Twitter), strictly under 130 characters.
-  - `timeline`: Proactive timeline postings.
-  - `random_engagement`: Mentions targeted at newly active list members.
-  - `copilot`: In-depth analytical copilot assistant for the Admin Dashboard.
-  - `chat`: Unconstrained 1-on-1 private dialogue with Master, optimized for conversation turn-pairs and RAG memory.
+- **`composePersonaPrompt(channelInstruction?: string, lang?: Language)`**: Combines `getCoreIdentityPrompt(lang)` with caller-supplied channel or application behavioral rules without hardcoding platform constraints inside persona definitions.
 - **`findTopPersonaPatterns` / `buildPersonaFewShotPrompt`**: Dynamic few-shot anchoring via cosine similarity over 120 situation patterns.
 - **`PERSONA_RESPONSE_SCHEMA` / `parsePersonaResponse`**: Gemini Structured Outputs schema (`{ thought, reply }`) and resilient JSON parsing.
 

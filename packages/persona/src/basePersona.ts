@@ -3,7 +3,6 @@ import {
   IPersonaDefinition,
   PersonaMetadata,
   PersonaPattern,
-  PromptContext,
   Language,
 } from './types';
 
@@ -43,7 +42,6 @@ export const cosineSimilarity = (vecA: number[], vecB: number[]): number => {
  * Concrete subclasses must provide persona-specific domain properties and templates:
  * - `metadata`: Unique identity, structured official master specs, callsigns, and UI branding.
  * - `patterns` & `patternVectors`: Domain-specific behavioral pattern datasets.
- * - `getBasePrompt`: Core identity combined with platform-specific behavioral rules.
  * - `getDreamingPrompt`: Memory consolidation guidelines.
  * - `formatAbsenceInstruction`: Contextual absence reaction strings.
  */
@@ -180,13 +178,18 @@ ${stanceRulesJa}${quotesSectionJa}`;
   }
 
   /**
-   * Generates the foundational system prompt combining core identity with platform-specific rules.
+   * Composes the persona base prompt by layering optional host-supplied channel instructions
+   * onto the Layer 0 core identity prompt.
    *
-   * @param context - The execution context ('reply', 'timeline', 'random_engagement', 'copilot', 'chat').
-   * @param lang - Target language ('ja' or 'en').
-   * @returns Complete base prompt string.
+   * @param channelInstruction - Channel or application behavioral rules injected by callers.
+   * @param lang - Target language ('ja' or 'en'). Defaults to 'ja'.
+   * @returns Combined base prompt string.
    */
-  abstract getBasePrompt(context: PromptContext, lang: Language): string;
+  composePrompt(channelInstruction: string = '', lang: Language = 'ja'): string {
+    const corePrompt = this.getCoreIdentityPrompt(lang);
+    const trimmedContext = channelInstruction.trim();
+    return trimmedContext ? `${corePrompt}\n\n${trimmedContext}` : corePrompt;
+  }
 
   /**
    * Generates instructions guiding the Dreaming memory consolidation engine.

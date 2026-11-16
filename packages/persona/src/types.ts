@@ -1,16 +1,6 @@
 import { PersonaPatternWithVector } from './personaPatternVectors';
 
 /**
- * Execution context determining which platform-specific guidelines and prompt rules are injected.
- * - `reply`: 1-on-1 direct conversational reply to a user on social media (e.g. X/Bluesky).
- * - `timeline`: Autonomous broadcasting to timeline followers (e.g. news, anniversary, soliloquy).
- * - `random_engagement`: Unsolicited friendly engagement with timeline community posts.
- * - `copilot`: Administrative dashboard assistant answering analytics and system queries.
- * - `chat`: 1-on-1 private interactive chat directly with user/Master.
- */
-export type PromptContext = 'reply' | 'timeline' | 'random_engagement' | 'copilot' | 'chat';
-
-/**
  * Supported natural languages for persona prompts and generation.
  * - `ja`: Japanese (primary persona language)
  * - `en`: English
@@ -335,13 +325,14 @@ export interface IPersonaDefinition {
   getCoreIdentityPrompt(lang?: Language): string;
 
   /**
-   * Generates the foundational system prompt combining core identity with platform-specific rules.
+   * Generates a persona base prompt by layering caller-supplied channel instructions onto
+   * the pure Layer 0 core identity prompt.
    *
-   * @param context - The execution context ('reply', 'timeline', 'random_engagement', 'copilot', 'chat').
-   * @param lang - Target language ('ja' or 'en').
-   * @returns Complete base prompt string.
+   * @param channelInstruction - Optional runtime channel/platform behavioral rules supplied by the host app.
+   * @param lang - Target language ('ja' or 'en'). Defaults to 'ja'.
+   * @returns Combined system instruction string.
    */
-  getBasePrompt(context: PromptContext, lang: Language): string;
+  composePrompt(channelInstruction?: string, lang?: Language): string;
 
   /**
    * Generates instructions guiding the Dreaming memory consolidation engine.

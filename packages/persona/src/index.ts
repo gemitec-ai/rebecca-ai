@@ -4,7 +4,7 @@ export { precomputedPersonaPatternEmbeddings, PersonaPatternWithVector } from '.
 export { rebeccaPersona, RebeccaPersona, REBECCA_METADATA, REBECCA_PORTAL_CONFIG } from './personas/rebecca';
 
 import { rebeccaPersona } from './personas/rebecca';
-import { IPersonaDefinition, PersonaPattern, PromptContext, Language, StructuredPersonaResponse } from './types';
+import { IPersonaDefinition, PersonaPattern, Language, StructuredPersonaResponse } from './types';
 
 /**
  * Registry resolver for active persona.
@@ -57,10 +57,13 @@ export const getCoreIdentityPrompt = (lang: Language = 'ja'): string => {
 };
 
 /**
- * Constructs base prompt by delegating to rebeccaPersona.
+ * Composes core identity with caller-supplied channel instructions by delegating to `rebeccaPersona`.
  */
-export const getBasePrompt = (context: PromptContext, lang: Language): string => {
-  return rebeccaPersona.getBasePrompt(context, lang);
+export const composePersonaPrompt = (
+  channelInstruction: string = '',
+  lang: Language = 'ja',
+): string => {
+  return rebeccaPersona.composePrompt(channelInstruction, lang);
 };
 
 /**
