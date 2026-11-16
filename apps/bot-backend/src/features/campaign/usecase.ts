@@ -3,6 +3,7 @@ import { CampaignSlot, SlotTimePeriod } from '@rebecca/types';
 import { CampaignPostResult } from './types';
 import { getZonedDateParts } from '../../utils/time';
 import { downloadImage } from '../../utils/image';
+import { buildBotChannelBasePrompt } from '../../core/channelPrompts';
 import { resolveSituationalPersonaAnchors } from '../../core/personaAnchoring';
 import { logger } from '../../utils/logger';
 
@@ -198,7 +199,7 @@ export class CampaignPostUseCase {
           3,
         );
 
-        const systemInstruction = this.deps.persona.getBasePrompt('timeline', 'ja');
+        const systemInstruction = buildBotChannelBasePrompt(this.deps.persona, 'timeline', 'ja');
         const captionHintText = targetSlot.captionPromptHint && targetSlot.captionPromptHint.trim()
           ? targetSlot.captionPromptHint.trim()
           : '（特記事項なし）';

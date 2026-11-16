@@ -1,6 +1,6 @@
 import { XApiUser } from '@rebecca/types';
 import { AppDependencies } from '../../types';
-import { getBasePrompt } from '@rebecca/persona';
+import { buildBotChannelBasePrompt } from '../../core/channelPrompts';
 import { checkAndIncrementRateLimits } from '../../core/rateLimiter';
 import { executePostPipeline } from '../../core/postPipeline';
 import { downloadImage } from '../../utils/image';
@@ -153,7 +153,7 @@ ${description}
       const detectPrompt = `このテキストは何語ですか？日本語（ローマ字表記を含む）であれば'ja'、それ以外（主に英語）であれば'en'と、2文字の言語コードのみを出力してください。\nテキスト: "${description + tweetContext}"`;
       const lang = await this.deps.gemini.detectLanguage(detectPrompt);
 
-      const systemPrompt = getBasePrompt('random_engagement', lang);
+      const systemPrompt = buildBotChannelBasePrompt(this.deps.persona, 'random_engagement', lang);
       const userInput = `【ターゲットユーザー情報】\nユーザー名: @${username}\nプロフィール: ${description}\n分析属性: ${JSON.stringify(profileAnalysis)}\n${tweetContext}\n\n上記を踏まえて、ターゲットユーザーの最近の活動や投稿内容に言及しつつ、不意打ちで話しかける独立したメンション投稿を作成してください。`;
 
       const structured = await this.deps.gemini.generateStructuredReply(systemPrompt, [], userInput);

@@ -2,7 +2,7 @@ import {
   formatZonedDateTime as formatZonedDateTimeCore,
   getZonedDateParts as getZonedDatePartsCore,
   type ZonedDateParts,
-} from '@rebecca/memory';
+} from '@rebecca/prompt';
 import config from '../config';
 
 export type { ZonedDateParts };

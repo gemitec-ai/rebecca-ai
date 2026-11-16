@@ -1,5 +1,6 @@
 import { AppDependencies } from '../../types';
 import { executePostPipeline } from '../../core/postPipeline';
+import { buildBotChannelBasePrompt } from '../../core/channelPrompts';
 import { resolveSituationalPersonaAnchors } from '../../core/personaAnchoring';
 import {
   INewsProvider,
@@ -101,7 +102,7 @@ export class ProactiveNewsUseCase {
         timelineSummary ? `【タイムラインの空気感】${timelineSummary}` : '',
       ]);
 
-      const systemInstruction = this.deps.persona.getBasePrompt('timeline', 'ja');
+      const systemInstruction = buildBotChannelBasePrompt(this.deps.persona, 'timeline', 'ja');
       const personaName = this.deps.persona.metadata.displayName;
       const userCallsign = this.deps.persona.metadata.userCallsign.ja;
       const interestsStr = this.deps.persona.metadata.interests.join('・');

@@ -11,7 +11,9 @@ import {
 } from '@rebecca/memory';
 import {
   createSearchWebTool,
+  type DialogueTurn,
   EmptyDialogueResponseError,
+  type ILLMToolDialogueClient,
   type JsonSchemaPrimitiveType,
   PersonaToolRegistry,
   runToolDialogueLoop,
@@ -64,14 +66,14 @@ const isGeminiContent = (value: unknown): value is Content => {
 
 const toGeminiContents = (ctx: ToolDialogueStepContext): Content[] => {
   const contents: Content[] = ctx.initialTurns.map((turn) => ({
-    role: turn.role,
+    role: turn.role === 'assistant' ? 'model' : 'user',
     parts: [{ text: turn.text }],
   }));
   contents.push({ role: 'user', parts: [{ text: ctx.userInput }] });
 
   for (const round of ctx.rounds) {
-    if (isGeminiContent(round.rawAssistantTurn)) {
-      contents.push(round.rawAssistantTurn);
+    if (isGeminiContent(round.opaqueProviderTurn)) {
+      contents.push(round.opaqueProviderTurn);
     }
     contents.push({
       role: 'user',
@@ -878,10 +880,44 @@ ${imageCaption}
       },
     };
 
-    const initialTurns = formatHistoryWithInnerThought(history, this.config.appTimezone);
+    const initialTurns: DialogueTurn[] = formatHistoryWithInnerThought(
+      history,
+      this.config.appTimezone,
+    ).map((turn) => ({
+      role: turn.role === 'model' ? 'assistant' : 'user',
+      text: turn.text,
+    }));
+
     const toolRegistry = new PersonaToolRegistry().register(
       createSearchWebTool({ search: (q) => this.executeWebSearch(q) }),
     );
+
+    const dialogueClient: ILLMToolDialogueClient = {
+      generateStep: async (ctx) => {
+        const genAiTools = toGeminiTools(ctx.declarations);
+        const response = await aiClient.models.generateContent({
+          model: this.config.model,
+          contents: toGeminiContents(ctx),
+          config: genAiTools.length > 0 ? { ...baseConfig, tools: genAiTools } : baseConfig,
+        });
+
+        const rawModelContent = response.candidates?.[0]?.content;
+        const mappedCalls = (response.functionCalls ?? [])
+          .filter((call): call is { name: string; args?: Record<string, unknown> } =>
+            typeof call.name === 'string' && call.name.length > 0,
+          )
+          .map((call) => ({
+            name: call.name,
+            args: call.args,
+          }));
+
+        return {
+          text: mappedCalls.length === 0 ? response.text : undefined,
+          toolCalls: mappedCalls,
+          opaqueProviderTurn: rawModelContent,
+        };
+      },
+    };
 
     try {
       return await runToolDialogueLoop({
@@ -889,30 +925,7 @@ ${imageCaption}
         userInput,
         toolRegistry,
         maxToolRounds: 1,
-        generateStep: async (ctx) => {
-          const genAiTools = toGeminiTools(ctx.declarations);
-          const response = await aiClient.models.generateContent({
-            model: this.config.model,
-            contents: toGeminiContents(ctx),
-            config: genAiTools.length > 0 ? { ...baseConfig, tools: genAiTools } : baseConfig,
-          });
-
-          const rawModelContent = response.candidates?.[0]?.content;
-          const mappedCalls = (response.functionCalls ?? [])
-            .filter((call): call is { name: string; args?: Record<string, unknown> } =>
-              typeof call.name === 'string' && call.name.length > 0,
-            )
-            .map((call) => ({
-              name: call.name,
-              args: call.args,
-            }));
-
-          return {
-            text: response.text,
-            toolCalls: mappedCalls,
-            rawAssistantTurn: rawModelContent,
-          };
-        },
+        client: dialogueClient,
         parseOutput: (rawText, afterToolExecution) => {
           const parsed = parsePersonaResponse(rawText);
           if (!parsed.reply || !parsed.reply.trim()) {

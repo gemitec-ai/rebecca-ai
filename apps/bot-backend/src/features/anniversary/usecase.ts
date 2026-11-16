@@ -1,5 +1,6 @@
 import { AppDependencies } from '../../types';
 import { executePostPipeline } from '../../core/postPipeline';
+import { buildBotChannelBasePrompt } from '../../core/channelPrompts';
 import { resolveSituationalPersonaAnchors } from '../../core/personaAnchoring';
 import { IAnniversaryProvider, AnniversaryItem, AnniversaryResult } from './types';
 import { logger } from '../../utils/logger';
@@ -60,7 +61,7 @@ export class ProactiveAnniversaryUseCase {
         timelineSummary ? `【タイムラインの空気感】${timelineSummary}` : '',
       ]);
 
-      const systemInstruction = this.deps.persona.getBasePrompt('timeline', 'ja');
+      const systemInstruction = buildBotChannelBasePrompt(this.deps.persona, 'timeline', 'ja');
       const personaName = this.deps.persona.metadata.displayName;
       const defaultHashtag = this.deps.persona.metadata.defaultHashtag;
       const anniversaryPrompt = `以下の【今日の記念日・年中行事】の一覧から、AIキャラクター「${personaName}」として共感・盛り上がりそうな話題（カルチャー、食、日常、音楽、記念日など）を【1つだけ】選び、それに言及しながらタイムライン向けの自発的ツイートを生成してください。

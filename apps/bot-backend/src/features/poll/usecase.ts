@@ -4,6 +4,7 @@
 
 import { AppDependencies, PollData } from '../../types';
 import { executePostPipeline } from '../../core/postPipeline';
+import { buildBotChannelBasePrompt } from '../../core/channelPrompts';
 import { resolveSituationalPersonaAnchors } from '../../core/personaAnchoring';
 import { getTimeOfDayGreetingContext } from '../soliloquy/usecase';
 import { formatZonedDateTime } from '../../utils/time';
@@ -67,7 +68,7 @@ export class PollUseCase {
         timelineSummary ? `【タイムラインの空気感】${timelineSummary}` : '',
       ]);
 
-      const systemInstruction = this.deps.persona.getBasePrompt('timeline', 'ja');
+      const systemInstruction = buildBotChannelBasePrompt(this.deps.persona, 'timeline', 'ja');
       const personaName = this.deps.persona.metadata.displayName;
       const defaultHashtag = this.deps.persona.metadata.defaultHashtag;
 
@@ -231,7 +232,7 @@ ${personaFewShotPrompt ? `\n${personaFewShotPrompt}\n` : ''}
         `【最終投票結果（合計 ${totalVotes}票）】\n${formattedOptions}`,
       ]);
 
-      const systemInstruction = this.deps.persona.getBasePrompt('timeline', 'ja');
+      const systemInstruction = buildBotChannelBasePrompt(this.deps.persona, 'timeline', 'ja');
       const personaName = this.deps.persona.metadata.displayName;
       const defaultHashtag = this.deps.persona.metadata.defaultHashtag;
 

@@ -1,6 +1,7 @@
 import { XApiService } from '../src/services/xApi';
 import { GeminiService } from '../src/services/gemini';
-import { getBasePrompt } from '../src/core/prompt';
+import { getActivePersona } from '@rebecca/persona';
+import { buildBotChannelBasePrompt } from '../src/core/channelPrompts';
 import { downloadImage } from '../src/utils/image';
 import * as xdk from '@xdevplatform/xdk';
 import config from '../src/config';
@@ -62,7 +63,7 @@ const run = async () => {
         console.log("Tweet Context:", tweetContext);
         
         const lang = await gemini.detectLanguage(tweetContext);
-        const systemPrompt = getBasePrompt('random_engagement', lang);
+        const systemPrompt = buildBotChannelBasePrompt(getActivePersona(), 'random_engagement', lang);
         const userInput = `【ターゲットユーザー情報】\nユーザー名: @akina_se\n${tweetContext}\n\n上記を踏まえて、ターゲットユーザーの最新の投稿に対して不意打ちで引用リポスト（話しかけ）を行ってください。`;
         
         const structured = await gemini.generateStructuredReply(systemPrompt, [], userInput);

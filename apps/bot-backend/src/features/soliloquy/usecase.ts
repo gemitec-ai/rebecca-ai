@@ -1,5 +1,6 @@
 import { AppDependencies, ProactiveBatchResult } from '../../types';
 import { executePostPipeline } from '../../core/postPipeline';
+import { buildBotChannelBasePrompt } from '../../core/channelPrompts';
 import { resolveSituationalPersonaAnchors } from '../../core/personaAnchoring';
 import { formatZonedDateTime } from '../../utils/time';
 import { logger } from '../../utils/logger';
@@ -84,7 +85,7 @@ export class SoliloquyUseCase {
         timelineSummary ? `【タイムラインの空気感】${timelineSummary}` : '',
       ]);
 
-      const systemInstruction = this.deps.persona.getBasePrompt('timeline', 'ja');
+      const systemInstruction = buildBotChannelBasePrompt(this.deps.persona, 'timeline', 'ja');
       const personaName = this.deps.persona.metadata.displayName;
       const userCallsign = this.deps.persona.metadata.userCallsign.ja;
       const defaultHashtag = this.deps.persona.metadata.defaultHashtag;

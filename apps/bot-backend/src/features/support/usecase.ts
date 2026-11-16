@@ -11,6 +11,7 @@
 
 import { AppDependencies } from '../../types';
 import { publishPost } from '../../core/postPublisher';
+import { buildBotChannelBasePrompt } from '../../core/channelPrompts';
 import { resolveSituationalPersonaAnchors } from '../../core/personaAnchoring';
 import { logger } from '../../utils/logger';
 import { sanitizeSupporterName } from './sanitizer';
@@ -96,7 +97,7 @@ export class SupportTaskUseCase {
         timelineSummary ? `【タイムラインの空気感】${timelineSummary}` : '',
       ]);
 
-      const systemInstruction = this.deps.persona.getBasePrompt('timeline', 'ja');
+      const systemInstruction = buildBotChannelBasePrompt(this.deps.persona, 'timeline', 'ja');
       const personaName = this.deps.persona.metadata.displayName;
       const defaultHashtag = this.deps.persona.metadata.defaultHashtag ?? '';
 

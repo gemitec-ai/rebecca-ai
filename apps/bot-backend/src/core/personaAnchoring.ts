@@ -1,4 +1,4 @@
-import { resolveSituationalPersonaAnchors as resolveAnchorsCore } from '@rebecca/memory';
+import { resolveSituationalPersonaAnchors as resolveAnchorsCore } from '@rebecca/prompt';
 import {
   buildPersonaFewShotPrompt,
   findTopPersonaPatterns,

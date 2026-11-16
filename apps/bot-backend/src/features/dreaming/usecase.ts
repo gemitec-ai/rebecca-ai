@@ -30,7 +30,7 @@ export class GlobalDreamingUseCase {
             deps.firestore.updateCoreProfile(userId, profile, retainedBuffer, lastDreamedAt),
         },
         synthesizer: deps.gemini,
-        persona: deps.persona,
+        dreamingPrompt: () => deps.persona.getDreamingPrompt(),
         logger,
         logTag: '[GlobalDreamingUseCase]',
       },

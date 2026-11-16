@@ -10,6 +10,7 @@ import { SystemMemoryRepository } from '../system-memory/repository';
 import { SupportersRepository } from '../supporters/repository';
 import { CopilotToolRegistry } from './toolRegistry';
 import { CopilotToolContext } from './types';
+import { getCopilotChannelContext } from './prompts';
 import { logger } from '../../utils/logger';
 
 const MAX_REACT_ITERATIONS = 3;
@@ -106,7 +107,8 @@ export class CopilotUseCase {
     }
 
     const activePersona = getActivePersona(config.persona.activeId);
-    const personaBase = activePersona.getBasePrompt('copilot', isEn ? 'en' : 'ja');
+    const targetLang = isEn ? 'en' : 'ja';
+    const personaBase = activePersona.composePrompt(getCopilotChannelContext(targetLang), targetLang);
 
     const nowJst = DateTime.now().setZone('Asia/Tokyo');
     const currentTimestampJst = nowJst.toFormat('yyyy/MM/dd HH:mm:ss +09:00');

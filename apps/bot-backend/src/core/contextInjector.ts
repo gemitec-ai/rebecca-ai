@@ -1,12 +1,13 @@
-import { composeSystemPrompt, PromptSection } from '@rebecca/memory';
+import { composeSystemPrompt, PromptSection } from '@rebecca/prompt';
 import { getZonedDateParts, formatZonedDateTime } from '../utils/time';
 import config from '../config';
-import { PromptContext, Language, IPersonaDefinition } from '@rebecca/persona';
+import { Language, IPersonaDefinition } from '@rebecca/persona';
 import { FirestoreUser } from '../types';
+import { BotChannelContext, getBotChannelGuidelines } from './channelPrompts';
 
 /**
  * Formats X-specific contextual sections (active campaign narratives and replied-to root posts)
- * for injection into `@rebecca/memory`'s channel-agnostic `composeSystemPrompt`.
+ * for injection into `@rebecca/prompt`'s channel-agnostic `composeSystemPrompt`.
  */
 const buildBotAdditionalSections = (
   personaDisplayName: string,
@@ -49,13 +50,13 @@ const buildBotAdditionalSections = (
 
 /**
  * Builds the comprehensive system prompt by combining the base persona prompt
- * with contextual injections, X campaign/reply sections, and timeline summaries.
+ * with X channel rules, contextual injections, X campaign/reply sections, and timeline summaries.
  *
- * Delegates core composition to `@rebecca/memory`'s `composeSystemPrompt` while preserving
+ * Delegates core composition to `@rebecca/prompt`'s `composeSystemPrompt` while preserving
  * `bot-backend`'s positional signature and X-specific section builders.
  *
  * @param persona - The active persona definition.
- * @param promptContext - The context in which the prompt is being used.
+ * @param promptContext - The X Bot channel context (`reply`, `timeline`, or `random_engagement`).
  * @param userData - The current user's profile and state from Firestore.
  * @param _userInput - The user's input string (retained for call-site signature compatibility).
  * @param extendedPrompt - An optional extended prompt generated through evolution.
@@ -69,7 +70,7 @@ const buildBotAdditionalSections = (
  */
 const buildSystemPrompt = (
   persona: IPersonaDefinition,
-  promptContext: PromptContext,
+  promptContext: BotChannelContext,
   userData: FirestoreUser | null,
   _userInput: string,
   extendedPrompt = '',
@@ -82,7 +83,7 @@ const buildSystemPrompt = (
 ): string => {
   return composeSystemPrompt({
     persona,
-    promptContext,
+    channelInstruction: getBotChannelGuidelines(promptContext, lang),
     userData,
     extendedPrompt,
     activitySummary: timelineSummary,
