@@ -1,3 +1,4 @@
+import { resolveSituationalPersonaAnchors } from './personaAnchoring';
 import {
   formatAbsenceSection,
   formatActivitySummarySection,
@@ -11,7 +12,13 @@ import {
   formatTimeBracketSection,
 } from './sections';
 import { DEFAULT_APP_TIMEZONE, formatZonedDateTime, getZonedDateParts } from './time';
-import type { PromptCompositionOptions, PromptSection } from './types';
+import type {
+  AnchoredChannelPromptOptions,
+  AnchoredChannelPromptResult,
+  GroundedSystemPromptOptions,
+  PromptCompositionOptions,
+  PromptSection,
+} from './types';
 
 /**
  * Joins an ordered sequence of prompt sections and plain text blocks, filtering out
@@ -117,4 +124,78 @@ export const composeSystemPrompt = (options: PromptCompositionOptions): string =
     ...additionalSections,
     platformGuidelines,
   ]);
+};
+
+/**
+ * Composes a channel-scoped system prompt while guaranteeing execution of dynamic
+ * situational anchoring against the persona's pattern dataset (e.g. Rebecca's 120 patterns).
+ *
+ * Host applications and future channels should prefer this entrypoint over calling
+ * `persona.composePrompt(...)` directly so situational pattern anchoring is never omitted.
+ *
+ * @param options - Channel identity, required anchoring request, and optional additional sections.
+ * @returns Both the unanchored `basePrompt` / `personaFewShotPrompt` slices and the unified `systemInstruction`.
+ */
+export const composeAnchoredChannelPrompt = async (
+  options: AnchoredChannelPromptOptions,
+): Promise<AnchoredChannelPromptResult> => {
+  const {
+    persona,
+    channelInstruction = '',
+    lang = 'ja',
+    anchoring,
+    additionalSections = [],
+  } = options;
+
+  const basePrompt = persona.composePrompt(channelInstruction, lang);
+  const personaFewShotPrompt = await resolveSituationalPersonaAnchors({
+    persona,
+    embedder: anchoring.embedder,
+    contextElements: anchoring.contextElements,
+    patternVectors: anchoring.patternVectors,
+    topK: anchoring.topK,
+    logger: anchoring.logger,
+    lang,
+  });
+
+  const systemInstruction = assemblePromptSections([
+    basePrompt,
+    personaFewShotPrompt,
+    ...additionalSections,
+  ]);
+
+  return {
+    basePrompt,
+    personaFewShotPrompt,
+    systemInstruction,
+  };
+};
+
+/**
+ * Composes a complete multi-tier persona system prompt while guaranteeing dynamic
+ * situational anchoring over the active persona's pattern dataset.
+ *
+ * @param options - Full system prompt composition options with required `anchoring` input.
+ * @returns Fully assembled system instruction grounded in Layer 0–3 memories and situational anchors.
+ */
+export const composeGroundedSystemPrompt = async (
+  options: GroundedSystemPromptOptions,
+): Promise<string> => {
+  const { anchoring, ...compositionOptions } = options;
+  const lang = compositionOptions.lang ?? 'ja';
+
+  const personaFewShotPrompt = await resolveSituationalPersonaAnchors({
+    persona: compositionOptions.persona,
+    embedder: anchoring.embedder,
+    contextElements: anchoring.contextElements,
+    patternVectors: anchoring.patternVectors,
+    topK: anchoring.topK,
+    logger: anchoring.logger,
+    lang,
+  });
+
+  return composeSystemPrompt({
+    ...compositionOptions,
+    personaFewShotPrompt,
+  });
 };

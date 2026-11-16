@@ -71,16 +71,49 @@ export interface ReadOnlyOverlayPromptContext {
 export interface SituationalAnchorsOptions {
   readonly embedder: IMemoryVectorEmbedder;
   readonly contextElements: readonly string[];
-  readonly patternVectors: PersonaPatternWithVector[];
-  readonly findTopPatterns: (
+  /** Target persona used as fallback source for pattern vectors and matchers when not overridden. */
+  readonly persona?: Pick<IPersonaDefinition, 'patternVectors' | 'findTopPatterns' | 'buildFewShotPrompt'>;
+  readonly patternVectors?: PersonaPatternWithVector[];
+  readonly findTopPatterns?: (
     queryVector: number[],
     patternVectors: PersonaPatternWithVector[],
     topK: number,
   ) => ReturnType<IPersonaDefinition['findTopPatterns']>;
-  readonly buildFewShotPrompt: IPersonaDefinition['buildFewShotPrompt'];
+  readonly buildFewShotPrompt?: IPersonaDefinition['buildFewShotPrompt'];
   readonly lang?: Language;
   readonly topK?: number;
   readonly logger?: MemoryLogger;
+}
+
+/**
+ * Mandatory situational anchoring request attached to grounded prompt builders.
+ */
+export interface PromptAnchoringRequest {
+  readonly embedder: IMemoryVectorEmbedder;
+  readonly contextElements: readonly string[];
+  readonly patternVectors?: PersonaPatternWithVector[];
+  readonly topK?: number;
+  readonly logger?: MemoryLogger;
+}
+
+/**
+ * Options for composing a channel prompt that guarantees 120-pattern situational anchoring.
+ */
+export interface AnchoredChannelPromptOptions {
+  readonly persona: IPersonaDefinition;
+  readonly channelInstruction?: string;
+  readonly lang?: Language;
+  readonly anchoring: PromptAnchoringRequest;
+  readonly additionalSections?: ReadonlyArray<PromptSection | string | null | undefined>;
+}
+
+/**
+ * Result returned by {@link composeAnchoredChannelPrompt}.
+ */
+export interface AnchoredChannelPromptResult {
+  readonly basePrompt: string;
+  readonly personaFewShotPrompt: string;
+  readonly systemInstruction: string;
 }
 
 /**
@@ -113,4 +146,13 @@ export interface PromptCompositionOptions {
   readonly now?: Date;
   /** Optional custom time resolver for deterministic testing. */
   readonly timeResolver?: PromptTimeResolver;
+}
+
+/**
+ * Options for {@link composeGroundedSystemPrompt}, enforcing compile-time anchoring inputs
+ * so host applications cannot omit the persona's situational pattern dataset.
+ */
+export interface GroundedSystemPromptOptions
+  extends Omit<PromptCompositionOptions, 'personaFewShotPrompt'> {
+  readonly anchoring: PromptAnchoringRequest;
 }

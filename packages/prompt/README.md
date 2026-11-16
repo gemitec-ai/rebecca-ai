@@ -11,7 +11,7 @@ Channel-agnostic prompt composition building blocks bridging `@rebecca/persona` 
 - **Time Localization (`src/time.ts`)**: ECMA-402 `Intl.DateTimeFormat` clock extraction (`getZonedDateParts`, `formatZonedDateTime`) and time-bracket mapping (`resolveTimeContextPeriod`).
 - **Situational Persona Anchoring (`src/personaAnchoring.ts`)**: Vector-similarity few-shot exemplar selection (`resolveSituationalPersonaAnchors`).
 - **Modular Section Formatters (`src/sections.ts`)**: Standalone builders for current timestamp, persona birthday/anniversary checks, interlocutor identity, Layer 3 core profile, read-only external overlays, retrieved RAG episodes, time-of-day tone, absence reactions, Layer 1 trends, and Layer 2 activity summaries.
-- **Prompt Assemblers (`src/composer.ts`)**: Arbitrary ordered assembly (`assemblePromptSections`) and standard full-stack composition (`composeSystemPrompt`).
+- **Prompt Assemblers (`src/composer.ts`)**: Arbitrary ordered assembly (`assemblePromptSections`), multi-tier composition (`composeSystemPrompt`), and anchoring-enforced entrypoints (`composeAnchoredChannelPrompt`, `composeGroundedSystemPrompt`).
 
 ## Verification
 

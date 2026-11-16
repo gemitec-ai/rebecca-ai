@@ -1,6 +1,8 @@
 import type { IPersonaDefinition, Language } from '@rebecca/persona';
 import {
   assemblePromptSections,
+  composeAnchoredChannelPrompt,
+  composeGroundedSystemPrompt,
   composeSystemPrompt,
   formatAbsenceSection,
   formatActivitySummarySection,
@@ -309,5 +311,56 @@ describe('@rebecca/prompt building blocks and composer', () => {
       timeResolver: fixedTimeResolver(hour, 1, 1),
     });
     expect(prompt).toContain(expectedHeader);
+  });
+
+  it('guarantees situational pattern injection in composeAnchoredChannelPrompt and composeGroundedSystemPrompt', async () => {
+    const samplePattern = {
+      id: 7,
+      category: 'support',
+      trigger: 'tired',
+      internal_thought: 'comfort',
+      behavior: 'affirm',
+      sample_response: 'You did great!',
+      vector: [1, 0],
+    };
+    const anchoredPersona: IPersonaDefinition = {
+      ...createSyntheticPersona(),
+      patternVectors: [samplePattern],
+      findTopPatterns: jest.fn(() => [samplePattern]),
+      buildFewShotPrompt: jest.fn((patterns, lang) => `ANCHOR_${lang}:${patterns[0]?.id ?? 0}`),
+    };
+    const embedder = { generateEmbedding: jest.fn().mockResolvedValue([1, 0]) };
+
+    const channelResult = await composeAnchoredChannelPrompt({
+      persona: anchoredPersona,
+      channelInstruction: 'CHANNEL_X',
+      lang: 'ja',
+      anchoring: {
+        embedder,
+        contextElements: ['tired today'],
+      },
+      additionalSections: [{ header: '[Extra]', body: 'Extra Rule' }],
+    });
+
+    expect(channelResult.basePrompt).toBe('CORE_ja\n\nCHANNEL_X');
+    expect(channelResult.personaFewShotPrompt).toBe('ANCHOR_ja:7');
+    expect(channelResult.systemInstruction).toContain('CORE_ja\n\nCHANNEL_X');
+    expect(channelResult.systemInstruction).toContain('ANCHOR_ja:7');
+    expect(channelResult.systemInstruction).toContain('[Extra]\nExtra Rule');
+
+    const groundedSystem = await composeGroundedSystemPrompt({
+      persona: anchoredPersona,
+      channelInstruction: 'CHANNEL_LOUNGE',
+      userData: null,
+      anchoring: {
+        embedder,
+        contextElements: ['lounge topic'],
+      },
+      timeResolver: fixedTimeResolver(14, 1, 1),
+    });
+
+    expect(groundedSystem).toContain('CORE_ja\n\nCHANNEL_LOUNGE');
+    expect(groundedSystem).toContain('ANCHOR_ja:7');
+    expect(groundedSystem).toContain('【状況コンテキスト：昼】');
   });
 });

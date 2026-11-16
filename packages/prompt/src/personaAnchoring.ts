@@ -1,4 +1,5 @@
 import { vectorizeText } from '@rebecca/memory';
+import { buildPersonaFewShotPrompt, findTopPersonaPatterns } from '@rebecca/persona';
 import type { SituationalAnchorsOptions } from './types';
 
 /**
@@ -7,8 +8,9 @@ import type { SituationalAnchorsOptions } from './types';
  *
  * Gracefully degrades to an empty string when context elements are blank or embedding fails.
  *
- * @param options - Embedder, context elements, pattern vectors, matcher callbacks, and target language.
+ * @param options - Embedder, context elements, pattern dataset (or persona), matcher callbacks, and target language.
  * @returns Formatted Few-Shot prompt block, or `''` if unavailable.
+ * @throws Error if neither `patternVectors` nor `persona.patternVectors` is provided.
  */
 export const resolveSituationalPersonaAnchors = async (
   options: SituationalAnchorsOptions,
@@ -16,6 +18,7 @@ export const resolveSituationalPersonaAnchors = async (
   const {
     embedder,
     contextElements,
+    persona,
     patternVectors,
     findTopPatterns,
     buildFewShotPrompt,
@@ -24,13 +27,27 @@ export const resolveSituationalPersonaAnchors = async (
     logger,
   } = options;
 
+  const resolvedVectors = patternVectors ?? persona?.patternVectors;
+  if (!resolvedVectors) {
+    throw new Error('resolveSituationalPersonaAnchors requires either patternVectors or persona');
+  }
+
+  const resolvePatterns =
+    findTopPatterns ??
+    (persona && !patternVectors
+      ? (qv: number[], _pv: typeof resolvedVectors, k: number) => persona.findTopPatterns(qv, k)
+      : findTopPersonaPatterns);
+  const formatFewShot =
+    buildFewShotPrompt ??
+    (persona ? (patterns, l) => persona.buildFewShotPrompt(patterns, l) : buildPersonaFewShotPrompt);
+
   const query = contextElements
     .filter((s): s is string => typeof s === 'string')
     .map((s) => s.trim())
     .filter((s) => s.length > 0)
     .join('\n');
 
-  if (!query) {
+  if (!query || resolvedVectors.length === 0) {
     return '';
   }
 
@@ -39,8 +56,8 @@ export const resolveSituationalPersonaAnchors = async (
     if (queryVector.length === 0) {
       return '';
     }
-    const topPatterns = findTopPatterns(queryVector, patternVectors, topK);
-    return buildFewShotPrompt(topPatterns, lang);
+    const topPatterns = resolvePatterns(queryVector, resolvedVectors, topK);
+    return formatFewShot(topPatterns, lang);
   } catch (err) {
     logger?.warn?.('Failed to resolve dynamic situational persona anchors', { err });
     return '';
