@@ -1,6 +1,6 @@
 import { XApiUser } from '@rebecca/types';
 import { AppDependencies } from '../../types';
-import { buildBotChannelBasePrompt } from '../../core/channelPrompts';
+import { buildGroundedBotChannelPrompt } from '../../core/channelPrompts';
 import { checkAndIncrementRateLimits } from '../../core/rateLimiter';
 import { executePostPipeline } from '../../core/postPipeline';
 import { downloadImage } from '../../utils/image';
@@ -153,7 +153,17 @@ ${description}
       const detectPrompt = `このテキストは何語ですか？日本語（ローマ字表記を含む）であれば'ja'、それ以外（主に英語）であれば'en'と、2文字の言語コードのみを出力してください。\nテキスト: "${description + tweetContext}"`;
       const lang = await this.deps.gemini.detectLanguage(detectPrompt);
 
-      const systemPrompt = buildBotChannelBasePrompt(this.deps.persona, 'random_engagement', lang);
+      const { systemInstruction: systemPrompt } = await buildGroundedBotChannelPrompt({
+        persona: this.deps.persona,
+        context: 'random_engagement',
+        lang,
+        gemini: this.deps.gemini,
+        anchoringContext: [
+          '【シチュエーション】フォローしてくれたフォロワーへの親しみやすい不意打ち挨拶・絡みメンション',
+          description ? `【相手プロフィール】${description}` : '',
+          tweetContext,
+        ],
+      });
       const userInput = `【ターゲットユーザー情報】\nユーザー名: @${username}\nプロフィール: ${description}\n分析属性: ${JSON.stringify(profileAnalysis)}\n${tweetContext}\n\n上記を踏まえて、ターゲットユーザーの最近の活動や投稿内容に言及しつつ、不意打ちで話しかける独立したメンション投稿を作成してください。`;
 
       const structured = await this.deps.gemini.generateStructuredReply(systemPrompt, [], userInput);

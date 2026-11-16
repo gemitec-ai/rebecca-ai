@@ -1,4 +1,8 @@
+import { composeAnchoredChannelPrompt, type AnchoredChannelPromptResult } from '@rebecca/prompt';
 import type { IPersonaDefinition, Language } from '@rebecca/persona';
+import type { IGeminiService } from '../types';
+import { logger } from '../utils/logger';
+import { getPersonaPatternEmbeddings } from './personaEmbeddingCache';
 
 /**
  * Execution context determining which Bot/CLI platform rules are layered onto Layer 0 core persona prompts.
@@ -176,4 +180,49 @@ export const buildBotChannelBasePrompt = (
   const coreIdentity = persona.getCoreIdentityPrompt(lang);
   const channelRules = getBotChannelGuidelines(context, lang);
   return `${coreIdentity}\n\n${channelRules}`;
+};
+
+/**
+ * Options for constructing a grounded Bot channel prompt with guaranteed 120-pattern anchoring.
+ */
+export interface GroundedBotChannelPromptOptions {
+  readonly persona: IPersonaDefinition;
+  readonly context: BotChannelContext;
+  readonly lang?: Language;
+  readonly gemini: IGeminiService;
+  readonly anchoringContext: readonly string[];
+  readonly topK?: number;
+}
+
+/**
+ * Canonical entrypoint for building Bot channel system prompts with guaranteed
+ * 120-pattern situational anchoring via `@rebecca/prompt`'s {@link composeAnchoredChannelPrompt}.
+ *
+ * All Bot generation use cases must use this builder (or `buildSystemPrompt` with resolved
+ * situational anchors) rather than bypassing 120-pattern anchoring with raw base prompts.
+ */
+export const buildGroundedBotChannelPrompt = async (
+  options: GroundedBotChannelPromptOptions,
+): Promise<AnchoredChannelPromptResult> => {
+  const {
+    persona,
+    context,
+    lang = 'ja',
+    gemini,
+    anchoringContext,
+    topK = 3,
+  } = options;
+
+  return composeAnchoredChannelPrompt({
+    persona,
+    channelInstruction: getBotChannelGuidelines(context, lang),
+    lang,
+    anchoring: {
+      embedder: gemini,
+      contextElements: anchoringContext,
+      patternVectors: getPersonaPatternEmbeddings(),
+      topK,
+      logger,
+    },
+  });
 };
