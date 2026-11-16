@@ -2,47 +2,6 @@ import type {
   ConversationLogEntry,
   UserCoreProfile,
 } from '@rebecca/types';
-import type {
-  IPersonaDefinition,
-  Language,
-  PersonaPatternWithVector,
-  PromptContext,
-} from '@rebecca/persona';
-
-/**
- * Structured date and time components localized to a specific IANA time zone.
- */
-export interface ZonedDateParts {
-  readonly year: string;
-  readonly month: string;
-  readonly day: string;
-  readonly hour: string;
-  readonly minute: string;
-  readonly second: string;
-  readonly numericYear: number;
-  readonly numericMonth: number;
-  readonly numericDay: number;
-  readonly numericHour: number;
-  readonly numericMinute: number;
-}
-
-/**
- * Discrete time-of-day brackets used for situational persona tone injection.
- */
-export type TimeContextPeriod =
-  | 'early_morning'
-  | 'morning'
-  | 'daytime'
-  | 'evening'
-  | 'late_night';
-
-/**
- * Injectable time-resolution strategy for deterministic testing and timezone overrides.
- */
-export interface MemoryTimeResolver {
-  getZonedDateParts(date?: Date, timezone?: string): ZonedDateParts;
-  formatZonedDateTime(isoOrDate?: string | Date | null, timezone?: string): string;
-}
 
 /**
  * Storage-agnostic projection of a user's persistent memory state.
@@ -75,14 +34,6 @@ export interface IMemoryEpisodicStore {
 export interface TurnWithInnerThought {
   readonly role: 'user' | 'model';
   readonly text: string;
-}
-
-/**
- * Named contextual block appended to composed system instructions by host applications.
- */
-export interface PromptSection {
-  readonly header?: string;
-  readonly body: string;
 }
 
 /**
@@ -121,7 +72,7 @@ export interface AsymmetricOverlayInput {
   /** Maximum recent turn pairs surfaced read-only from source episodic buffer. Defaults to `4`. */
   readonly sourceWorkingMemoryLimit?: number;
   /** Language used for default provenance headers when `labels` is omitted. Defaults to `'ja'`. */
-  readonly lang?: Language;
+  readonly lang?: 'ja' | 'en';
   /** Optional channel-specific provenance tags overriding neutral defaults. */
   readonly labels?: MemoryOverlayLabels;
 }
@@ -138,57 +89,6 @@ export interface AsymmetricOverlayView {
   readonly sourceRecentTurns: readonly ConversationLogEntry[];
   readonly ragMemories: readonly string[];
   readonly activitySummary: string;
-}
-
-/**
- * Customizable headings and privacy notice for rendering read-only external memory overlays.
- */
-export interface ReadOnlyOverlayPromptLabels {
-  readonly intro?: string;
-  readonly profileHeader?: string;
-  readonly turnsHeader?: string;
-}
-
-/**
- * Read-only external memory context injected into system prompts without reverse write-back.
- */
-export interface ReadOnlyOverlayPromptContext {
-  readonly coreProfile?: UserCoreProfile;
-  readonly recentTurns?: readonly ConversationLogEntry[];
-  readonly labels?: ReadOnlyOverlayPromptLabels;
-  readonly displayName?: string;
-  readonly username?: string;
-}
-
-/**
- * Options for composing a complete multi-tier system prompt for any host channel.
- */
-export interface SystemPromptCompositionOptions {
-  readonly persona: IPersonaDefinition;
-  readonly promptContext: PromptContext;
-  readonly userData: MemoryUserSnapshot | null;
-  readonly extendedPrompt?: string;
-  readonly activitySummary?: string;
-  readonly ragMemories?: readonly string[];
-  readonly lang?: Language;
-  readonly personaFewShotPrompt?: string;
-  /** Label prefix used before `@username` in interlocutor metadata (defaults to `'Handle'` / `'ユーザーID'`). */
-  readonly accountHandleLabel?: string;
-  /** Optional custom heading and lead-in text for Layer 2 `activitySummary`. */
-  readonly activitySummaryHeader?: string;
-  readonly activitySummaryLead?: string;
-  /** Optional host-specific contextual sections (e.g., social root post, event campaigns). */
-  readonly additionalSections?: readonly PromptSection[];
-  /** Optional read-only external memory overlay for one-way continuity. */
-  readonly readOnlyMemoryOverlay?: ReadOnlyOverlayPromptContext | null;
-  /** Optional channel-specific behavioral guidelines appended after context sections. */
-  readonly platformGuidelines?: string;
-  /** IANA timezone used for clock and birthday evaluation. Defaults to `'Asia/Tokyo'`. */
-  readonly timezone?: string;
-  /** Reference clock timestamp. Defaults to `new Date()`. */
-  readonly now?: Date;
-  /** Optional custom time resolver for deterministic testing. */
-  readonly timeResolver?: MemoryTimeResolver;
 }
 
 /**
@@ -260,24 +160,6 @@ export interface IMemoryVectorEmbedder {
 export interface IMemoryRagStore {
   saveRagMemory(userId: string, text: string, embedding: number[]): Promise<void>;
   findRagMemories(userId: string, queryVector: number[], limit?: number): Promise<string[]>;
-}
-
-/**
- * Options for resolving situational persona few-shot anchors.
- */
-export interface SituationalAnchorsOptions {
-  readonly embedder: IMemoryVectorEmbedder;
-  readonly contextElements: readonly string[];
-  readonly patternVectors: PersonaPatternWithVector[];
-  readonly findTopPatterns: (
-    queryVector: number[],
-    patternVectors: PersonaPatternWithVector[],
-    topK: number,
-  ) => ReturnType<IPersonaDefinition['findTopPatterns']>;
-  readonly buildFewShotPrompt: IPersonaDefinition['buildFewShotPrompt'];
-  readonly lang?: Language;
-  readonly topK?: number;
-  readonly logger?: MemoryLogger;
 }
 
 /**

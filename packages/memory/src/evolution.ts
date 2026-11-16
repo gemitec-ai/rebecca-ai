@@ -1,4 +1,3 @@
-import type { IPersonaDefinition } from '@rebecca/persona';
 import type {
   EvolutionConversationLog,
   GlobalEvolutionConfig,
@@ -12,10 +11,10 @@ import type {
 export const DEFAULT_EVOLUTION_LENGTH_GUIDELINE = '400〜500文字程度、最大600文字以内';
 
 /** Persona metadata subset required to ground Layer 1 evolution and safety audit prompts. */
-export type EvolutionPersonaMetadata = Pick<
-  IPersonaDefinition['metadata'],
-  'displayName' | 'coreGuidelines'
->;
+export interface EvolutionPersonaMetadata {
+  readonly displayName: string;
+  readonly coreGuidelines: readonly string[];
+}
 
 /**
  * Dependency bundle injected into {@link GlobalEvolutionEngine}.

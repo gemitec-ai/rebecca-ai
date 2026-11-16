@@ -1,4 +1,3 @@
-import type { IPersonaDefinition } from '@rebecca/persona';
 import type {
   DreamingConfig,
   DreamingExecutionResult,
@@ -47,7 +46,8 @@ export const hasUnconsolidatedActivity = (user: MemoryUserSnapshot): boolean => 
 export interface DreamingEngineDeps<TUser extends MemoryUserSnapshot = MemoryUserSnapshot> {
   readonly store: IDreamingMemoryStore<TUser>;
   readonly synthesizer: IDreamingSynthesizer;
-  readonly persona: Pick<IPersonaDefinition, 'getDreamingPrompt'>;
+  /** Persona-supplied synthesis instruction string or lazy resolver callback. */
+  readonly dreamingPrompt: string | (() => string);
   readonly logger?: MemoryLogger;
   readonly logTag?: string;
 }
@@ -162,7 +162,10 @@ export class DreamingConsolidationEngine<TUser extends MemoryUserSnapshot = Memo
       return false;
     }
 
-    const systemPrompt = this.deps.persona.getDreamingPrompt();
+    const systemPrompt =
+      typeof this.deps.dreamingPrompt === 'function'
+        ? this.deps.dreamingPrompt()
+        : this.deps.dreamingPrompt;
     try {
       const mutableBuffer = [...episodicBuffer];
       const existingProfile = coreProfile ?? {};

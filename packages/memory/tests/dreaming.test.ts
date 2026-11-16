@@ -88,7 +88,7 @@ describe('DreamingConsolidationEngine and hasUnconsolidatedActivity', () => {
       ]);
 
       const engine = new DreamingConsolidationEngine(
-        { store, synthesizer, persona: { getDreamingPrompt: () => 'DREAM' }, logger },
+        { store, synthesizer, dreamingPrompt: 'DREAM', logger },
         { throttleMs: 0 },
       );
 
@@ -126,7 +126,7 @@ describe('DreamingConsolidationEngine and hasUnconsolidatedActivity', () => {
       });
 
       const engine = new DreamingConsolidationEngine(
-        { store, synthesizer, persona: { getDreamingPrompt: () => 'DREAM' }, logger, logTag: '[TestDream]' },
+        { store, synthesizer, dreamingPrompt: () => 'DREAM', logger, logTag: '[TestDream]' },
         { throttleMs: 1, retainedBufferEntries: 20 },
       );
 
@@ -156,7 +156,7 @@ describe('DreamingConsolidationEngine and hasUnconsolidatedActivity', () => {
       (synthesizer.generateDreaming as jest.Mock).mockRejectedValueOnce(new Error('Upstream 503'));
 
       const failEngine = new DreamingConsolidationEngine(
-        { store, synthesizer, persona: { getDreamingPrompt: () => 'DREAM' } },
+        { store, synthesizer, dreamingPrompt: 'DREAM' },
         { throttleMs: 0 },
       );
       const failResult = await failEngine.execute();
@@ -165,7 +165,7 @@ describe('DreamingConsolidationEngine and hasUnconsolidatedActivity', () => {
 
       (synthesizer.generateDreaming as jest.Mock).mockResolvedValueOnce({ done: true });
       const zeroRetentionEngine = new DreamingConsolidationEngine(
-        { store, synthesizer, persona: { getDreamingPrompt: () => 'DREAM' } },
+        { store, synthesizer, dreamingPrompt: () => 'DREAM' },
         { throttleMs: 0, retainedBufferEntries: 0 },
       );
       expect(await zeroRetentionEngine.consolidateUser('u1', { episodicBuffer: [] })).toBe(false);

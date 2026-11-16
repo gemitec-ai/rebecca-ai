@@ -14,7 +14,6 @@
     "audit:fix": "npm audit fix"
   },
   "dependencies": {
-    "@rebecca/persona": "*",
     "@rebecca/types": "*"
   },
   "devDependencies": {

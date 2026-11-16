@@ -1,9 +1,32 @@
 import type { ConversationLogEntry } from '@rebecca/types';
-import { DEFAULT_APP_TIMEZONE, formatZonedDateTime } from './time';
 import type { IMemoryEpisodicStore, TurnWithInnerThought } from './types';
 
 /** Default sliding window size in user/model turn pairs kept in active working memory. */
 export const DEFAULT_WORKING_MEMORY_LIMIT = 10;
+
+const DEFAULT_MEMORY_TIMEZONE = 'Asia/Tokyo';
+
+const formatEntryTimestamp = (
+  isoTimestamp: string | undefined,
+  timezone: string = DEFAULT_MEMORY_TIMEZONE,
+): string => {
+  if (!isoTimestamp) return '';
+  const date = new Date(isoTimestamp);
+  if (Number.isNaN(date.getTime())) return '';
+
+  const formatter = new Intl.DateTimeFormat('ja-JP', {
+    timeZone: timezone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+    timeZoneName: 'short',
+  });
+
+  return formatter.format(date).replace(/\//g, '-');
+};
 
 /**
  * Extracts a bounded sliding window of recent interactions from the episodic buffer.
@@ -98,9 +121,9 @@ export const saveInteraction = async (
  */
 export const formatTurnWithInnerThought = (
   entry: ConversationLogEntry,
-  timezone: string = DEFAULT_APP_TIMEZONE,
+  timezone: string = DEFAULT_MEMORY_TIMEZONE,
 ): TurnWithInnerThought => {
-  const formattedTime = entry.timestamp ? formatZonedDateTime(entry.timestamp, timezone) : '';
+  const formattedTime = formatEntryTimestamp(entry.timestamp, timezone);
   const timePrefix = formattedTime ? `[${formattedTime}] ` : '';
 
   if (entry.role === 'model') {
@@ -128,7 +151,7 @@ export const formatTurnWithInnerThought = (
  */
 export const formatHistoryWithInnerThought = (
   history: readonly ConversationLogEntry[],
-  timezone: string = DEFAULT_APP_TIMEZONE,
+  timezone: string = DEFAULT_MEMORY_TIMEZONE,
 ): TurnWithInnerThought[] => {
   return history.map((entry) => formatTurnWithInnerThought(entry, timezone));
 };
