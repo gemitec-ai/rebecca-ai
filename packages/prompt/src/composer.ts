@@ -13,17 +13,14 @@ import {
 } from './sections';
 import { DEFAULT_APP_TIMEZONE, formatZonedDateTime, getZonedDateParts } from './time';
 import type {
-  AnchoredChannelPromptOptions,
-  AnchoredChannelPromptResult,
-  GroundedSystemPromptOptions,
-  PromptCompositionOptions,
+  ComposedSystemPrompt,
   PromptSection,
+  SystemPromptCompositionOptions,
 } from './types';
 
 /**
  * Joins an ordered sequence of prompt sections and plain text blocks, filtering out
- * `null`, `undefined`, and blank entries while preserving caller-specified section ordering
- * (supporting cache-prefix stability strategies in interactive channels).
+ * `null`, `undefined`, and blank entries while preserving caller-specified section ordering.
  *
  * @param items - Ordered array of structured sections or raw text blocks.
  * @returns Combined system instruction string separated by blank lines.
@@ -59,92 +56,28 @@ export const assemblePromptSections = (
 };
 
 /**
- * Builds a complete multi-tier persona system prompt by combining `@rebecca/persona` Layer 0
- * identity with host-supplied channel rules, localized time/anniversary awareness,
- * retrieved RAG episodes, Layer 1–3 memories, optional read-only overlays, and custom sections.
+ * Builds the unified persona system prompt across all host channels and features.
  *
- * @param options - Structured prompt composition options and memory slices.
- * @returns Fully assembled system instruction string.
+ * Always composes Layer 0 identity (`persona.composePrompt(channelInstruction, lang)`),
+ * enforces dynamic situational anchoring against the persona's pattern dataset,
+ * and optionally injects localized temporal/birthday awareness, multi-tier memory slices,
+ * host-specific sections, and platform guidelines through one consistent pipeline.
+ *
+ * @param options - System prompt composition options requiring `anchoring`.
+ * @returns Base anchored instruction, raw few-shot slice, and complete system instruction.
  */
-export const composeSystemPrompt = (options: PromptCompositionOptions): string => {
-  const {
-    persona,
-    channelInstruction = '',
-    userData,
-    extendedPrompt = '',
-    activitySummary = '',
-    ragMemories = [],
-    lang = 'ja',
-    personaFewShotPrompt = '',
-    accountHandleLabel,
-    activitySummaryHeader,
-    activitySummaryLead,
-    additionalSections = [],
-    readOnlyMemoryOverlay = null,
-    platformGuidelines = '',
-    timezone = DEFAULT_APP_TIMEZONE,
-    now = new Date(),
-    timeResolver,
-  } = options;
-
-  const resolveParts = timeResolver ? timeResolver.getZonedDateParts : getZonedDateParts;
-  const resolveFormatted = timeResolver ? timeResolver.formatZonedDateTime : formatZonedDateTime;
-
-  const parts = resolveParts(now, timezone);
-  const formattedCurrentTime = resolveFormatted(now, timezone);
-  const callsign =
-    lang === 'en' ? persona.metadata.userCallsign.en : persona.metadata.userCallsign.ja;
-
-  const coreAndChannel = persona.composePrompt(channelInstruction, lang);
-
-  return assemblePromptSections([
-    coreAndChannel,
-    formatCurrentTimeSection(formattedCurrentTime, lang),
-    formatBirthdaySection(persona, parts, lang),
-    personaFewShotPrompt,
-    userData
-      ? formatInterlocutorSection(callsign, userData, lang, accountHandleLabel)
-      : null,
-    userData ? formatCoreProfileSection(callsign, userData.coreProfile, lang) : null,
-    formatReadOnlyOverlaySection(
-      readOnlyMemoryOverlay,
-      callsign,
-      lang,
-      timezone,
-      resolveFormatted,
-    ),
-    formatRagMemoriesSection(ragMemories, lang),
-    formatTimeBracketSection(parts.numericHour, lang),
-    formatAbsenceSection(persona, userData?.lastReplyDate, now, lang),
-    formatExtendedTrendSection(extendedPrompt, lang),
-    formatActivitySummarySection(activitySummary, lang, {
-      header: activitySummaryHeader,
-      lead: activitySummaryLead,
-    }),
-    ...additionalSections,
-    platformGuidelines,
-  ]);
-};
-
-/**
- * Composes a channel-scoped system prompt while guaranteeing execution of dynamic
- * situational anchoring against the persona's pattern dataset (e.g. Rebecca's 120 patterns).
- *
- * Host applications and future channels should prefer this entrypoint over calling
- * `persona.composePrompt(...)` directly so situational pattern anchoring is never omitted.
- *
- * @param options - Channel identity, required anchoring request, and optional additional sections.
- * @returns Both the unanchored `basePrompt` / `personaFewShotPrompt` slices and the unified `systemInstruction`.
- */
-export const composeAnchoredChannelPrompt = async (
-  options: AnchoredChannelPromptOptions,
-): Promise<AnchoredChannelPromptResult> => {
+export const composeSystemPrompt = async (
+  options: SystemPromptCompositionOptions,
+): Promise<ComposedSystemPrompt> => {
   const {
     persona,
     channelInstruction = '',
     lang = 'ja',
     anchoring,
+    temporal,
+    memory,
     additionalSections = [],
+    platformGuidelines = '',
   } = options;
 
   const basePrompt = persona.composePrompt(channelInstruction, lang);
@@ -158,44 +91,63 @@ export const composeAnchoredChannelPrompt = async (
     lang,
   });
 
+  const baseSystemInstruction = assemblePromptSections([basePrompt, personaFewShotPrompt]);
+
+  const timezone = temporal?.timezone ?? DEFAULT_APP_TIMEZONE;
+  const now = temporal?.now ?? new Date();
+  const resolveParts = temporal?.timeResolver?.getZonedDateParts ?? getZonedDateParts;
+  const resolveFormatted = temporal?.timeResolver?.formatZonedDateTime ?? formatZonedDateTime;
+
+  const temporalParts = temporal ? resolveParts(now, timezone) : null;
+  const formattedCurrentTime = temporal ? resolveFormatted(now, timezone) : '';
+
+  const currentTimeSection = temporal
+    ? formatCurrentTimeSection(formattedCurrentTime, lang)
+    : null;
+  const birthdaySection =
+    temporal && temporalParts && temporal.includeBirthday !== false
+      ? formatBirthdaySection(persona, temporalParts, lang)
+      : null;
+  const timeBracketSection =
+    temporal && temporalParts && temporal.includeTimeBracket !== false
+      ? formatTimeBracketSection(temporalParts.numericHour, lang)
+      : null;
+
+  const userData = memory?.userData ?? null;
+  const callsign =
+    lang === 'en' ? persona.metadata.userCallsign.en : persona.metadata.userCallsign.ja;
+
   const systemInstruction = assemblePromptSections([
     basePrompt,
+    currentTimeSection,
+    birthdaySection,
     personaFewShotPrompt,
+    userData
+      ? formatInterlocutorSection(callsign, userData, lang, memory?.accountHandleLabel)
+      : null,
+    userData ? formatCoreProfileSection(callsign, userData.coreProfile, lang) : null,
+    formatReadOnlyOverlaySection(
+      memory?.readOnlyMemoryOverlay,
+      callsign,
+      lang,
+      timezone,
+      resolveFormatted,
+    ),
+    formatRagMemoriesSection(memory?.ragMemories ?? [], lang),
+    timeBracketSection,
+    formatAbsenceSection(persona, userData?.lastReplyDate, now, lang),
+    formatExtendedTrendSection(memory?.extendedPrompt, lang),
+    formatActivitySummarySection(memory?.activitySummary, lang, {
+      header: memory?.activitySummaryHeader,
+      lead: memory?.activitySummaryLead,
+    }),
     ...additionalSections,
+    platformGuidelines,
   ]);
 
   return {
-    basePrompt,
+    baseSystemInstruction,
     personaFewShotPrompt,
     systemInstruction,
   };
-};
-
-/**
- * Composes a complete multi-tier persona system prompt while guaranteeing dynamic
- * situational anchoring over the active persona's pattern dataset.
- *
- * @param options - Full system prompt composition options with required `anchoring` input.
- * @returns Fully assembled system instruction grounded in Layer 0–3 memories and situational anchors.
- */
-export const composeGroundedSystemPrompt = async (
-  options: GroundedSystemPromptOptions,
-): Promise<string> => {
-  const { anchoring, ...compositionOptions } = options;
-  const lang = compositionOptions.lang ?? 'ja';
-
-  const personaFewShotPrompt = await resolveSituationalPersonaAnchors({
-    persona: compositionOptions.persona,
-    embedder: anchoring.embedder,
-    contextElements: anchoring.contextElements,
-    patternVectors: anchoring.patternVectors,
-    topK: anchoring.topK,
-    logger: anchoring.logger,
-    lang,
-  });
-
-  return composeSystemPrompt({
-    ...compositionOptions,
-    personaFewShotPrompt,
-  });
 };

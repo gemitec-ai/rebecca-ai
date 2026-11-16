@@ -86,7 +86,7 @@ export interface SituationalAnchorsOptions {
 }
 
 /**
- * Mandatory situational anchoring request attached to grounded prompt builders.
+ * Mandatory situational anchoring request attached to {@link SystemPromptCompositionOptions}.
  */
 export interface PromptAnchoringRequest {
   readonly embedder: IMemoryVectorEmbedder;
@@ -97,62 +97,65 @@ export interface PromptAnchoringRequest {
 }
 
 /**
- * Options for composing a channel prompt that guarantees 120-pattern situational anchoring.
+ * Optional localized temporal and birthday awareness configuration for prompt assembly.
  */
-export interface AnchoredChannelPromptOptions {
-  readonly persona: IPersonaDefinition;
-  readonly channelInstruction?: string;
-  readonly lang?: Language;
-  readonly anchoring: PromptAnchoringRequest;
-  readonly additionalSections?: ReadonlyArray<PromptSection | string | null | undefined>;
-}
-
-/**
- * Result returned by {@link composeAnchoredChannelPrompt}.
- */
-export interface AnchoredChannelPromptResult {
-  readonly basePrompt: string;
-  readonly personaFewShotPrompt: string;
-  readonly systemInstruction: string;
-}
-
-/**
- * Options for composing a complete multi-tier persona system prompt with memory injections.
- */
-export interface PromptCompositionOptions {
-  readonly persona: IPersonaDefinition;
-  /** Host-supplied channel or application behavioral instruction layered onto Layer 0 identity. */
-  readonly channelInstruction?: string;
-  readonly userData: MemoryUserSnapshot | null;
-  readonly extendedPrompt?: string;
-  readonly activitySummary?: string;
-  readonly ragMemories?: readonly string[];
-  readonly lang?: Language;
-  readonly personaFewShotPrompt?: string;
-  /** Label prefix used before `@username` in interlocutor metadata (defaults to `'Handle'` / `'ユーザーID'`). */
-  readonly accountHandleLabel?: string;
-  /** Optional custom heading and lead-in text for Layer 2 `activitySummary`. */
-  readonly activitySummaryHeader?: string;
-  readonly activitySummaryLead?: string;
-  /** Optional host-specific contextual sections appended cleanly. */
-  readonly additionalSections?: readonly PromptSection[];
-  /** Optional read-only external memory overlay for one-way continuity. */
-  readonly readOnlyMemoryOverlay?: ReadOnlyOverlayPromptContext | null;
-  /** Optional supplementary guidelines appended after contextual sections. */
-  readonly platformGuidelines?: string;
+export interface PromptTemporalOptions {
   /** IANA timezone used for clock and birthday evaluation. Defaults to `'Asia/Tokyo'`. */
   readonly timezone?: string;
   /** Reference clock timestamp. Defaults to `new Date()`. */
   readonly now?: Date;
   /** Optional custom time resolver for deterministic testing. */
   readonly timeResolver?: PromptTimeResolver;
+  /** Whether to inject time-of-day conversational bracket guidance (`Early Morning`–`Late Night`). Defaults to `true`. */
+  readonly includeTimeBracket?: boolean;
+  /** Whether to inject rollout anniversary / birthday guidance when dates match. Defaults to `true`. */
+  readonly includeBirthday?: boolean;
 }
 
 /**
- * Options for {@link composeGroundedSystemPrompt}, enforcing compile-time anchoring inputs
- * so host applications cannot omit the persona's situational pattern dataset.
+ * Optional Layer 1–3, working memory, RAG, and read-only overlay inputs for stateful dialogues.
  */
-export interface GroundedSystemPromptOptions
-  extends Omit<PromptCompositionOptions, 'personaFewShotPrompt'> {
+export interface PromptMemoryContext {
+  readonly userData?: MemoryUserSnapshot | null;
+  readonly extendedPrompt?: string;
+  readonly activitySummary?: string;
+  readonly ragMemories?: readonly string[];
+  /** Label prefix used before `@username` in interlocutor metadata (defaults to `'Handle'` / `'ユーザーID'`). */
+  readonly accountHandleLabel?: string;
+  /** Optional custom heading and lead-in text for Layer 2 `activitySummary`. */
+  readonly activitySummaryHeader?: string;
+  readonly activitySummaryLead?: string;
+  /** Optional read-only external memory overlay for one-way continuity. */
+  readonly readOnlyMemoryOverlay?: ReadOnlyOverlayPromptContext | null;
+}
+
+/**
+ * Single canonical input contract for {@link composeSystemPrompt}.
+ * Requires `anchoring` at compile time so every channel and feature consistently grounds
+ * Layer 0 persona identity with situational patterns.
+ */
+export interface SystemPromptCompositionOptions {
+  readonly persona: IPersonaDefinition;
+  /** Host-supplied channel or application behavioral instruction layered onto Layer 0 identity. */
+  readonly channelInstruction?: string;
+  readonly lang?: Language;
   readonly anchoring: PromptAnchoringRequest;
+  readonly temporal?: PromptTemporalOptions;
+  readonly memory?: PromptMemoryContext;
+  /** Optional host-specific contextual sections appended after standard sections. */
+  readonly additionalSections?: ReadonlyArray<PromptSection | string | null | undefined>;
+  /** Optional supplementary guidelines appended at the end of the prompt. */
+  readonly platformGuidelines?: string;
+}
+
+/**
+ * Structured output returned by {@link composeSystemPrompt}.
+ */
+export interface ComposedSystemPrompt {
+  /** Core identity + channel guidelines + resolved 120-pattern situational anchors. */
+  readonly baseSystemInstruction: string;
+  /** Dynamically selected top-K situational few-shot block from the persona's pattern vectors. */
+  readonly personaFewShotPrompt: string;
+  /** Complete assembled system instruction including temporal, memory, and channel sections. */
+  readonly systemInstruction: string;
 }

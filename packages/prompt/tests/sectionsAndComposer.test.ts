@@ -1,8 +1,6 @@
 import type { IPersonaDefinition, Language } from '@rebecca/persona';
 import {
   assemblePromptSections,
-  composeAnchoredChannelPrompt,
-  composeGroundedSystemPrompt,
   composeSystemPrompt,
   formatAbsenceSection,
   formatActivitySummarySection,
@@ -193,91 +191,125 @@ describe('@rebecca/prompt building blocks and composer', () => {
     expect(formatReadOnlyOverlaySection({ coreProfile: {}, recentTurns: [] }, 'User', 'en')).toBeNull();
   });
 
-  it('composes all memory tiers and host sections in Japanese with channel instruction', () => {
+  it('composes all memory tiers, anchoring, temporal, and host sections in Japanese', async () => {
     const now = new Date('2026-04-24T05:30:00.000Z');
     const fourDaysAgo = new Date(now.getTime() - 4 * 24 * 60 * 60 * 1000).toISOString();
+    const samplePattern = {
+      id: 9,
+      category: 'care',
+      trigger: 'morning',
+      internal_thought: 'gentle',
+      behavior: 'support',
+      sample_response: 'Good morning!',
+      vector: [1, 0],
+    };
+    const anchoredPersona: IPersonaDefinition = {
+      ...createSyntheticPersona(),
+      patternVectors: [samplePattern],
+      findTopPatterns: jest.fn(() => [samplePattern]),
+      buildFewShotPrompt: jest.fn(() => 'FEW_SHOT_BLOCK'),
+    };
+    const embedder = { generateEmbedding: jest.fn().mockResolvedValue([1, 0]) };
 
-    const prompt = composeSystemPrompt({
-      persona,
+    const result = await composeSystemPrompt({
+      persona: anchoredPersona,
       channelInstruction: 'CHANNEL_RULES_JA',
-      userData: {
-        name: 'Test Master',
-        username: 'test_master',
-        coreProfile: { topic: 'robotics' },
-        lastReplyDate: fourDaysAgo,
+      lang: 'ja',
+      anchoring: {
+        embedder,
+        contextElements: ['morning greeting'],
       },
-      personaFewShotPrompt: 'FEW_SHOT_BLOCK',
-      ragMemories: ['Episode 1'],
-      extendedPrompt: 'EVOLUTION_TREND',
-      activitySummary: 'Posted about studio coffee',
+      temporal: {
+        now,
+        timeResolver: fixedTimeResolver(6, 4, 24),
+      },
+      memory: {
+        userData: {
+          name: 'Test Master',
+          username: 'test_master',
+          coreProfile: { topic: 'robotics' },
+          lastReplyDate: fourDaysAgo,
+        },
+        ragMemories: ['Episode 1'],
+        extendedPrompt: 'EVOLUTION_TREND',
+        activitySummary: 'Posted about studio coffee',
+        readOnlyMemoryOverlay: {
+          coreProfile: { interest: 'synthwave' },
+          recentTurns: [
+            { role: 'user', content: 'Hi earlier', timestamp: '2026-04-20T01:00:00.000Z' },
+            { role: 'model', content: 'Hey earlier' },
+          ],
+        },
+      },
       additionalSections: [
         { header: '【イベント】', body: 'Summer Fest' },
         { body: 'Trailing untitled section' },
         { header: '【空白スキップ】', body: '   ' },
       ],
-      readOnlyMemoryOverlay: {
-        coreProfile: { interest: 'synthwave' },
-        recentTurns: [
-          { role: 'user', content: 'Hi earlier', timestamp: '2026-04-20T01:00:00.000Z' },
-          { role: 'model', content: 'Hey earlier' },
-        ],
-      },
       platformGuidelines: 'CUSTOM_GUIDELINES',
-      lang: 'ja',
-      now,
-      timeResolver: fixedTimeResolver(6, 4, 24),
     });
 
-    expect(prompt).toContain('CORE_ja\n\nCHANNEL_RULES_JA');
-    expect(prompt).toContain('Unit-Test-99');
-    expect(prompt).toContain('FEW_SHOT_BLOCK');
-    expect(prompt).toContain('表示名: Test Master');
-    expect(prompt).toContain('ユーザーID: @test_master');
-    expect(prompt).toContain('"topic": "robotics"');
-    expect(prompt).toContain('【参照専用メモリ（外部チャネル引き継ぎコンテキスト）】');
-    expect(prompt).toContain('"interest": "synthwave"');
-    expect(prompt).toContain('Episode 1');
-    expect(prompt).toContain('現在は早朝です。');
-    expect(prompt).toContain('4日ぶりですね。');
-    expect(prompt).toContain('EVOLUTION_TREND');
-    expect(prompt).toContain('【最近の活動要約（参考）】');
-    expect(prompt).toContain('【イベント】\nSummer Fest');
-    expect(prompt).toContain('Trailing untitled section');
-    expect(prompt).not.toContain('【空白スキップ】');
-    expect(prompt).toContain('CUSTOM_GUIDELINES');
+    expect(result.personaFewShotPrompt).toBe('FEW_SHOT_BLOCK');
+    expect(result.baseSystemInstruction).toContain('CORE_ja\n\nCHANNEL_RULES_JA');
+    expect(result.baseSystemInstruction).toContain('FEW_SHOT_BLOCK');
+    expect(result.systemInstruction).toContain('CORE_ja\n\nCHANNEL_RULES_JA');
+    expect(result.systemInstruction).toContain('Unit-Test-99');
+    expect(result.systemInstruction).toContain('FEW_SHOT_BLOCK');
+    expect(result.systemInstruction).toContain('表示名: Test Master');
+    expect(result.systemInstruction).toContain('ユーザーID: @test_master');
+    expect(result.systemInstruction).toContain('"topic": "robotics"');
+    expect(result.systemInstruction).toContain('【参照専用メモリ（外部チャネル引き継ぎコンテキスト）】');
+    expect(result.systemInstruction).toContain('"interest": "synthwave"');
+    expect(result.systemInstruction).toContain('Episode 1');
+    expect(result.systemInstruction).toContain('現在は早朝です。');
+    expect(result.systemInstruction).toContain('4日ぶりですね。');
+    expect(result.systemInstruction).toContain('EVOLUTION_TREND');
+    expect(result.systemInstruction).toContain('【最近の活動要約（参考）】');
+    expect(result.systemInstruction).toContain('【イベント】\nSummer Fest');
+    expect(result.systemInstruction).toContain('Trailing untitled section');
+    expect(result.systemInstruction).not.toContain('【空白スキップ】');
+    expect(result.systemInstruction).toContain('CUSTOM_GUIDELINES');
   });
 
-  it('handles English localization, custom overlay labels, and absence boundary', () => {
+  it('handles English localization, custom overlay labels, and absence boundary', async () => {
     const now = new Date('2026-06-10T12:00:00.000Z');
     const twoDaysAgo = new Date(now.getTime() - 2 * 24 * 60 * 60 * 1000).toISOString();
 
-    const enPrompt = composeSystemPrompt({
+    const { systemInstruction: enPrompt } = await composeSystemPrompt({
       persona,
       channelInstruction: 'EN_CHANNEL_RULES',
-      userData: {
-        name: 'Member',
-        username: 'member_01',
-        lastReplyDate: twoDaysAgo,
+      lang: 'en',
+      anchoring: {
+        embedder: { generateEmbedding: jest.fn() },
+        contextElements: [''],
       },
-      accountHandleLabel: 'Member Handle',
-      ragMemories: ['Past EN memory'],
-      extendedPrompt: 'Global trend',
-      activitySummary: 'Evening summary text',
-      activitySummaryHeader: '[Custom Summary Header]',
-      activitySummaryLead: 'Recent overview:',
-      additionalSections: [{ header: '[Session Context]', body: 'Focus topic' }],
-      readOnlyMemoryOverlay: {
-        coreProfile: { plan: 'pro' },
-        recentTurns: [{ role: 'model', content: 'Welcome back' }],
-        labels: {
-          intro: '[Custom Overlay Intro]',
-          profileHeader: '[Custom Profile]',
-          turnsHeader: '[Custom Turns]',
+      temporal: {
+        now,
+        timeResolver: fixedTimeResolver(23, 6, 10),
+      },
+      memory: {
+        userData: {
+          name: 'Member',
+          username: 'member_01',
+          lastReplyDate: twoDaysAgo,
+        },
+        accountHandleLabel: 'Member Handle',
+        ragMemories: ['Past EN memory'],
+        extendedPrompt: 'Global trend',
+        activitySummary: 'Evening summary text',
+        activitySummaryHeader: '[Custom Summary Header]',
+        activitySummaryLead: 'Recent overview:',
+        readOnlyMemoryOverlay: {
+          coreProfile: { plan: 'pro' },
+          recentTurns: [{ role: 'model', content: 'Welcome back' }],
+          labels: {
+            intro: '[Custom Overlay Intro]',
+            profileHeader: '[Custom Profile]',
+            turnsHeader: '[Custom Turns]',
+          },
         },
       },
-      lang: 'en',
-      now,
-      timeResolver: fixedTimeResolver(23, 6, 10),
+      additionalSections: [{ header: '[Session Context]', body: 'Focus topic' }],
     });
 
     expect(enPrompt).toContain('CORE_en\n\nEN_CHANNEL_RULES');
@@ -300,20 +332,28 @@ describe('@rebecca/prompt building blocks and composer', () => {
     [13, 'ja', '【状況コンテキスト：昼】'],
     [19, 'ja', '【状況コンテキスト：夕方・夜】'],
     [2, 'ja', '【状況コンテキスト：深夜】'],
-  ] as const)('injects expected time context for hour %i (%s)', (hour, lang, expectedHeader) => {
+  ] as const)('injects expected time context for hour %i (%s)', async (hour, lang, expectedHeader) => {
     const section = formatTimeBracketSection(hour, lang);
     expect(section.header).toBe(expectedHeader);
 
-    const prompt = composeSystemPrompt({
+    const { systemInstruction } = await composeSystemPrompt({
       persona,
-      userData: { lastReplyDate: 'invalid-date-ignored' },
       lang,
-      timeResolver: fixedTimeResolver(hour, 1, 1),
+      anchoring: {
+        embedder: { generateEmbedding: jest.fn() },
+        contextElements: [''],
+      },
+      temporal: {
+        timeResolver: fixedTimeResolver(hour, 1, 1),
+      },
+      memory: {
+        userData: { lastReplyDate: 'invalid-date-ignored' },
+      },
     });
-    expect(prompt).toContain(expectedHeader);
+    expect(systemInstruction).toContain(expectedHeader);
   });
 
-  it('guarantees situational pattern injection in composeAnchoredChannelPrompt and composeGroundedSystemPrompt', async () => {
+  it('supports lightweight channel-only invocations without temporal or memory slices while keeping anchoring active', async () => {
     const samplePattern = {
       id: 7,
       category: 'support',
@@ -331,7 +371,7 @@ describe('@rebecca/prompt building blocks and composer', () => {
     };
     const embedder = { generateEmbedding: jest.fn().mockResolvedValue([1, 0]) };
 
-    const channelResult = await composeAnchoredChannelPrompt({
+    const channelResult = await composeSystemPrompt({
       persona: anchoredPersona,
       channelInstruction: 'CHANNEL_X',
       lang: 'ja',
@@ -342,25 +382,9 @@ describe('@rebecca/prompt building blocks and composer', () => {
       additionalSections: [{ header: '[Extra]', body: 'Extra Rule' }],
     });
 
-    expect(channelResult.basePrompt).toBe('CORE_ja\n\nCHANNEL_X');
     expect(channelResult.personaFewShotPrompt).toBe('ANCHOR_ja:7');
-    expect(channelResult.systemInstruction).toContain('CORE_ja\n\nCHANNEL_X');
-    expect(channelResult.systemInstruction).toContain('ANCHOR_ja:7');
+    expect(channelResult.baseSystemInstruction).toBe('CORE_ja\n\nCHANNEL_X\n\nANCHOR_ja:7');
     expect(channelResult.systemInstruction).toContain('[Extra]\nExtra Rule');
-
-    const groundedSystem = await composeGroundedSystemPrompt({
-      persona: anchoredPersona,
-      channelInstruction: 'CHANNEL_LOUNGE',
-      userData: null,
-      anchoring: {
-        embedder,
-        contextElements: ['lounge topic'],
-      },
-      timeResolver: fixedTimeResolver(14, 1, 1),
-    });
-
-    expect(groundedSystem).toContain('CORE_ja\n\nCHANNEL_LOUNGE');
-    expect(groundedSystem).toContain('ANCHOR_ja:7');
-    expect(groundedSystem).toContain('【状況コンテキスト：昼】');
+    expect(channelResult.systemInstruction).not.toContain('【現在時刻】');
   });
 });
