@@ -1,10 +1,11 @@
-import { IGeminiService } from '../types';
+import { resolveSituationalPersonaAnchors as resolveAnchorsCore } from '@rebecca/memory';
 import {
-  findTopPersonaPatterns,
   buildPersonaFewShotPrompt,
+  findTopPersonaPatterns,
 } from '@rebecca/persona';
-import { getPersonaPatternEmbeddings } from './personaEmbeddingCache';
+import { IGeminiService } from '../types';
 import { logger } from '../utils/logger';
+import { getPersonaPatternEmbeddings } from './personaEmbeddingCache';
 
 /**
  * Resolves dynamic few-shot persona anchors from the 120-pattern master dataset
@@ -12,8 +13,8 @@ import { logger } from '../utils/logger';
  *
  * @param gemini - The Gemini service for generating embeddings.
  * @param contextElements - Array of descriptive context strings (time, news, mood, timeline).
- * @param lang - Target language ('ja' | 'en'). Defaults to 'ja'.
- * @param topK - Number of exemplar patterns to retrieve. Defaults to 3.
+ * @param lang - Target language (`'ja'` | `'en'`). Defaults to `'ja'`.
+ * @param topK - Number of exemplar patterns to retrieve. Defaults to `3`.
  * @returns Formatted Few-Shot prompt block or empty string if not available.
  */
 export const resolveSituationalPersonaAnchors = async (
@@ -22,26 +23,14 @@ export const resolveSituationalPersonaAnchors = async (
   lang: 'ja' | 'en' = 'ja',
   topK = 3,
 ): Promise<string> => {
-  const query = contextElements
-    .filter(Boolean)
-    .map((s) => s.trim())
-    .filter(Boolean)
-    .join('\n');
-
-  if (!query) {
-    return '';
-  }
-
-  try {
-    const patternVectors = getPersonaPatternEmbeddings();
-    const queryVector = await gemini.generateEmbedding(query);
-    if (!queryVector || queryVector.length === 0) {
-      return '';
-    }
-    const topPatterns = findTopPersonaPatterns(queryVector, patternVectors, topK);
-    return buildPersonaFewShotPrompt(topPatterns, lang);
-  } catch (e) {
-    logger.warn('Failed to resolve dynamic situational persona anchors', { err: e });
-    return '';
-  }
+  return resolveAnchorsCore({
+    embedder: gemini,
+    contextElements,
+    patternVectors: getPersonaPatternEmbeddings(),
+    findTopPatterns: findTopPersonaPatterns,
+    buildFewShotPrompt: buildPersonaFewShotPrompt,
+    lang,
+    topK,
+    logger,
+  });
 };

@@ -4,8 +4,14 @@
  * and performing various semantic NLP tasks using Google's generative AI models.
  */
 
-import { GoogleGenAI, Content, Type, ThinkingLevel } from '@google/genai';
-import { formatZonedDateTime } from '../utils/time';
+import { GoogleGenAI, Content, Tool, ThinkingLevel } from '@google/genai';
+import {
+  createSearchWebTool,
+  executeGoogleWebSearch,
+  PersonaToolRegistry,
+  runStructuredDialogueWithTools,
+  type IGeminiWebSearchClient,
+} from '@rebecca/tools';
 import { ConversationLogEntry, UserCoreProfile, IGeminiService } from '../types';
 import { parsePersonaResponse, cleanJsonString, StructuredPersonaResponse, PERSONA_RESPONSE_SCHEMA } from '@rebecca/persona';
 import { StructuredNewsPostResponse } from '../features/news/types';
@@ -81,25 +87,6 @@ const STRUCTURED_SUPPORT_POST_SCHEMA = {
     },
   },
   required: ['thought', 'replyBody'],
-};
-
-const SEARCH_WEB_TOOL = {
-  functionDeclarations: [
-    {
-      name: 'search_web',
-      description: 'Searches the web for up-to-date information, facts, or answers when asked questions or requested to investigate a topic.',
-      parameters: {
-        type: Type.OBJECT,
-        properties: {
-          query: {
-            type: Type.STRING,
-            description: 'Search keywords or question to look up on the web',
-          },
-        },
-        required: ['query'],
-      },
-    },
-  ],
 };
 
 /**
@@ -756,27 +743,25 @@ ${imageCaption}
    * @returns Grounded search summary or fallback message.
    */
   async executeWebSearch(query: string): Promise<string> {
-    if (!this.ai) return '検索クライアントが未初期化です。';
-    const trimmed = query.trim();
-    if (!trimmed) return '検索クエリが空です。';
-    try {
-      const res = await this.ai.models.generateContent({
-        model: this.config.searchModel,
-        contents: [{ role: 'user', parts: [{ text: trimmed }] }],
-        config: {
-          tools: [{ googleSearch: {} }],
-          safetySettings: [] as never[],
-        },
-      });
-      return res.text?.trim() || '該当する検索結果が見つかりませんでした。';
-    } catch (err) {
-      logger.warn('[executeWebSearch] Failed to search for query', { query: trimmed, error: (err as Error).message });
-      return '一時的なネットワークまたは検索エラーにより情報を取得できませんでした。';
-    }
+    const searchClient: IGeminiWebSearchClient | null = this.ai
+      ? {
+          models: {
+            generateContent: (params) => this.ai!.models.generateContent(params),
+          },
+        }
+      : null;
+
+    return executeGoogleWebSearch(
+      searchClient,
+      this.config.searchModel ?? this.config.model,
+      query,
+      logger,
+    );
   }
 
   /**
    * Generates a structured conversational reply with internal monologue using Gemini API Structured Outputs.
+   * Delegates Tatemae/Honne history reconstruction and `search_web` tool orchestration to `@rebecca/memory`.
    *
    * @param systemInstruction - The system persona and behavioral guidelines.
    * @param history - Conversation history log entries.
@@ -792,92 +777,57 @@ ${imageCaption}
       throw new Error('Gemini API client not initialized');
     }
 
+    const aiClient = this.ai;
+    const baseConfig = {
+      systemInstruction: systemInstruction,
+      maxOutputTokens: 1000,
+      responseMimeType: 'application/json',
+      responseSchema: PERSONA_RESPONSE_SCHEMA,
+      safetySettings: [] as never[],
+      temperature: this.config.temperature ?? 1.20,
+      topP: this.config.topP ?? 0.95,
+      thinkingConfig: {
+        thinkingLevel: this.config.thinkingLevel ?? ThinkingLevel.MEDIUM,
+      },
+    };
+
+    const toolRegistry = new PersonaToolRegistry().register(
+      createSearchWebTool((q) => this.executeWebSearch(q)),
+    );
+
     try {
-      const contents: Content[] = [];
-      for (const msg of history) {
-        const timePrefix = msg.timestamp ? `[${formatZonedDateTime(msg.timestamp, this.config.appTimezone)}] ` : '';
-        if (msg.role === 'model') {
-          const modelBody = msg.thought
-            ? `【思考・本音】${msg.thought}\n【発話】${msg.content}`
-            : msg.content;
-          contents.push({ role: 'model', parts: [{ text: `${timePrefix}${modelBody}` }] });
-        } else {
-          contents.push({ role: 'user', parts: [{ text: `${timePrefix}${msg.content}` }] });
-        }
-      }
-      contents.push({ role: 'user', parts: [{ text: userInput }] });
+      return await runStructuredDialogueWithTools({
+        history,
+        userInput,
+        timezone: this.config.appTimezone,
+        toolRegistry,
+        maxToolRounds: 1,
+        generateStep: async (contents, tools) => {
+          const genAiTools = tools.map((group) => ({
+            functionDeclarations: group.functionDeclarations.map((decl) => ({
+              name: decl.name,
+              description: decl.description,
+              parameters: {
+                type: decl.parameters.type,
+                properties: { ...decl.parameters.properties },
+                required: [...decl.parameters.required],
+              },
+            })),
+          })) as Tool[];
 
-      const baseConfig = {
-        systemInstruction: systemInstruction,
-        maxOutputTokens: 1000,
-        responseMimeType: 'application/json',
-        responseSchema: PERSONA_RESPONSE_SCHEMA,
-        safetySettings: [] as never[],
-        temperature: this.config.temperature ?? 1.20,
-        topP: this.config.topP ?? 0.95,
-        thinkingConfig: {
-          thinkingLevel: this.config.thinkingLevel ?? ThinkingLevel.MEDIUM,
-        },
-      };
+          const response = await aiClient.models.generateContent({
+            model: this.config.model,
+            contents: contents as Content[],
+            config: tools.length > 0 ? { ...baseConfig, tools: genAiTools } : baseConfig,
+          });
 
-      const response = await this.ai.models.generateContent({
-        model: this.config.model,
-        contents: contents,
-        config: {
-          ...baseConfig,
-          tools: [SEARCH_WEB_TOOL],
+          return {
+            text: response.text,
+            functionCalls: response.functionCalls,
+            modelContent: response.candidates?.[0]?.content,
+          };
         },
       });
-
-      const functionCall = response.functionCalls?.[0];
-      if (!functionCall || functionCall.name !== 'search_web') {
-        const rawText = response.text?.trim();
-        if (!rawText) {
-          throw new Error('Gemini API returned empty structured response or content was filtered.');
-        }
-        const parsed = parsePersonaResponse(rawText);
-        if (!parsed.reply || !parsed.reply.trim()) {
-          throw new Error('Gemini API returned structured response with empty reply.');
-        }
-        return parsed;
-      }
-
-      const searchQuery = typeof functionCall.args?.query === 'string' ? functionCall.args.query.trim() : '';
-      const searchResult = searchQuery
-        ? await this.executeWebSearch(searchQuery)
-        : '検索クエリが指定されていません。';
-
-      if (response.candidates?.[0]?.content) {
-        contents.push(response.candidates[0].content);
-      }
-
-      contents.push({
-        role: 'user',
-        parts: [
-          {
-            functionResponse: {
-              name: functionCall.name,
-              response: { result: searchResult },
-            },
-          },
-        ],
-      });
-
-      const finalResponse = await this.ai.models.generateContent({
-        model: this.config.model,
-        contents: contents,
-        config: baseConfig,
-      });
-
-      const finalText = finalResponse.text?.trim();
-      if (!finalText) {
-        throw new Error('Gemini API returned empty structured response after function execution.');
-      }
-      const parsed = parsePersonaResponse(finalText);
-      if (!parsed.reply || !parsed.reply.trim()) {
-        throw new Error('Gemini API returned structured response with empty reply after function execution.');
-      }
-      return parsed;
     } catch (error) {
       return rethrowUpstreamApiError(error, 'Error generating structured reply with Gemini');
     }

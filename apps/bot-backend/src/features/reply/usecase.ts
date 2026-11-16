@@ -1,3 +1,4 @@
+import { indexVectorMemory, searchVectorMemories } from '@rebecca/memory';
 import { AppDependencies } from '../../types';
 import { TimelinePost } from '@rebecca/types';
 import { checkAndIncrementRateLimits } from '../../core/rateLimiter';
@@ -253,8 +254,7 @@ ${processedText}
 出力は検索クエリのみとし、不要な解説は含めないでください。`;
         const query = await deps.gemini.generateSearchQuery(searchPrompt);
         if (query) {
-            const queryEmb = await deps.gemini.generateEmbedding(query);
-            ragMemories = await deps.firestore.findRagMemories(authorId, queryEmb);
+            ragMemories = await searchVectorMemories(deps.gemini, deps.firestore, authorId, query);
         }
 
         // Dynamic Few-Shot Persona Anchors
@@ -328,10 +328,7 @@ ${processedText}
         // Store a vectorized representation of the interaction for long-term retrieval
         const personaEnglishName = this.deps.persona.metadata.englishName;
         const combinedText = `User: ${processedText}\n${personaEnglishName}: ${aiResponseText}`;
-        const memoryVector = await deps.gemini.generateEmbedding(combinedText);
-        if (memoryVector && memoryVector.length > 0) {
-            await deps.firestore.saveRagMemory(authorId, combinedText, memoryVector);
-        }
+        await indexVectorMemory(deps.gemini, deps.firestore, authorId, combinedText);
 
         // Preserve the raw logs for future analysis or model evolution
         await deps.firestore.saveRawConversationLog(authorId, processedText, aiResponseText, internalThought);

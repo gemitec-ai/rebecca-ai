@@ -53,16 +53,16 @@ describe('Memory Module', () => {
             useCase = new GlobalDreamingUseCase(deps);
         });
 
-        describe('processDreamingForUser', () => {
+        describe('consolidateUser', () => {
             it('should return early if episodic buffer is empty (boundary case)', async () => {
-                await (useCase as any).processDreamingForUser('user1', { episodicBuffer: [] } as unknown as any);
+                await useCase.consolidateUser('user1', { episodicBuffer: [] } as unknown as any);
                 expect(deps.gemini.generateDreaming).not.toHaveBeenCalled();
             });
 
             it('should generate and update core profile (normal case)', async () => {
                 deps.gemini.generateDreaming.mockResolvedValueOnce({ attributes: ['cool'] });
                 
-                await (useCase as any).processDreamingForUser('user1', { episodicBuffer: [{ role: 'user', content: 'hi' }] } as unknown as any);
+                await useCase.consolidateUser('user1', { episodicBuffer: [{ role: 'user', content: 'hi' }] } as unknown as any);
                 
                 expect(deps.gemini.generateDreaming).toHaveBeenCalled();
                 expect(deps.firestore.updateCoreProfile).toHaveBeenCalledWith('user1', { attributes: ['cool'] }, [{ role: 'user', content: 'hi' }], expect.any(String));
@@ -72,7 +72,7 @@ describe('Memory Module', () => {
                 const loggerSpy = jest.spyOn(logger, 'error').mockImplementation(() => {});
                 deps.gemini.generateDreaming.mockRejectedValueOnce(new Error('API Error'));
                 
-                await (useCase as any).processDreamingForUser('user1', { episodicBuffer: [{ role: 'user', content: 'hi' }] } as unknown as any);
+                await useCase.consolidateUser('user1', { episodicBuffer: [{ role: 'user', content: 'hi' }] } as unknown as any);
                 
                 expect(deps.firestore.updateCoreProfile).not.toHaveBeenCalled();
                 expect(loggerSpy).toHaveBeenCalledWith('[GlobalDreamingUseCase] Dreaming failed for user', expect.any(Error), { userId: 'user1' });
