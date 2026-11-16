@@ -85,6 +85,7 @@ jobs:
             coverage-summary.md
             packages/persona/coverage/
             packages/memory/coverage/
+            packages/prompt/coverage/
             packages/tools/coverage/
             packages/db/coverage/
             apps/bot-backend/coverage/

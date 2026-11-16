@@ -9,8 +9,9 @@
 - **メイン処理・APIエンドポイント**: Cloud Run (Node.js / Express) ※X API Free枠の制限によりWebhookではなくポーリング（定期取得）や定期バッチ処理を採用
   - **ルーティング**: `batchRoutes`（定期実行用）と `workerRoutes`（Cloud Tasksワーカー用）に完全分離。
   - **設計手法**: 依存性の注入（DI）を採用。コアロジックはインフラ層（Firestoreや各種API）に直接依存せず、インターフェース（`AppDependencies`）を介して実行される。
-- **共有認知コア (`@rebecca/memory`)**: チャネル非依存・SDK非依存の記憶・認知コアモジュール（`packages/memory`）。建前/本音（Tatemae/Honne）ワーキングメモリとターン復元、コアベクトル化/RAGプリミティブ、Layer 1 自己進化（`GlobalEvolutionEngine`）、Layer 2 全体要約（`SelfReflectionEngine`）、Layer 3 個別記憶統合（`DreamingConsolidationEngine`）、状況アンカリング、および非対称一方向オーバーレイを提供する。
-- **共有ランタイムツール (`@rebecca/tools`)**: 内部依存を持たないプロバイダ非依存のツール契約・対話オーケストレーションパッケージ（`packages/tools`）。標準 JSON Schema ツール定義、Web検索ポート（`IWebSearchProvider`、`createSearchWebTool`）、ツールレジストリ（`PersonaToolRegistry`）、および Function Calling 対話ループ（`runToolDialogueLoop`）を提供する。
+- **共有認知コア (`@rebecca/memory`)**: ペルソナ・チャネル・SDK非依存の純粋記憶エンジン（`packages/memory`）。建前/本音（Tatemae/Honne）ワーキングメモリとターン復元、コアベクトル化/RAGプリミティブ、Layer 1 自己進化（`GlobalEvolutionEngine`）、Layer 2 全体要約（`SelfReflectionEngine`）、Layer 3 個別記憶統合（`DreamingConsolidationEngine`）、および非対称一方向オーバーレイを提供する。
+- **共有プロンプト構築部品 (`@rebecca/prompt`)**: `@rebecca/persona` と `@rebecca/memory` を接続するチャネル非依存のビルディングブロック群（`packages/prompt`）。時間帯・誕生日判定、状況アンカリング、各種記憶セクションフォーマット、および汎用アセンブラ（`assemblePromptSections`・`composeSystemPrompt`）を提供する。
+- **共有ランタイムツール (`@rebecca/tools`)**: 内部依存ゼロ・マルチプロバイダ対応（Gemini / Azure OpenAI 互換）のツール契約・対話オーケストレーションパッケージ（`packages/tools`）。標準 JSON Schema ツール定義、Web検索ポート（`IWebSearchProvider`、`createSearchWebTool`）、ツールレジストリ（`PersonaToolRegistry`）、および汎用対話ループ（`runToolDialogueLoop`・`ILLMToolDialogueClient`）を提供する。
 - **非同期キュー (遅延実行)**: Cloud Tasks
 - **データベース**: Firestore (NoSQL)
 - **画像ストレージ**: Cloud Storage (GCS)
