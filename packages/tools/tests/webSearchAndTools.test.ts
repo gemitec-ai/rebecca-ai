@@ -1,72 +1,61 @@
 import {
   createSearchWebTool,
   EMPTY_WEB_SEARCH_QUERY_RESULT,
-  executeGoogleWebSearch,
-  IGeminiWebSearchClient,
+  EmptyDialogueResponseError,
+  IWebSearchProvider,
   PersonaToolRegistry,
-  runStructuredDialogueWithTools,
+  runToolDialogueLoop,
   SEARCH_WEB_TOOL_DECLARATION,
   SEARCH_WEB_TOOL_NAME,
-  ToolLogger,
+  ToolDefinition,
 } from '../src';
 
-describe('shared webSearch, PersonaToolRegistry, and runStructuredDialogueWithTools', () => {
-  describe('executeGoogleWebSearch', () => {
-    it('handles uninitialized client, blank query, and empty model fail-fast', async () => {
-      expect(await executeGoogleWebSearch(null, 'search-model', 'hello')).toBe(
-        '検索クライアントが未初期化です。',
-      );
-
-      const client: IGeminiWebSearchClient = {
-        models: { generateContent: jest.fn() },
-      };
-      expect(await executeGoogleWebSearch(client, 'search-model', '   ')).toBe(
-        '検索クエリが空です。',
-      );
-      await expect(executeGoogleWebSearch(client, '   ', 'query')).rejects.toThrow(
-        'Cannot execute Google Web Search: search model identifier must not be empty',
-      );
-    });
-
-    it('invokes Gemini googleSearch grounding tool and handles empty or error responses gracefully', async () => {
-      const logger: ToolLogger = { info: jest.fn(), warn: jest.fn(), error: jest.fn() };
-      const generateContent = jest
-        .fn()
-        .mockResolvedValueOnce({ text: '  Grounded Answer  ' })
-        .mockResolvedValueOnce({ text: '   ' })
-        .mockRejectedValueOnce(new Error('Network timeout'));
-
-      const client: IGeminiWebSearchClient = { models: { generateContent } };
-
-      const ok = await executeGoogleWebSearch(client, 'search-model', '  weather tokyo  ', logger);
-      expect(ok).toBe('Grounded Answer');
-      expect(generateContent).toHaveBeenCalledWith({
-        model: 'search-model',
-        contents: [{ role: 'user', parts: [{ text: 'weather tokyo' }] }],
-        config: {
-          tools: [{ googleSearch: {} }],
-          safetySettings: [],
+describe('@rebecca/tools contracts and dialogue orchestration', () => {
+  describe('createSearchWebTool and SEARCH_WEB_TOOL_DECLARATION', () => {
+    it('defines standard JSON Schema types without provider-specific enum casing', () => {
+      expect(SEARCH_WEB_TOOL_DECLARATION).toEqual({
+        name: SEARCH_WEB_TOOL_NAME,
+        description: expect.any(String),
+        parameters: {
+          type: 'object',
+          properties: {
+            query: {
+              type: 'string',
+              description: expect.any(String),
+            },
+          },
+          required: ['query'],
         },
       });
+    });
 
-      expect(await executeGoogleWebSearch(client, 'search-model', 'empty', logger)).toBe(
-        '該当する検索結果が見つかりませんでした。',
-      );
+    it('invokes IWebSearchProvider objects or callback functions with trimmed queries and guards empty args', async () => {
+      const provider: IWebSearchProvider = {
+        search: jest.fn(async (q: string) => `provider:${q}`),
+      };
+      const objectTool = createSearchWebTool(provider);
 
-      expect(await executeGoogleWebSearch(client, 'search-model', 'fail', logger)).toBe(
-        '一時的なネットワークまたは検索エラーにより情報を取得できませんでした。',
-      );
-      expect(logger.warn).toHaveBeenCalledWith(
-        '[executeWebSearch] Failed to search for query',
-        expect.objectContaining({ query: 'fail', error: 'Network timeout' }),
-      );
+      expect(await objectTool.execute({ query: '  type-safe sdk  ' })).toEqual({
+        result: 'provider:type-safe sdk',
+      });
+      expect(provider.search).toHaveBeenCalledWith('type-safe sdk');
+
+      expect(await objectTool.execute({ query: '   ' })).toEqual({
+        result: EMPTY_WEB_SEARCH_QUERY_RESULT,
+      });
+      expect(await objectTool.execute(undefined)).toEqual({
+        result: EMPTY_WEB_SEARCH_QUERY_RESULT,
+      });
+
+      const fnTool = createSearchWebTool(async (q) => `fn:${q}`);
+      expect(await fnTool.execute({ query: 'hello' })).toEqual({ result: 'fn:hello' });
     });
   });
 
-  describe('PersonaToolRegistry and createSearchWebTool', () => {
-    it('rejects empty tool names, duplicate registrations, and unknown execution names', async () => {
+  describe('PersonaToolRegistry', () => {
+    it('enforces unique non-empty names and dispatches registered executors', async () => {
       const registry = new PersonaToolRegistry();
-      expect(registry.toToolGroups()).toEqual([]);
+      expect(registry.getDeclarations()).toEqual([]);
 
       expect(() =>
         registry.register({
@@ -76,129 +65,166 @@ describe('shared webSearch, PersonaToolRegistry, and runStructuredDialogueWithTo
           },
           execute: async () => ({}),
         }),
-      ).toThrow('Cannot register persona tool with empty name');
+      ).toThrow('Cannot register tool with an empty name');
 
       const searchTool = createSearchWebTool(async (q) => `hit:${q}`);
       registry.register(searchTool);
 
       expect(registry.has(SEARCH_WEB_TOOL_NAME)).toBe(true);
       expect(registry.has('unknown_tool')).toBe(false);
-      expect(registry.toToolGroups()).toEqual([{ functionDeclarations: [SEARCH_WEB_TOOL_DECLARATION] }]);
+      expect(registry.has(undefined)).toBe(false);
+      expect(registry.getDeclarations()).toEqual([SEARCH_WEB_TOOL_DECLARATION]);
 
-      expect(() => registry.register(searchTool)).toThrow('Persona tool "search_web" is already registered');
-      await expect(registry.execute('missing', {})).rejects.toThrow('Unknown persona tool requested: "missing"');
-
-      expect(await registry.execute(SEARCH_WEB_TOOL_NAME, { query: '  ai news  ' })).toEqual({
-        result: 'hit:ai news',
-      });
-      expect(await registry.execute(SEARCH_WEB_TOOL_NAME, undefined)).toEqual({
-        result: EMPTY_WEB_SEARCH_QUERY_RESULT,
+      expect(() => registry.register(searchTool)).toThrow('Tool "search_web" is already registered');
+      await expect(registry.execute('missing', {})).rejects.toThrow('Unknown tool requested: "missing"');
+      expect(await registry.execute(SEARCH_WEB_TOOL_NAME, { query: 'test' })).toEqual({
+        result: 'hit:test',
       });
     });
   });
 
-  describe('runStructuredDialogueWithTools', () => {
-    it('formats Tatemae/Honne history, executes tool round, and validates structured JSON output', async () => {
-      const registry = new PersonaToolRegistry().register(
-        createSearchWebTool(async (q) => `searched:${q}`),
-      );
+  describe('runToolDialogueLoop', () => {
+    it('dispatches multiple tool calls in a single round, records neutral round history, and parses output', async () => {
+      const timeTool: ToolDefinition = {
+        declaration: {
+          name: 'get_time',
+          description: 'Gets time',
+          parameters: {
+            type: 'object',
+            properties: {},
+            required: [],
+          },
+        },
+        execute: async () => ({ now: '12:00' }),
+      };
+
+      const registry = new PersonaToolRegistry()
+        .register(createSearchWebTool(async (q) => `searched:${q}`))
+        .register(timeTool);
 
       const generateStep = jest
         .fn()
         .mockResolvedValueOnce({
-          functionCalls: [{ name: SEARCH_WEB_TOOL_NAME, args: { query: 'latest SDK' } }],
-          modelContent: {
-            role: 'model',
-            parts: [{ functionCall: { name: SEARCH_WEB_TOOL_NAME, args: { query: 'latest SDK' } } }],
-          },
+          toolCalls: [
+            { id: 'call-1', name: SEARCH_WEB_TOOL_NAME, args: { query: 'latest SDK' } },
+            { id: 'call-2', name: 'get_time', args: {} },
+          ],
+          rawAssistantTurn: { opaque: 'model-turn' },
         })
         .mockResolvedValueOnce({
-          text: JSON.stringify({ thought: 'Looked it up cleanly', reply: 'Here is what I found!' }),
+          text: ' {"reply":"Final Answer"} ',
         });
 
-      const res = await runStructuredDialogueWithTools({
-        history: [
-          { role: 'user', content: 'Hi', timestamp: '2026-05-01T00:00:00.000Z' },
-          { role: 'model', content: 'Hello!', thought: 'Happy to see them' },
+      const parseOutput = jest.fn((raw: string, afterTool: boolean) => ({
+        parsed: JSON.parse(raw),
+        afterTool,
+      }));
+
+      const result = await runToolDialogueLoop({
+        initialTurns: [
+          { role: 'user', text: 'Hi' },
+          { role: 'model', text: 'Hello' },
         ],
-        userInput: 'Check the latest SDK',
-        timezone: 'UTC',
+        userInput: 'Check the latest SDK and time',
         toolRegistry: registry,
         generateStep,
+        parseOutput,
       });
 
-      expect(res).toEqual({
-        thought: 'Looked it up cleanly',
-        reply: 'Here is what I found!',
+      expect(result).toEqual({
+        parsed: { reply: 'Final Answer' },
+        afterTool: true,
       });
+      expect(parseOutput).toHaveBeenCalledWith('{"reply":"Final Answer"}', true);
       expect(generateStep).toHaveBeenCalledTimes(2);
-      const secondCallContents = generateStep.mock.calls[1][0];
-      expect(secondCallContents[1].parts[0].text).toContain('【思考・本音】Happy to see them\n【発話】Hello!');
-      expect(secondCallContents[secondCallContents.length - 1]).toEqual({
-        role: 'user',
-        parts: [
-          {
-            functionResponse: {
-              name: SEARCH_WEB_TOOL_NAME,
-              response: { result: 'searched:latest SDK' },
-            },
-          },
-        ],
-      });
+
+      const firstCtx = generateStep.mock.calls[0][0];
+      expect(firstCtx.declarations).toHaveLength(2);
+      expect(firstCtx.rounds).toEqual([]);
+
+      const secondCtx = generateStep.mock.calls[1][0];
+      expect(secondCtx.declarations).toEqual([]);
+      expect(secondCtx.rounds).toEqual([
+        {
+          rawAssistantTurn: { opaque: 'model-turn' },
+          calls: [
+            { id: 'call-1', name: SEARCH_WEB_TOOL_NAME, args: { query: 'latest SDK' } },
+            { id: 'call-2', name: 'get_time', args: {} },
+          ],
+          outcomes: [
+            { id: 'call-1', name: SEARCH_WEB_TOOL_NAME, result: { result: 'searched:latest SDK' } },
+            { id: 'call-2', name: 'get_time', result: { now: '12:00' } },
+          ],
+        },
+      ]);
     });
 
-    it('falls back cleanly when maxToolRounds is 0 or when tool call name is unregistered, and validates empty outputs', async () => {
-      const generateDirect = jest
-        .fn()
-        .mockResolvedValueOnce({
-          text: JSON.stringify({ thought: 'direct', reply: 'Direct reply' }),
-        })
-        .mockResolvedValueOnce({ text: '' })
-        .mockResolvedValueOnce({ text: JSON.stringify({ thought: 't', reply: '   ' }) });
-
-      expect(
-        await runStructuredDialogueWithTools({
-          history: [],
-          userInput: 'Ping',
-          maxToolRounds: 0,
-          generateStep: generateDirect,
-        }),
-      ).toEqual({ thought: 'direct', reply: 'Direct reply' });
-
-      await expect(
-        runStructuredDialogueWithTools({
-          history: [],
-          userInput: 'Ping',
-          generateStep: generateDirect,
-        }),
-      ).rejects.toThrow('Gemini API returned empty structured response or content was filtered.');
-
-      await expect(
-        runStructuredDialogueWithTools({
-          history: [],
-          userInput: 'Ping',
-          generateStep: generateDirect,
-        }),
-      ).rejects.toThrow('Gemini API returned structured response with empty reply.');
-
+    it('handles zero rounds, unregistered tool calls, and throws EmptyDialogueResponseError cleanly', async () => {
       const registry = new PersonaToolRegistry().register(
         createSearchWebTool(async () => 'result'),
       );
-      const emptyAfterTool = jest
+
+      const directStep = jest
         .fn()
-        .mockResolvedValueOnce({
-          functionCalls: [{ name: SEARCH_WEB_TOOL_NAME, args: { query: 'q' } }],
-        })
-        .mockResolvedValueOnce({ text: '  ' });
+        .mockResolvedValueOnce({ text: 'Direct' })
+        .mockResolvedValueOnce({ toolCalls: [{ name: 'unregistered' }], text: 'Fallback' })
+        .mockResolvedValueOnce({ text: '   ' });
+
+      expect(
+        await runToolDialogueLoop({
+          initialTurns: [],
+          userInput: 'Ping',
+          toolRegistry: registry,
+          maxToolRounds: 0,
+          generateStep: directStep,
+          parseOutput: (raw, afterTool) => ({ raw, afterTool }),
+        }),
+      ).toEqual({ raw: 'Direct', afterTool: false });
+
+      expect(
+        await runToolDialogueLoop({
+          initialTurns: [],
+          userInput: 'Ping',
+          toolRegistry: registry,
+          generateStep: directStep,
+          parseOutput: (raw, afterTool) => ({ raw, afterTool }),
+        }),
+      ).toEqual({ raw: 'Fallback', afterTool: false });
 
       await expect(
-        runStructuredDialogueWithTools({
-          history: [],
-          userInput: 'q',
-          toolRegistry: registry,
-          generateStep: emptyAfterTool,
+        runToolDialogueLoop({
+          initialTurns: [],
+          userInput: 'Ping',
+          generateStep: directStep,
+          parseOutput: (raw) => raw,
         }),
-      ).rejects.toThrow('Gemini API returned empty structured response after function execution.');
+      ).rejects.toThrow(EmptyDialogueResponseError);
+
+      const emptyDuringToolRound = jest
+        .fn()
+        .mockResolvedValueOnce({ text: '' })
+        .mockResolvedValueOnce({ toolCalls: [{ name: SEARCH_WEB_TOOL_NAME, args: { query: 'q' } }] })
+        .mockResolvedValueOnce({ text: '   ' });
+
+      await expect(
+        runToolDialogueLoop({
+          initialTurns: [],
+          userInput: 'Ping',
+          toolRegistry: registry,
+          generateStep: emptyDuringToolRound,
+          parseOutput: (raw) => raw,
+        }),
+      ).rejects.toMatchObject({ afterToolExecution: false });
+
+      await expect(
+        runToolDialogueLoop({
+          initialTurns: [],
+          userInput: 'Ping',
+          toolRegistry: registry,
+          generateStep: emptyDuringToolRound,
+          parseOutput: (raw) => raw,
+        }),
+      ).rejects.toMatchObject({ afterToolExecution: true });
     });
   });
 });

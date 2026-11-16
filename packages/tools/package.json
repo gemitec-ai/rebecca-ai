@@ -13,11 +13,6 @@
     "secret-check": "secretlint \"**/*\"",
     "audit:fix": "npm audit fix"
   },
-  "dependencies": {
-    "@rebecca/memory": "*",
-    "@rebecca/persona": "*",
-    "@rebecca/types": "*"
-  },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "@types/jest": "^30.0.0",

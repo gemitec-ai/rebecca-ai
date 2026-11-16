@@ -1,130 +1,123 @@
-import { DEFAULT_APP_TIMEZONE, formatHistoryWithInnerThought } from '@rebecca/memory';
-import { parsePersonaResponse, type StructuredPersonaResponse } from '@rebecca/persona';
-import type { ConversationLogEntry } from '@rebecca/types';
-import {
-  EMPTY_WEB_SEARCH_QUERY_RESULT,
-  SEARCH_WEB_TOOL_DECLARATION,
-  type PersonaFunctionDeclaration,
-  type PersonaFunctionToolGroup,
-} from './webSearch';
+import type { ToolDeclaration, ToolDefinition } from './webSearch';
 
 /**
- * Provider-agnostic conversational content part compatible with Gemini `Part`.
+ * Provider-agnostic conversational turn input consumed by tool dialogue orchestration.
  */
-export interface DialogueContentPart {
+export interface DialogueTurn {
+  readonly role: 'user' | 'model';
+  readonly text: string;
+}
+
+/**
+ * Normalized tool invocation request emitted by an LLM generation step.
+ */
+export interface ToolCallRequest {
+  readonly id?: string;
+  readonly name: string;
+  readonly args?: Readonly<Record<string, unknown>>;
+}
+
+/**
+ * Normalized execution result for a single invoked tool call.
+ */
+export interface ToolCallOutcome {
+  readonly id?: string;
+  readonly name: string;
+  readonly result: Record<string, unknown>;
+}
+
+/**
+ * Immutable record of one completed tool-calling round (model calls paired with tool results).
+ */
+export interface ToolRoundRecord {
+  readonly rawAssistantTurn?: unknown;
+  readonly calls: ReadonlyArray<ToolCallRequest>;
+  readonly outcomes: ReadonlyArray<ToolCallOutcome>;
+}
+
+/**
+ * Context passed to an infrastructure model adapter on each generation step.
+ * Infrastructure adapters translate this provider-agnostic state into SDK payloads.
+ */
+export interface ToolDialogueStepContext {
+  readonly initialTurns: ReadonlyArray<DialogueTurn>;
+  readonly userInput: string;
+  readonly rounds: ReadonlyArray<ToolRoundRecord>;
+  readonly declarations: ReadonlyArray<ToolDeclaration>;
+}
+
+/**
+ * Provider-agnostic generation outcome returned by an infrastructure model step.
+ */
+export interface ToolDialogueStepResult {
   readonly text?: string;
-  readonly functionCall?: {
-    readonly name?: string;
-    readonly args?: Readonly<Record<string, unknown>>;
-  };
-  readonly functionResponse?: {
-    readonly name?: string;
-    readonly response?: Readonly<Record<string, unknown>>;
-  };
+  readonly toolCalls?: ReadonlyArray<ToolCallRequest>;
+  readonly rawAssistantTurn?: unknown;
 }
 
 /**
- * Provider-agnostic conversational turn message compatible with Gemini `Content`.
+ * Typed error raised when an LLM generation step yields empty or filtered text output.
  */
-export interface DialogueContentMessage {
-  readonly role?: string;
-  readonly parts?: DialogueContentPart[];
+export class EmptyDialogueResponseError extends Error {
+  readonly afterToolExecution: boolean;
+
+  constructor(afterToolExecution: boolean) {
+    super(
+      afterToolExecution
+        ? 'Structured model returned an empty response after tool execution.'
+        : 'Structured model returned an empty response or content was filtered.',
+    );
+    this.name = 'EmptyDialogueResponseError';
+    this.afterToolExecution = afterToolExecution;
+  }
 }
 
 /**
- * Abstracted single model generation step returned by an LLM adapter.
- */
-export interface DialogueModelStepResult {
-  readonly text?: string;
-  readonly functionCalls?: ReadonlyArray<{
-    readonly name?: string;
-    readonly args?: Readonly<Record<string, unknown>>;
-  }>;
-  readonly modelContent?: DialogueContentMessage;
-}
-
-/**
- * Definition for an executable Function Calling tool registered for persona conversations.
- */
-export interface PersonaToolDefinition {
-  readonly declaration: PersonaFunctionDeclaration;
-  execute(args: Readonly<Record<string, unknown>> | undefined): Promise<Record<string, unknown>>;
-}
-
-/**
- * Creates a reusable `PersonaToolDefinition` wrapping the canonical `search_web` declaration
- * and a caller-supplied search runner (e.g., `executeGoogleWebSearch`).
- *
- * @param searchRunner - Async search implementation taking a trimmed query string.
- * @returns Configured `PersonaToolDefinition` for `search_web`.
- */
-export const createSearchWebTool = (
-  searchRunner: (query: string) => Promise<string>,
-): PersonaToolDefinition => ({
-  declaration: SEARCH_WEB_TOOL_DECLARATION,
-  execute: async (args) => {
-    const rawQuery = args?.query;
-    const query = typeof rawQuery === 'string' ? rawQuery.trim() : '';
-    const result = query ? await searchRunner(query) : EMPTY_WEB_SEARCH_QUERY_RESULT;
-    return { result };
-  },
-});
-
-/**
- * Extensible registry of Function Calling tools available to the persona during generation.
- * Shared between X Bot (`search_web`) and Private Lounge (`search_web` + session tools).
+ * Extensible registry mapping canonical tool names to JSON Schema declarations and handlers.
  */
 export class PersonaToolRegistry {
-  private readonly tools = new Map<string, PersonaToolDefinition>();
+  private readonly tools = new Map<string, ToolDefinition>();
 
   /**
-   * Registers a new persona tool declaration and execution handler.
+   * Registers a new tool definition.
    *
-   * @param tool - Tool definition to register.
-   * @returns `this` for fluent builder chaining.
-   * @throws Error if another tool with the same name is already registered.
+   * @param tool - Executable tool paired with its JSON Schema declaration.
+   * @returns `this` for fluent chaining.
+   * @throws Error when declaration name is blank or already registered.
    */
-  register(tool: PersonaToolDefinition): this {
+  register(tool: ToolDefinition): this {
     const name = tool.declaration.name.trim();
     if (!name) {
-      throw new Error('Cannot register persona tool with empty name');
+      throw new Error('Cannot register tool with an empty name');
     }
     if (this.tools.has(name)) {
-      throw new Error(`Persona tool "${name}" is already registered`);
+      throw new Error(`Tool "${name}" is already registered`);
     }
     this.tools.set(name, tool);
     return this;
   }
 
   /**
-   * Checks whether a callable tool with the given name exists in this registry.
+   * Returns `true` when a registered tool matches `name`.
    */
   has(name: string | undefined): boolean {
     return typeof name === 'string' && this.tools.has(name);
   }
 
   /**
-   * Returns all registered Function Calling declarations in insertion order.
+   * Returns all registered JSON Schema tool declarations in insertion order.
    */
-  getDeclarations(): PersonaFunctionDeclaration[] {
+  getDeclarations(): ToolDeclaration[] {
     return Array.from(this.tools.values(), (entry) => entry.declaration);
   }
 
   /**
-   * Exports Gemini-compatible `tools` array, or `[]` when no tools are registered.
-   */
-  toToolGroups(): PersonaFunctionToolGroup[] {
-    const declarations = this.getDeclarations();
-    if (declarations.length === 0) {
-      return [];
-    }
-    return [{ functionDeclarations: declarations }];
-  }
-
-  /**
-   * Dispatches a registered tool handler by name.
+   * Executes a registered tool by name with model-supplied arguments.
    *
-   * @throws Error if no tool with `name` is registered.
+   * @param name - Registered tool name.
+   * @param args - Parsed arguments from model tool-call output.
+   * @returns JSON-serializable result object returned to the model.
+   * @throws Error if `name` is not registered.
    */
   async execute(
     name: string,
@@ -132,112 +125,100 @@ export class PersonaToolRegistry {
   ): Promise<Record<string, unknown>> {
     const tool = this.tools.get(name);
     if (!tool) {
-      throw new Error(`Unknown persona tool requested: "${name}"`);
+      throw new Error(`Unknown tool requested: "${name}"`);
     }
     return tool.execute(args);
   }
 }
 
 /**
- * Options for running a Tatemae/Honne structured dialogue turn with Function Calling support.
+ * Configuration options for {@link runToolDialogueLoop}.
  */
-export interface RunStructuredDialogueOptions {
-  readonly history: readonly ConversationLogEntry[];
+export interface RunToolDialogueOptions<TOutput> {
+  readonly initialTurns: ReadonlyArray<DialogueTurn>;
   readonly userInput: string;
-  readonly timezone?: string;
   readonly toolRegistry?: PersonaToolRegistry;
   /** Maximum consecutive tool-calling rounds before forcing final text generation. Defaults to `1`. */
   readonly maxToolRounds?: number;
-  readonly generateStep: (
-    contents: DialogueContentMessage[],
-    tools: PersonaFunctionToolGroup[],
-  ) => Promise<DialogueModelStepResult>;
+  readonly generateStep: (context: ToolDialogueStepContext) => Promise<ToolDialogueStepResult>;
+  readonly parseOutput: (rawText: string, afterToolExecution: boolean) => TOutput;
 }
 
 /**
- * Parses and validates `{ thought, reply }` JSON from raw structured model output.
- */
-const parseAndValidatePersonaOutput = (
-  rawText: string | undefined,
-  afterToolExecution: boolean,
-): StructuredPersonaResponse => {
-  const trimmed = rawText?.trim();
-  const suffix = afterToolExecution ? ' after function execution' : '';
-  if (!trimmed) {
-    throw new Error(
-      `Gemini API returned empty structured response${afterToolExecution ? ' after function execution.' : ' or content was filtered.'}`,
-    );
-  }
-  const parsed = parsePersonaResponse(trimmed);
-  if (!parsed.reply || !parsed.reply.trim()) {
-    throw new Error(`Gemini API returned structured response with empty reply${suffix}.`);
-  }
-  return parsed;
-};
-
-/**
- * Orchestrates a complete Tatemae/Honne structured conversation turn:
- * 1. Reconstructs recent history with `【思考・本音】` / `【発話】` framing via `@rebecca/memory`.
- * 2. Invokes the injected model step with optional `PersonaToolRegistry` tool groups.
- * 3. Executes any matching registered tool call (such as `search_web`) and re-prompts for final JSON output.
- * 4. Parses and validates non-empty `reply` before returning `{ thought, reply }`.
+ * Orchestrates a provider-agnostic multi-turn tool-calling loop and final output parsing:
+ * 1. Invokes `generateStep` with active tool declarations from `toolRegistry`.
+ * 2. Executes all valid registered tool calls emitted in the round and records outcomes.
+ * 3. Forces a final generation step without tool declarations once tool calls conclude or `maxToolRounds` is reached.
+ * 4. Delegates raw text validation and parsing to the injected `parseOutput` callback.
  *
- * @param options - Dialogue history, user input, optional tool registry, and model step adapter.
- * @returns Validated structured persona response `{ thought, reply }`.
+ * @param options - Preformatted dialogue turns, user input, optional registry, step adapter, and parser.
+ * @returns Parsed structured output produced by `parseOutput`.
+ * @throws {@link EmptyDialogueResponseError} when the final model text is empty or whitespace.
  */
-export const runStructuredDialogueWithTools = async (
-  options: RunStructuredDialogueOptions,
-): Promise<StructuredPersonaResponse> => {
+export const runToolDialogueLoop = async <TOutput>(
+  options: RunToolDialogueOptions<TOutput>,
+): Promise<TOutput> => {
   const {
-    history,
+    initialTurns,
     userInput,
-    timezone = DEFAULT_APP_TIMEZONE,
     toolRegistry,
     maxToolRounds = 1,
     generateStep,
+    parseOutput,
   } = options;
 
-  const formattedTurns = formatHistoryWithInnerThought(history, timezone);
-  const contents: DialogueContentMessage[] = formattedTurns.map((turn) => ({
-    role: turn.role,
-    parts: [{ text: turn.text }],
-  }));
-  contents.push({ role: 'user', parts: [{ text: userInput }] });
+  const declarations = toolRegistry ? toolRegistry.getDeclarations() : [];
+  const rounds: ToolRoundRecord[] = [];
 
-  const allToolGroups = toolRegistry ? toolRegistry.toToolGroups() : [];
-  let executedToolCall = false;
-
-  if (allToolGroups.length > 0 && maxToolRounds > 0) {
-    for (let round = 0; round < maxToolRounds; round++) {
-      const step = await generateStep(contents, allToolGroups);
-      const functionCall = step.functionCalls?.[0];
-
-      if (!functionCall || !functionCall.name || !toolRegistry?.has(functionCall.name)) {
-        return parseAndValidatePersonaOutput(step.text, executedToolCall);
-      }
-
-      const toolResult = await toolRegistry.execute(functionCall.name, functionCall.args);
-
-      if (step.modelContent) {
-        contents.push(step.modelContent);
-      }
-
-      contents.push({
-        role: 'user',
-        parts: [
-          {
-            functionResponse: {
-              name: functionCall.name,
-              response: toolResult,
-            },
-          },
-        ],
+  if (toolRegistry && declarations.length > 0 && maxToolRounds > 0) {
+    for (let roundIndex = 0; roundIndex < maxToolRounds; roundIndex++) {
+      const step = await generateStep({
+        initialTurns,
+        userInput,
+        rounds: [...rounds],
+        declarations,
       });
 
-      executedToolCall = true;
+      const executableCalls = (step.toolCalls ?? []).filter(
+        (call) => Boolean(call.name) && toolRegistry.has(call.name),
+      );
+
+      if (executableCalls.length === 0) {
+        const trimmed = step.text?.trim();
+        if (!trimmed) {
+          throw new EmptyDialogueResponseError(rounds.length > 0);
+        }
+        return parseOutput(trimmed, rounds.length > 0);
+      }
+
+      const outcomes: ToolCallOutcome[] = [];
+      for (const call of executableCalls) {
+        const result = await toolRegistry.execute(call.name, call.args);
+        outcomes.push({
+          id: call.id,
+          name: call.name,
+          result,
+        });
+      }
+
+      rounds.push({
+        rawAssistantTurn: step.rawAssistantTurn,
+        calls: executableCalls,
+        outcomes,
+      });
     }
   }
 
-  const finalStep = await generateStep(contents, []);
-  return parseAndValidatePersonaOutput(finalStep.text, executedToolCall);
+  const finalStep = await generateStep({
+    initialTurns,
+    userInput,
+    rounds: [...rounds],
+    declarations: [],
+  });
+
+  const finalTrimmed = finalStep.text?.trim();
+  if (!finalTrimmed) {
+    throw new EmptyDialogueResponseError(rounds.length > 0);
+  }
+  return parseOutput(finalTrimmed, rounds.length > 0);
 };
