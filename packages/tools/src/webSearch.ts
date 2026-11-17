@@ -1,12 +1,3 @@
-/**
- * Optional structured logger port compatible with `@rebecca/logger` and application loggers.
- */
-export interface ToolLogger {
-  info?(message: string, meta?: unknown): void;
-  warn?(message: string, meta?: unknown): void;
-  error?(message: string, error?: unknown, meta?: unknown): void;
-}
-
 /** Canonical function name for the shared web lookup tool. */
 export const SEARCH_WEB_TOOL_NAME = 'search_web';
 

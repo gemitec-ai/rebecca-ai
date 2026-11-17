@@ -161,15 +161,25 @@ export interface RunToolDialogueOptions<TOutput> {
   readonly maxToolRounds?: number;
   /** Model step executor callback or {@link ILLMToolDialogueClient} adapter instance. */
   readonly client: ILLMToolDialogueClient | ((context: ToolDialogueStepContext) => Promise<ToolDialogueStepResult>);
-  readonly parseOutput: (rawText: string, afterToolExecution: boolean) => TOutput | Promise<TOutput>;
+  /**
+   * Pure parser transforming final raw model text into `TOutput` (must never perform I/O).
+   */
+  readonly parseOutput: (rawText: string, afterToolExecution: boolean) => TOutput;
+  /**
+   * Optional pure fast-path validator evaluated when a step with active tool declarations
+   * concludes without requesting further tool calls. If it returns `undefined`, the loop formally
+   * transitions to the final constrained step (`declarations: []`) preserving accumulated `rounds`.
+   */
+  readonly tryAcceptStepOutput?: (rawText: string, afterToolExecution: boolean) => TOutput | undefined;
 }
 
 /**
  * Orchestrates a provider-agnostic multi-turn tool-calling loop and final output parsing:
  * 1. Invokes the injected LLM adapter with active JSON Schema tool declarations.
  * 2. Executes all valid registered tool calls emitted in the round and records correlated `id`/outcomes.
- * 3. Forces a final generation step without tool declarations once tool calls conclude or `maxToolRounds` is reached.
- * 4. Delegates raw text validation and parsing to the injected `parseOutput` callback.
+ * 3. Forces a final generation step without tool declarations when tool rounds exhaust or
+ *    when `tryAcceptStepOutput` declines an unvalidated intermediate response.
+ * 4. Delegates final raw text validation and parsing to the pure `parseOutput` callback.
  *
  * @param options - Preformatted neutral turns, user input, optional registry, LLM adapter, and parser.
  * @returns Parsed structured output produced by `parseOutput`.
@@ -185,6 +195,7 @@ export const runToolDialogueLoop = async <TOutput>(
     maxToolRounds = 1,
     client,
     parseOutput,
+    tryAcceptStepOutput,
   } = options;
 
   const generateStep =
@@ -208,10 +219,19 @@ export const runToolDialogueLoop = async <TOutput>(
 
       if (executableCalls.length === 0) {
         const trimmed = step.text?.trim();
+        if (tryAcceptStepOutput) {
+          if (trimmed) {
+            const accepted = tryAcceptStepOutput(trimmed, rounds.length > 0);
+            if (accepted !== undefined) {
+              return accepted;
+            }
+          }
+          break;
+        }
         if (!trimmed) {
           throw new EmptyDialogueResponseError(rounds.length > 0);
         }
-        return await parseOutput(trimmed, rounds.length > 0);
+        return parseOutput(trimmed, rounds.length > 0);
       }
 
       const outcomes: ToolCallOutcome[] = [];
@@ -243,5 +263,5 @@ export const runToolDialogueLoop = async <TOutput>(
   if (!finalTrimmed) {
     throw new EmptyDialogueResponseError(rounds.length > 0);
   }
-  return await parseOutput(finalTrimmed, rounds.length > 0);
+  return parseOutput(finalTrimmed, rounds.length > 0);
 };

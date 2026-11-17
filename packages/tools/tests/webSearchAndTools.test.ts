@@ -230,5 +230,72 @@ describe('@rebecca/tools multi-provider contracts and dialogue orchestration', (
         }),
       ).rejects.toMatchObject({ afterToolExecution: true });
     });
+
+    it('supports pure tryAcceptStepOutput fast path vs formal finalStep synthesis preserving tool rounds', async () => {
+      const registry = new PersonaToolRegistry().register(
+        createSearchWebTool(async (q) => `found:${q}`),
+      );
+
+      const fastClient = jest.fn().mockResolvedValueOnce({
+        text: '{"thought":"t","reply":"direct"}',
+      });
+      const tryAccept = (raw: string) => {
+        try {
+          const obj = JSON.parse(raw) as { thought?: string; reply?: string };
+          return obj.thought && obj.reply ? { thought: obj.thought, reply: obj.reply } : undefined;
+        } catch {
+          return undefined;
+        }
+      };
+
+      const fastRes = await runToolDialogueLoop({
+        initialTurns: [],
+        userInput: 'Hi',
+        toolRegistry: registry,
+        maxToolRounds: 2,
+        client: fastClient,
+        tryAcceptStepOutput: tryAccept,
+        parseOutput: () => ({ thought: 'never', reply: 'never' }),
+      });
+      expect(fastRes).toEqual({ thought: 't', reply: 'direct' });
+      expect(fastClient).toHaveBeenCalledTimes(1);
+
+      const fallbackClient = jest
+        .fn()
+        .mockResolvedValueOnce({
+          opaqueProviderTurn: { role: 'model', parts: [{ functionCall: { name: SEARCH_WEB_TOOL_NAME } }] },
+          toolCalls: [{ id: 'c1', name: SEARCH_WEB_TOOL_NAME, args: { query: 'weather' } }],
+        })
+        .mockResolvedValueOnce({
+          text: 'Plain prose without JSON schema',
+        })
+        .mockResolvedValueOnce({
+          text: '{"thought":"rainy","reply":"Carry an umbrella!"}',
+        });
+
+      const parseOutput = jest.fn((raw: string, afterToolExecution: boolean) => ({
+        ...(JSON.parse(raw) as { thought: string; reply: string }),
+        afterToolExecution,
+      }));
+
+      const synthesizedRes = await runToolDialogueLoop({
+        initialTurns: [],
+        userInput: 'Weather?',
+        toolRegistry: registry,
+        maxToolRounds: 2,
+        client: fallbackClient,
+        tryAcceptStepOutput: tryAccept,
+        parseOutput,
+      });
+
+      expect(synthesizedRes).toEqual({
+        thought: 'rainy',
+        reply: 'Carry an umbrella!',
+        afterToolExecution: true,
+      });
+      expect(fallbackClient).toHaveBeenCalledTimes(3);
+      expect(fallbackClient.mock.calls[2][0].declarations).toEqual([]);
+      expect(fallbackClient.mock.calls[2][0].rounds).toHaveLength(1);
+    });
   });
 });
