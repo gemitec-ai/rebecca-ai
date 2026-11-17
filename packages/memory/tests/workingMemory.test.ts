@@ -114,6 +114,9 @@ describe('workingMemory and Tatemae/Honne reconstruction', () => {
       expect(formatted[1]?.role).toBe('model');
       expect(formatted[1]?.text).toContain('【思考・本音】Actually thrilled they asked.\n【発話】Doing great!');
       expect(formatted[2]).toEqual({ role: 'model', text: 'Still here.' });
+
+      const formattedEn = formatHistoryWithInnerThought(turns, 'UTC', 'en');
+      expect(formattedEn[1]?.text).toContain('[Inner Thought]Actually thrilled they asked.\n[Spoken Reply]Doing great!');
     });
 
     it('omits timestamp prefix cleanly when timestamp is invalid', () => {
