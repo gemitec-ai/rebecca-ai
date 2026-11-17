@@ -161,7 +161,7 @@ export interface RunToolDialogueOptions<TOutput> {
   readonly maxToolRounds?: number;
   /** Model step executor callback or {@link ILLMToolDialogueClient} adapter instance. */
   readonly client: ILLMToolDialogueClient | ((context: ToolDialogueStepContext) => Promise<ToolDialogueStepResult>);
-  readonly parseOutput: (rawText: string, afterToolExecution: boolean) => TOutput;
+  readonly parseOutput: (rawText: string, afterToolExecution: boolean) => TOutput | Promise<TOutput>;
 }
 
 /**
@@ -211,7 +211,7 @@ export const runToolDialogueLoop = async <TOutput>(
         if (!trimmed) {
           throw new EmptyDialogueResponseError(rounds.length > 0);
         }
-        return parseOutput(trimmed, rounds.length > 0);
+        return await parseOutput(trimmed, rounds.length > 0);
       }
 
       const outcomes: ToolCallOutcome[] = [];
@@ -243,5 +243,5 @@ export const runToolDialogueLoop = async <TOutput>(
   if (!finalTrimmed) {
     throw new EmptyDialogueResponseError(rounds.length > 0);
   }
-  return parseOutput(finalTrimmed, rounds.length > 0);
+  return await parseOutput(finalTrimmed, rounds.length > 0);
 };
