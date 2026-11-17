@@ -63,7 +63,7 @@ describe('X Poll & Result Reaction Unit Tests', () => {
       });
 
       expect(deps.gemini.generateStructuredPollPost).toHaveBeenCalledWith(
-        expect.stringContaining(getBotChannelGuidelines('timeline', 'ja')),
+        expect.stringContaining(getBotChannelGuidelines('timeline', deps.persona, 'ja')),
         expect.stringContaining('過去のアンケート質問 (選択肢: 選択肢A / 選択肢B)'),
       );
       expect(deps.gemini.generateStructuredPollPost).toHaveBeenCalledWith(
@@ -212,7 +212,7 @@ describe('X Poll & Result Reaction Unit Tests', () => {
       expect(result.tweetId).toBe('result_tweet_999');
 
       expect(deps.gemini.generateStructuredTimelinePost).toHaveBeenCalledWith(
-        expect.stringContaining(getBotChannelGuidelines('timeline', 'ja')),
+        expect.stringContaining(getBotChannelGuidelines('timeline', deps.persona, 'ja')),
         expect.stringContaining('1. 🎮 ゲーム・アニメ: 15票 (75%)\n2. 🍺 お酒・晩酌: 5票 (25%)'),
       );
       expect(deps.gemini.generateStructuredTimelinePost).toHaveBeenCalledWith(

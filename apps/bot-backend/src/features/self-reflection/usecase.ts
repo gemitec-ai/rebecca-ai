@@ -36,7 +36,8 @@ export class SelfReflectionUseCase {
           saveSummary: (summary) => deps.firestore.saveTimelineSummary(summary),
         },
         synthesizer: {
-          generateSummary: ({ prompt }) => deps.gemini.generateTimelineSummary(prompt),
+          generateSummary: ({ prompt, systemInstruction }) =>
+            deps.gemini.generateTimelineSummary(prompt, systemInstruction),
         },
         personaDisplayName: deps.persona.metadata.displayName,
         activitySectionLabel: '最近のツイート（古い順）',
@@ -54,25 +55,6 @@ export class SelfReflectionUseCase {
    * @throws Error if Gemini API fails or returns invalid/empty content, preventing data corruption.
    */
   async execute(): Promise<SelfReflectionResult> {
-    try {
-      const result = await this.engine.execute();
-      if (result.status === 'skipped' && result.reason === 'no_recent_activities') {
-        return {
-          ...result,
-          reason: 'no_recent_timeline_posts',
-        };
-      }
-      return result;
-    } catch (error: unknown) {
-      if (
-        error instanceof Error &&
-        error.message === '[SelfReflectionUseCase] Generated summary was empty.'
-      ) {
-        throw new Error('[SelfReflectionUseCase] Generated timeline summary was empty.', {
-          cause: error,
-        });
-      }
-      throw error;
-    }
+    return this.engine.execute();
   }
 }

@@ -45,12 +45,7 @@ export class GlobalEvolutionUseCase {
             deps.gemini.auditEvolutionPrompt(candidatePrompt, auditInstruction),
         },
         persona: deps.persona.metadata,
-        logger: {
-          info: (msg, meta) => logger.info(msg, meta),
-          warn: (msg, meta) => logger.warn(msg, meta),
-          error: (_msg, err) =>
-            logger.error('[GlobalEvolutionUseCase] Error in runGlobalEvolutionBatch', err),
-        },
+        logger,
         logTag: '[GlobalEvolutionUseCase]',
       },
       config,

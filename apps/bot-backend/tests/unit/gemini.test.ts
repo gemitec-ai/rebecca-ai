@@ -606,6 +606,17 @@ describe('GeminiService Unit Tests', () => {
                 Object.assign(new Error('Resource exhausted'), { status: 429 }),
             );
             await expect(gemini.generateTimelineSummary(['post'])).rejects.toBeInstanceOf(UpstreamApiError);
+
+            mockGenerateContent.mockResolvedValueOnce({ text: '{}' });
+            expect(await gemini.auditEvolutionPrompt('cand', 'audit')).toEqual({
+                pass: false,
+                reason: 'Invalid audit JSON response',
+            });
+
+            mockGenerateContent.mockResolvedValueOnce({
+                text: JSON.stringify({ relevant: 'false', reason: 'Stringified' }),
+            });
+            expect(await gemini.verifyImageRelevance('caption', 'post')).toBe(false);
         });
     });
 

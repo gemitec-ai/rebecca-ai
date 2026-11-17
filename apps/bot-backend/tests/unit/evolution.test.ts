@@ -66,7 +66,7 @@ describe('evolution.ts', () => {
             
             await expect(new GlobalEvolutionUseCase(deps, { lookbackDays: 7 }).execute()).rejects.toThrow('DB Error');
             
-            expect(loggerSpy).toHaveBeenCalledWith('[GlobalEvolutionUseCase] Error in runGlobalEvolutionBatch', expect.any(Error));
+            expect(loggerSpy).toHaveBeenCalledWith(expect.stringContaining('[GlobalEvolutionUseCase]'), expect.any(Error));
             loggerSpy.mockRestore();
         });
     });

@@ -4,13 +4,12 @@
  * and performing various semantic NLP tasks using Google's generative AI models.
  */
 
-import { GoogleGenAI, Content, Schema, ThinkingLevel, Tool, Type } from '@google/genai';
+import { GoogleGenAI, ThinkingLevel } from '@google/genai';
 import {
   DEFAULT_SELF_REFLECTION_SYSTEM_INSTRUCTION,
   formatHistoryWithInnerThought,
 } from '@rebecca/memory';
 import {
-  createStructuredPersonaSchema,
   parsePersonaJsonObject,
   parsePersonaResponse,
   type StructuredPersonaObjectSchema,
@@ -22,11 +21,8 @@ import {
   type DialogueTurn,
   EmptyDialogueResponseError,
   type ILLMToolDialogueClient,
-  type JsonSchemaPrimitiveType,
   PersonaToolRegistry,
   runToolDialogueLoop,
-  type ToolDeclaration,
-  type ToolDialogueStepContext,
 } from '@rebecca/tools';
 import { ConversationLogEntry, UserCoreProfile, IGeminiService } from '../types';
 import { StructuredNewsPostResponse } from '../features/news/types';
@@ -34,125 +30,16 @@ import { StructuredPollPostResponse } from '../features/poll/types';
 import { StructuredSupportPostResponse } from '../features/support/types';
 import { logger } from '../utils/logger';
 import { rethrowUpstreamApiError } from '../utils/httpError';
-
-const JSON_SCHEMA_TO_GEMINI_TYPE: Readonly<Record<JsonSchemaPrimitiveType, Type>> = {
-  string: Type.STRING,
-  number: Type.NUMBER,
-  integer: Type.INTEGER,
-  boolean: Type.BOOLEAN,
-  array: Type.ARRAY,
-  object: Type.OBJECT,
-};
-
-const toGeminiTools = (declarations: ReadonlyArray<ToolDeclaration>): Tool[] => {
-  if (declarations.length === 0) {
-    return [];
-  }
-
-  return [
-    {
-      functionDeclarations: declarations.map((decl) => {
-        const properties: Record<string, Schema> = {};
-        for (const [key, prop] of Object.entries(decl.parameters.properties)) {
-          properties[key] = {
-            type: JSON_SCHEMA_TO_GEMINI_TYPE[prop.type],
-            description: prop.description,
-            ...(prop.enum ? { enum: [...prop.enum] } : {}),
-          };
-        }
-        return {
-          name: decl.name,
-          description: decl.description,
-          parameters: {
-            type: Type.OBJECT,
-            properties,
-            required: [...decl.parameters.required],
-          },
-        };
-      }),
-    },
-  ];
-};
-
-const isGeminiContent = (value: unknown): value is Content => {
-  return typeof value === 'object' && value !== null && 'parts' in value;
-};
-
-const toGeminiContents = (ctx: ToolDialogueStepContext): Content[] => {
-  const contents: Content[] = ctx.initialTurns.map((turn) => ({
-    role: turn.role === 'assistant' ? 'model' : 'user',
-    parts: [{ text: turn.text }],
-  }));
-  contents.push({ role: 'user', parts: [{ text: ctx.userInput }] });
-
-  for (const round of ctx.rounds) {
-    if (isGeminiContent(round.opaqueProviderTurn)) {
-      contents.push(round.opaqueProviderTurn);
-    }
-    contents.push({
-      role: 'user',
-      parts: round.outcomes.map((outcome) => ({
-        functionResponse: {
-          name: outcome.name,
-          response: outcome.result,
-        },
-      })),
-    });
-  }
-
-  return contents;
-};
-
-/**
- * Creates the JSON schema for structured news post generation with enum-constrained candidate title selection.
- */
-const createStructuredNewsPostSchema = (candidateHeadlines: string[]) =>
-  createStructuredPersonaSchema({
-    thoughtDescription:
-      'Inner thoughts, true feelings, and emotional shifts based on the persona (within 150 characters).',
-    replyDescription: 'The public tweet text (within 100 characters).',
-    additionalProperties: {
-      selectedTitle: {
-        type: 'string',
-        enum: candidateHeadlines,
-        description: 'The exact headline title chosen from the candidate list.',
-      },
-    },
-    additionalRequired: ['selectedTitle'],
-  });
-
-/**
- * JSON schema for structured poll post generation (thought, reply, and 3-4 poll options).
- */
-const STRUCTURED_POLL_POST_SCHEMA = createStructuredPersonaSchema({
-  thoughtDescription:
-    'Inner thoughts, true feelings, and why this poll topic was chosen (within 150 characters).',
-  replyDescription:
-    'The public poll tweet text inviting followers to vote and reply (within 100 characters).',
-  additionalProperties: {
-    options: {
-      type: 'array',
-      items: {
-        type: 'string',
-      },
-      minItems: 3,
-      maxItems: 4,
-      description: '3 to 4 poll choices, each strictly within 25 characters.',
-    },
-  },
-  additionalRequired: ['options'],
-});
-
-/**
- * JSON schema for structured support appreciation post generation.
- */
-const STRUCTURED_SUPPORT_POST_SCHEMA = createStructuredPersonaSchema({
-  replyFieldName: 'replyBody',
-  thoughtDescription:
-    'キャラクターの内心の思考。差し入れをもらって照れたり喜んだりしながら、今の自分の作業や近況と結びつけて感謝する心の声。',
-  replyDescription:
-    'サポーターの名前を直接呼びながら、アイテムへの感謝と温かい激励をゼロから語るオリジナル本文（最大90文字以内）。定型文は厳禁。',
-});
+import {
+  mapGeminiDialogueStepResult,
+  toGeminiContents,
+  toGeminiTools,
+} from './geminiDialogueAdapter';
+import {
+  createStructuredNewsPostSchema,
+  STRUCTURED_POLL_POST_SCHEMA,
+  STRUCTURED_SUPPORT_POST_SCHEMA,
+} from './geminiSchemas';
 
 /**
  * Configuration options required by GeminiService.
@@ -276,8 +163,14 @@ export class GeminiService implements IGeminiService {
           responseMimeType: 'application/json',
         },
       });
-      const parsed = parsePersonaJsonObject(response.text || '{}');
-      return (parsed as { pass: boolean; reason?: string } | null) ?? { pass: false, reason: 'Audit API Error' };
+      const parsed = response.text ? parsePersonaJsonObject(response.text) : null;
+      if (!parsed || typeof parsed['pass'] !== 'boolean') {
+        return { pass: false, reason: 'Invalid audit JSON response' };
+      }
+      return {
+        pass: parsed['pass'],
+        ...(typeof parsed['reason'] === 'string' ? { reason: parsed['reason'] } : {}),
+      };
     } catch (e) {
       logger.error('Error in Evolution audit', e);
       return { pass: false, reason: 'Audit API Error' };
@@ -535,7 +428,10 @@ export class GeminiService implements IGeminiService {
    * @returns A promise resolving to the updated timeline summary string.
    * @throws Error if client is uninitialized, prompt is invalid, or generation fails.
    */
-  async generateTimelineSummary(prompt: string | string[]): Promise<string> {
+  async generateTimelineSummary(
+    prompt: string | string[],
+    systemInstruction: string = DEFAULT_SELF_REFLECTION_SYSTEM_INSTRUCTION,
+  ): Promise<string> {
     if (!this.ai) {
       throw new Error('Gemini API client not initialized');
     }
@@ -549,7 +445,7 @@ export class GeminiService implements IGeminiService {
         model: this.config.model,
         contents: contentStr,
         config: {
-          systemInstruction: DEFAULT_SELF_REFLECTION_SYSTEM_INSTRUCTION,
+          systemInstruction,
           maxOutputTokens: 400,
         },
       });
@@ -738,8 +634,8 @@ ${imageCaption}
         },
       });
 
-      const parsed = parsePersonaJsonObject(response.text || '{}');
-      return Boolean(parsed?.['relevant']);
+      const parsed = response.text ? parsePersonaJsonObject(response.text) : null;
+      return parsed?.['relevant'] === true;
     } catch (e) {
       return rethrowUpstreamApiError(e, 'Error verifying image relevance');
     }
@@ -835,21 +731,7 @@ ${imageCaption}
           config: genAiTools.length > 0 ? { ...baseConfig, tools: genAiTools } : baseConfig,
         });
 
-        const rawModelContent = response.candidates?.[0]?.content;
-        const mappedCalls = (response.functionCalls ?? [])
-          .filter((call): call is { name: string; args?: Record<string, unknown> } =>
-            typeof call.name === 'string' && call.name.length > 0,
-          )
-          .map((call) => ({
-            name: call.name,
-            args: call.args,
-          }));
-
-        return {
-          text: mappedCalls.length === 0 ? response.text : undefined,
-          toolCalls: mappedCalls,
-          opaqueProviderTurn: rawModelContent,
-        };
+        return mapGeminiDialogueStepResult(response);
       },
     };
 

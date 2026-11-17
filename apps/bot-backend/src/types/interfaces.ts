@@ -144,7 +144,7 @@ export interface IGeminiService {
   generateStructuredNewsPost(systemInstruction: string, prompt: string, candidateHeadlines: string[]): Promise<StructuredNewsPostResponse>;
   generateStructuredPollPost(systemInstruction: string, prompt: string): Promise<StructuredPollPostResponse>;
   generateStructuredTimelinePost(systemInstruction: string, prompt: string): Promise<StructuredPersonaResponse>;
-  generateTimelineSummary(prompt: string): Promise<string>;
+  generateTimelineSummary(prompt: string, systemInstruction?: string): Promise<string>;
   detectLanguage(prompt: string): Promise<'ja' | 'en'>;
   generateEmbedding(text: string): Promise<number[]>;
   generateSearchQuery(prompt: string): Promise<string>;

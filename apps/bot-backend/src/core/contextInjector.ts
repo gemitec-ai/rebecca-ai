@@ -114,7 +114,7 @@ const buildSystemPrompt = async (
 
   return composeSystemPrompt({
     persona,
-    channelInstruction: getBotChannelGuidelines(promptContext, lang),
+    channelInstruction: getBotChannelGuidelines(promptContext, persona, lang),
     lang,
     anchoring: {
       embedder: gemini,

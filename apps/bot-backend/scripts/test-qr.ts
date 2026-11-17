@@ -9,7 +9,7 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 const run = async () => {
-    console.log('Testing Quote Repost on master (akina-se)...');
+    console.log('Testing Quote Repost on first followed account...');
     const xApi = new XApiService(config.xApi);
     const gemini = new GeminiService(config.gemini);
     try {
@@ -33,12 +33,13 @@ const run = async () => {
         }
         const targetUser = followingRes.data[0];
         const userId = targetUser.id;
-        console.log(`Resolved target user from following: @${targetUser.username} (${userId})`);
+        const targetHandle = targetUser.username;
+        console.log(`Resolved target user from following: @${targetHandle} (${userId})`);
         
         // 2. Fetch latest tweet
         const recentTweets = await xApi.getUserTweets(userId, 5);
         if (!recentTweets.data || recentTweets.data.length === 0) {
-            console.log("No recent tweets found for akina_se.");
+            console.log(`No recent tweets found for @${targetHandle}.`);
             return;
         }
         
@@ -70,7 +71,7 @@ const run = async () => {
             gemini,
             anchoringContext: [tweetContext],
         });
-        const userInput = `【ターゲットユーザー情報】\nユーザー名: @akina_se\n${tweetContext}\n\n上記を踏まえて、ターゲットユーザーの最新の投稿に対して不意打ちで引用リポスト（話しかけ）を行ってください。`;
+        const userInput = `【ターゲットユーザー情報】\nユーザー名: @${targetHandle}\n${tweetContext}\n\n上記を踏まえて、ターゲットユーザーの最新の投稿に対して不意打ちで引用リポスト（話しかけ）を行ってください。`;
         
         const structured = await gemini.generateStructuredReply(systemPrompt, [], userInput);
         const generatedText = structured.reply;
@@ -79,8 +80,8 @@ const run = async () => {
         }
         
         let finalText = generatedText;
-        if (!finalText.includes(`@akina_se`)) {
-            finalText = `@akina_se\n${finalText}`;
+        if (!finalText.includes(`@${targetHandle}`)) {
+            finalText = `@${targetHandle}\n${finalText}`;
         }
         
         console.log(`Generated Quote Repost Text:\n${finalText}`);
@@ -90,8 +91,9 @@ const run = async () => {
         
     } catch (e: unknown) {
         console.error("Test failed:", e);
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        console.error("API Error Data:", JSON.stringify((e as any).data, null, 2));
+        if (typeof e === 'object' && e !== null && 'data' in e) {
+            console.error("API Error Data:", JSON.stringify((e as { data: unknown }).data, null, 2));
+        }
     }
 };
 

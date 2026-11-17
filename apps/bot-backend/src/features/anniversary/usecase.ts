@@ -80,9 +80,6 @@ ${extendedPrompt ? `\n【拡張ペルソナ・近況】\n${extendedPrompt}\n` : 
 - 読み手が自分の予定や体験を一言リプライしたくなるような、具体的で答えやすい問いかけを末尾に必ず含めること。
 - 特定の個人への返信ではなく、タイムライン全体のフォロワーに向けたオープンな語りかけとすること。
 - 「今日は◯◯の日なんだって！」「◯◯の日だし〜」のように、選んだ記念日名を自然に会話に盛り込んでください。
-- thought（内省思考）は150文字以内の自然な独白とすること。
-- reply（ツイート本文）は【絶対に100文字以内の短文】にすること。
-- 出力に「(90文字)」などの文字数カウント表記や解説、引用符は絶対に含めないでください。
 ${defaultHashtag ? `- ハッシュタグ（${defaultHashtag} 等）はシステムが自動付与するため、本文中には絶対に含めないでください。` : ''}`;
 
       const structuredPost = await this.deps.gemini.generateStructuredTimelinePost(systemInstruction, anniversaryPrompt);

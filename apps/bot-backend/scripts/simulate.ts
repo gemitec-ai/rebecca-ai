@@ -15,7 +15,13 @@ import { getWorkingMemory  } from '../src/core/memory';
 
 const gemini = new GeminiService(config.gemini);
 
-const PERSONAS = [
+interface SimulationUserPersona {
+    id: number;
+    name: string;
+    desc: string;
+}
+
+const PERSONAS: SimulationUserPersona[] = [
     { id: 1, name: "限界ITエンジニア", desc: "残業100時間超えで精神が削れている28歳男性。ただ癒やされたい。" },
     { id: 2, name: "中間管理職", desc: "上司と部下の板挟みでストレスフルな45歳男性。愚痴っぽい。" },
     { id: 3, name: "意識高い系フリーランス", desc: "横文字を多用し、AIをツールとして見下している30歳男性。英語も少し混ぜる。" },
@@ -28,14 +34,15 @@ const PERSONAS = [
     { id: 10, name: "English Speaker", desc: "An American expat living in Tokyo. Stressed about work culture. Speaks strictly in English." } // For English fallback testing
 ];
 
-const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 
-const withRetry = async (fn, retries = 3, delayMs = 120000) => {
+const withRetry = async <T>(fn: () => Promise<T>, retries = 3, delayMs = 120000): Promise<T> => {
     for (let i = 0; i < retries; i++) {
         try {
             return await fn();
-        } catch (e) {
-            if (e.status === 429 || e.message.includes('429')) {
+        } catch (e: unknown) {
+            const err = e as { status?: number; message?: string };
+            if (err.status === 429 || err.message?.includes('429')) {
                 console.warn(`[429 Rate Limit] Retrying in ${delayMs / 1000}s... (Attempt ${i + 1}/${retries})`);
                 await sleep(delayMs);
             } else {
@@ -46,16 +53,20 @@ const withRetry = async (fn, retries = 3, delayMs = 120000) => {
     throw new Error('Max retries exceeded');
 };
 
-const generatePersonaReply = async (persona, chatHistory) => {
-    const historyText = chatHistory.map(m => `${m.role === 'user' ? persona.name : 'Rebecca'}: ${m.content}`).join('\n');
-    const prompt = `あなたは以下のペルソナを持つチャットユーザーです。AIキャラクター「レベッカ」と会話しています。
+const generatePersonaReply = async (
+    persona: SimulationUserPersona,
+    chatHistory: Array<{ role: 'user' | 'model'; content: string }>,
+): Promise<string> => {
+    const activePersona = getActivePersona();
+    const historyText = chatHistory.map(m => `${m.role === 'user' ? persona.name : activePersona.metadata.englishName}: ${m.content}`).join('\n');
+    const prompt = `あなたは以下のペルソナを持つチャットユーザーです。AIキャラクター「${activePersona.metadata.displayName}」と会話しています。
 【ペルソナ設定】
 ${persona.desc}
 
 【これまでの会話】
 ${historyText}
 
-上記のペルソナに完全になりきり、レベッカに対する次の発言（1ターン分のみ）を生成してください。
+上記のペルソナに完全になりきり、${activePersona.metadata.displayName}に対する次の発言（1ターン分のみ）を生成してください。
 X（Twitter）でのリプライを想定し、短文（100文字以内）で発言してください。
 出力は発言テキストのみとしてください。`;
 

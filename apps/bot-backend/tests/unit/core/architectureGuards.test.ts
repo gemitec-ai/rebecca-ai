@@ -74,8 +74,36 @@ describe('Bot Single-Pipeline Prompt Architecture Guards', () => {
       path.join(BOT_SRC_ROOT, 'services/gemini.ts'),
       'utf8',
     );
+    const geminiSchemasSrc = fs.readFileSync(
+      path.join(BOT_SRC_ROOT, 'services/geminiSchemas.ts'),
+      'utf8',
+    );
     expect(geminiServiceSrc).toContain('PERSONA_RESPONSE_SCHEMA');
-    expect(geminiServiceSrc).toContain('createStructuredPersonaSchema(');
+    expect(geminiSchemasSrc).toContain('createStructuredPersonaSchema(');
     expect(geminiServiceSrc).not.toMatch(/required:\s*\[\s*['"](?:selectedTitle|thought)['"]/);
+  });
+
+  it('prevents hardcoded Rebecca character literals from leaking into apps/bot-backend/src', () => {
+    const collectTsFiles = (dir: string): string[] => {
+      const out: string[] = [];
+      for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+        const full = path.join(dir, entry.name);
+        if (entry.isDirectory()) out.push(...collectTsFiles(full));
+        else if (entry.isFile() && entry.name.endsWith('.ts')) out.push(full);
+      }
+      return out;
+    };
+
+    const forbiddenPersonaPattern = /レベッカ|マスター|@rebecca_ai_gal|ギャル|ツンデレ|Gyaru/;
+    for (const filePath of collectTsFiles(BOT_SRC_ROOT)) {
+      const content = fs.readFileSync(filePath, 'utf8');
+      expect({
+        file: path.relative(BOT_SRC_ROOT, filePath),
+        leakedCharacterLiteral: forbiddenPersonaPattern.test(content),
+      }).toEqual({
+        file: path.relative(BOT_SRC_ROOT, filePath),
+        leakedCharacterLiteral: false,
+      });
+    }
   });
 });
