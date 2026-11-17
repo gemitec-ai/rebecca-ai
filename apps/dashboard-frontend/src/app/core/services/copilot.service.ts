@@ -124,12 +124,14 @@ export class CopilotService {
     }));
 
     const lang = (this.settingsService.selectedLang() === 'en' ? 'en' : 'ja') as 'ja' | 'en';
+    const timezone = this.settingsService.selectedTz();
 
     this.copilotRepo.chat({
       message: trimmed,
       currentContext: this.contextService.fullContextDescription(),
       history: historyPayload,
-      language: lang
+      language: lang,
+      timezone
     }).subscribe({
       next: (res) => {
         const modelMsg: CopilotChatMessage = {

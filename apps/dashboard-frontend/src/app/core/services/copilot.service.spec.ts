@@ -26,12 +26,14 @@ describe('CopilotService', () => {
   let toastServiceSpy: jasmine.SpyObj<ToastService>;
   let routerSpy: jasmine.SpyObj<Router>;
   let currentLangSignal = signal<'ja' | 'en'>('ja');
+  let currentTzSignal = signal<string>('Asia/Tokyo');
   let contextService: CopilotContextService;
 
   beforeEach(() => {
     sessionStorage.clear();
     localStorage.clear();
     currentLangSignal = signal<'ja' | 'en'>('ja');
+    currentTzSignal = signal<string>('Asia/Tokyo');
 
     copilotRepoSpy = jasmine.createSpyObj('CopilotRepository', ['chat']);
     usersRepoSpy = jasmine.createSpyObj('UsersRepository', ['bulkUpdateStatus']);
@@ -49,7 +51,9 @@ describe('CopilotService', () => {
 
     const mockSettingsService = {
       selectedLang: currentLangSignal,
-      setLanguage: (lang: 'ja' | 'en') => currentLangSignal.set(lang)
+      selectedTz: currentTzSignal,
+      setLanguage: (lang: 'ja' | 'en') => currentLangSignal.set(lang),
+      setTimezone: (tz: string) => currentTzSignal.set(tz)
     };
 
     TestBed.configureTestingModule({
@@ -97,7 +101,13 @@ describe('CopilotService', () => {
 
     service.sendMessage('Summarize KPI');
 
-    expect(copilotRepoSpy.chat).toHaveBeenCalled();
+    expect(copilotRepoSpy.chat).toHaveBeenCalledWith(
+      jasmine.objectContaining({
+        message: 'Summarize KPI',
+        language: 'ja',
+        timezone: 'Asia/Tokyo'
+      })
+    );
     const msgs = service.messages();
     expect(msgs.length).toBe(3);
     expect(msgs[1].role).toBe('user');
@@ -107,10 +117,17 @@ describe('CopilotService', () => {
     expect(msgs[2].suggestionChips).toEqual(['Explain more', 'Export data']);
     expect(service.isLoading()).toBeFalse();
 
-    // In English
+    // In English and a non-JST frontend timezone
     currentLangSignal.set('en');
+    currentTzSignal.set('America/New_York');
     service.sendMessage('Explain DAU');
-    expect(copilotRepoSpy.chat).toHaveBeenCalled();
+    expect(copilotRepoSpy.chat).toHaveBeenCalledWith(
+      jasmine.objectContaining({
+        message: 'Explain DAU',
+        language: 'en',
+        timezone: 'America/New_York'
+      })
+    );
   });
 
   it('should handle network/API errors gracefully during chat in JA and EN', () => {
