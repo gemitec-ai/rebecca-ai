@@ -1,5 +1,6 @@
 import type { ToolDeclaration } from '@rebecca/tools';
 import { CopilotAction, CopilotActionType, UserDetail } from '@rebecca/types';
+import { logger } from '../../../utils/logger';
 import { CopilotTool, CopilotToolContext, CopilotToolExecutionResult } from '../types';
 
 const VALID_ACTIONS = new Set<CopilotActionType>([
@@ -72,7 +73,11 @@ export class ProposeDestructiveActionTool implements CopilotTool {
           if (typeof context.usersRepo.getById === 'function') {
             try {
               directUser = await context.usersRepo.getById(resolvedId);
-            } catch {
+            } catch (err) {
+              logger.warn('Direct user lookup failed in actionTool, falling back to search', {
+                resolvedId,
+                error: err instanceof Error ? err.message : String(err),
+              });
               directUser = null;
             }
           }

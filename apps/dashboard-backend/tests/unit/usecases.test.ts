@@ -800,7 +800,7 @@ describe('Dashboard Backend UseCases Unit Tests', () => {
         language: 'en'
       });
 
-      expect(res.reply).toContain('A temporary communication error occurred with the Rebecca AI thinking engine');
+      expect(res.reply).toContain('A communication error occurred and no response could be received from the AI model');
       expect(res.actionRequired).toBeNull();
       expect(res.suggestionChips).toEqual(['Retry', 'Refresh page']);
     });
@@ -814,7 +814,7 @@ describe('Dashboard Backend UseCases Unit Tests', () => {
         language: 'ja'
       });
 
-      expect(res.reply).toContain('レベッカAIの思考エンジンとの通信中に一時的なエラーが発生したみたい');
+      expect(res.reply).toContain('通信エラーが発生しました。現在AIモデルから応答がありません');
       expect(res.actionRequired).toBeNull();
       expect(res.suggestionChips).toEqual(['もう一度試す', 'ページを再読み込み']);
     });
@@ -828,7 +828,7 @@ describe('Dashboard Backend UseCases Unit Tests', () => {
         currentContext: 'Assets Library',
         language: 'ja'
       });
-      expect(res.reply).toContain('レベッカAIの接続キーが設定されていません');
+      expect(res.reply).toContain('AIモデルの接続キーが設定されていません');
       expect(res.actionRequired).toBeNull();
     });
   });

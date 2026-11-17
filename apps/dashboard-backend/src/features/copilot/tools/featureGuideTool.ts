@@ -49,7 +49,7 @@ export class GetFeatureGuideTool implements CopilotTool {
 
   async execute(params: Record<string, unknown>, context: CopilotToolContext): Promise<CopilotToolExecutionResult> {
     const rawTopic = typeof params.topic === 'string' ? params.topic.toLowerCase() : '';
-    const topic: FeatureTopic = (rawTopic in GUIDES_JA) ? (rawTopic as FeatureTopic) : 'dreaming';
+    const topic: FeatureTopic = Object.hasOwn(GUIDES_JA, rawTopic) ? (rawTopic as FeatureTopic) : 'dreaming';
     const guideMap = context.isEn ? GUIDES_EN : GUIDES_JA;
     const content = guideMap[topic] ?? (context.isEn ? 'Feature documentation not found.' : '指定された機能のガイドが見つかりませんでした。');
 

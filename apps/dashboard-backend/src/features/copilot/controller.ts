@@ -23,7 +23,7 @@ export class CopilotController {
    */
   async chat(req: Request, res: Response): Promise<void> {
     const { message, currentContext, history, language, timezone } = req.body;
-    if (!message || typeof message !== 'string') {
+    if (typeof message !== 'string' || message.trim().length === 0) {
       res.status(400).json({ error: 'Message is required' });
       return;
     }

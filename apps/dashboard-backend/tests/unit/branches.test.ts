@@ -736,7 +736,7 @@ describe('Dashboard Backend Exhaustive Branch Coverage Tests', () => {
         message: 'Can you help?',
         language: 'en'
       });
-      expect(res.reply).toContain('A temporary communication error occurred with the Rebecca AI thinking engine');
+      expect(res.reply).toContain('A communication error occurred and no response could be received from the AI model');
       expect(res.actionRequired).toBeNull();
       expect(res.suggestionChips).toEqual(['Retry', 'Refresh page']);
     });
@@ -747,7 +747,7 @@ describe('Dashboard Backend Exhaustive Branch Coverage Tests', () => {
         message: '手伝って',
         language: 'ja'
       });
-      expect(res.reply).toContain('レベッカAIの思考エンジンとの通信中に一時的なエラーが発生したみたい');
+      expect(res.reply).toContain('通信エラーが発生しました。現在AIモデルから応答がありません');
       expect(res.actionRequired).toBeNull();
       expect(res.suggestionChips).toEqual(['もう一度試す', 'ページを再読み込み']);
     });
@@ -760,7 +760,7 @@ describe('Dashboard Backend Exhaustive Branch Coverage Tests', () => {
         currentContext: 'Assets Library',
         language: 'ja'
       });
-      expect(resAssetJa.reply).toContain('レベッカAIの接続キーが設定されていません。');
+      expect(resAssetJa.reply).toContain('AIモデルの接続キーが設定されていません');
       expect(resAssetJa.actionRequired).toBeNull();
 
       const resEn = await copilot.processChat({
@@ -768,7 +768,7 @@ describe('Dashboard Backend Exhaustive Branch Coverage Tests', () => {
         currentContext: 'Assets Library',
         language: 'en'
       });
-      expect(resEn.reply).toContain('Rebecca AI connection key is not configured.');
+      expect(resEn.reply).toContain('AI model connection key is not configured.');
       expect(resEn.actionRequired).toBeNull();
     });
   });
@@ -1226,7 +1226,7 @@ describe('Dashboard Backend Exhaustive Branch Coverage Tests', () => {
         currentContext: 'Assets Library',
         language: 'en'
       });
-      expect(resEnAssets.reply).toContain('Rebecca AI connection key is not configured.');
+      expect(resEnAssets.reply).toContain('AI model connection key is not configured.');
       expect(resEnAssets.actionRequired).toBeNull();
 
       const resJaAssets = await copilot.processChat({
@@ -1235,7 +1235,7 @@ describe('Dashboard Backend Exhaustive Branch Coverage Tests', () => {
         currentContext: 'Assets',
         language: 'ja'
       });
-      expect(resJaAssets.reply).toContain('レベッカAIの接続キーが設定されていません。');
+      expect(resJaAssets.reply).toContain('AIモデルの接続キーが設定されていません');
       expect(resJaAssets.actionRequired).toBeNull();
     });
 

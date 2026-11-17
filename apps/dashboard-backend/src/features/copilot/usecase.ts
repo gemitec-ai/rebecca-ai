@@ -146,8 +146,6 @@ export class CopilotUseCase {
     }
 
     const activePersona = getActivePersona(config.persona.activeId);
-    const jaBrandLabel = `${activePersona.metadata.displayName}AI`;
-    const enBrandLabel = activePersona.metadata.brandName;
     const targetTimezone = resolveTargetTimezone(request.timezone);
     const currentContext = request.currentContext ?? 'Global Dashboard';
     const rawHistory = request.history ?? [];
@@ -157,8 +155,8 @@ export class CopilotUseCase {
     if (!this.ai) {
       return {
         reply: isEn
-          ? `${enBrandLabel} connection key is not configured.`
-          : `${jaBrandLabel}の接続キーが設定されていません。`,
+          ? 'AI model connection key is not configured. Please check system settings.'
+          : 'AIモデルの接続キーが設定されていません。システム設定を確認してください。',
         actionRequired: null,
         suggestionChips: isEn ? ['Retry'] : ['もう一度試す'],
       };
@@ -178,15 +176,10 @@ export class CopilotUseCase {
     };
 
     try {
-      const anchoringContext = isEn
-        ? [
-            currentContext ? `[Active UI View]\n${currentContext}` : '',
-            `[Operator Message]\n${userMessage}`,
-          ]
-        : [
-            currentContext ? `【表示画面コンテキスト】\n${currentContext}` : '',
-            `【管理者からのメッセージ】\n${userMessage}`,
-          ];
+      const anchoringContext = [
+        currentContext ? `[Active UI View] ${currentContext}` : '',
+        userMessage,
+      ];
 
       const { systemInstruction } = await composeSystemPrompt({
         persona: activePersona,
@@ -265,8 +258,8 @@ export class CopilotUseCase {
 
       return {
         reply: isEn
-          ? `A temporary communication error occurred with the ${enBrandLabel} thinking engine. Please wait a moment and try talking to me again!♡`
-          : `${jaBrandLabel}の思考エンジンとの通信中に一時的なエラーが発生したみたい。少し時間を置いてからもう一度話しかけてね♡`,
+          ? 'A communication error occurred and no response could be received from the AI model. Please wait a moment and try again.'
+          : '通信エラーが発生しました。現在AIモデルから応答がありません。しばらく時間を置いてから再度お試しください。',
         actionRequired: null,
         suggestionChips: isEn ? ['Retry', 'Refresh page'] : ['もう一度試す', 'ページを再読み込み'],
       };

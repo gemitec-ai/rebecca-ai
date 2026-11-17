@@ -743,6 +743,52 @@ describe('Copilot Autonomous Agent Suite (Redesign v3)', () => {
       expect(reorderedTruncated.reply).toBe('');
       expect(reorderedTruncated.reply).not.toContain('ORDER_SECRET_HONNE');
     });
+
+    it('should validate actionRequired schema strictly and drop malformed LLM action objects', () => {
+      const validRaw = JSON.stringify({
+        thought: 'Ready to propose.',
+        reply: 'Action ready.',
+        suggestionChips: ['Confirm'],
+        actionRequired: {
+          type: 'DELETE_POST',
+          title: 'Delete Post',
+          description: 'Delete flagged post',
+          impactLevel: 'danger',
+          requiresConfirmation: true,
+          payload: { postId: 'p1' },
+        },
+      });
+      const validRes = extractStructuredCopilotResponse(validRaw);
+      expect(validRes.actionRequired).toEqual({
+        type: 'DELETE_POST',
+        title: 'Delete Post',
+        description: 'Delete flagged post',
+        impactLevel: 'danger',
+        requiresConfirmation: true,
+        payload: { postId: 'p1' },
+      });
+
+      const malformedCases = [
+        { type: 'UNKNOWN_OP', title: 'X', description: 'Y', impactLevel: 'info', requiresConfirmation: true, payload: {} },
+        { type: 'DELETE_POST', title: '   ', description: 'Y', impactLevel: 'info', requiresConfirmation: true, payload: {} },
+        { type: 'DELETE_POST', title: 'X', description: '', impactLevel: 'info', requiresConfirmation: true, payload: {} },
+        { type: 'DELETE_POST', title: 'X', description: 'Y', impactLevel: 'critical', requiresConfirmation: true, payload: {} },
+        { type: 'DELETE_POST', title: 'X', description: 'Y', impactLevel: 'info', requiresConfirmation: 'yes', payload: {} },
+        { type: 'DELETE_POST', title: 'X', description: 'Y', impactLevel: 'info', requiresConfirmation: true, payload: [] },
+        ['not', 'an', 'object'],
+      ];
+      for (const badAction of malformedCases) {
+        const res = extractStructuredCopilotResponse(
+          JSON.stringify({
+            thought: 'Checked.',
+            reply: 'Safe reply.',
+            suggestionChips: ['OK'],
+            actionRequired: badAction,
+          }),
+        );
+        expect(res.actionRequired).toBeNull();
+      }
+    });
   });
 
   describe('ProposeDestructiveActionTool Target Existence & Disambiguation', () => {
@@ -1194,7 +1240,7 @@ describe('Copilot Autonomous Agent Suite (Redesign v3)', () => {
         language: 'ja',
       });
 
-      expect(res.reply).toContain('一時的なエラーが発生');
+      expect(res.reply).toContain('通信エラーが発生しました');
       expect(res.reply).not.toContain('LEAK_CHECK');
       // Verify Phase 2 contents did not end with incomplete Phase 1 model turn
       const phase2Contents = mockGenerateContent.mock.calls[1][0].contents;
@@ -1274,7 +1320,8 @@ describe('Copilot Autonomous Agent Suite (Redesign v3)', () => {
         return out;
       };
 
-      const forbiddenPattern = /レベッカ|マスター|@rebecca_ai_gal|ギャル|ツンデレ|Gyaru/;
+      const forbiddenPattern =
+        /レベッカ|マスター|@rebecca_ai_gal|ギャル|ツンデレ|Gyaru|全肯定|包容力|大人の余裕|高嶺の花|キャッシュ切れ|教えて♡|よ、バカ|わけないでしょ|！♡|ね♡/;
       for (const filePath of collectTsFiles(copilotDir)) {
         const content = fs.readFileSync(filePath, 'utf8');
         expect({

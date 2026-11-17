@@ -1,5 +1,69 @@
 import { createStructuredPersonaSchema, parsePersonaJsonObject } from '@rebecca/persona';
-import { CopilotAction, CopilotAttachment, CopilotResponse } from '@rebecca/types';
+import { CopilotAction, CopilotActionType, CopilotAttachment, CopilotResponse } from '@rebecca/types';
+
+const isPlainObject = (value: unknown): value is Record<string, unknown> =>
+  value !== null && typeof value === 'object' && !Array.isArray(value);
+
+const parseCopilotActionType = (value: unknown): CopilotActionType | null => {
+  switch (value) {
+    case 'BLOCK_USER':
+    case 'UNBLOCK_USER':
+    case 'DELETE_POST':
+    case 'FORCE_DREAMING':
+    case 'REGENERATE_CAPTIONS':
+    case 'SYNC_POSTS':
+    case 'TRIGGER_REPLY':
+      return value;
+    default:
+      return null;
+  }
+};
+
+const parseCopilotImpactLevel = (value: unknown): CopilotAction['impactLevel'] | null => {
+  switch (value) {
+    case 'danger':
+    case 'warning':
+    case 'info':
+      return value;
+    default:
+      return null;
+  }
+};
+
+const parseCopilotAction = (candidate: unknown): CopilotAction | null => {
+  if (!isPlainObject(candidate)) {
+    return null;
+  }
+
+  const type = parseCopilotActionType(candidate['type']);
+  const impactLevel = parseCopilotImpactLevel(candidate['impactLevel']);
+  const title = candidate['title'];
+  const description = candidate['description'];
+  const requiresConfirmation = candidate['requiresConfirmation'];
+  const payload = candidate['payload'];
+
+  if (
+    type === null ||
+    impactLevel === null ||
+    typeof title !== 'string' ||
+    title.trim().length === 0 ||
+    typeof description !== 'string' ||
+    description.trim().length === 0 ||
+    typeof requiresConfirmation !== 'boolean' ||
+    !isPlainObject(payload)
+  ) {
+    return null;
+  }
+
+  return {
+    type,
+    title: title.trim(),
+    description: description.trim(),
+    impactLevel,
+    requiresConfirmation,
+    payload,
+  };
+};
 
 /**
  * Schema contract enforcing Honne (`thought`), Tatemae (`reply`), and 1–3 follow-up `suggestionChips`.
@@ -54,10 +118,7 @@ export function extractStructuredCopilotResponse(rawText: string): ParsedCopilot
         (s): s is string => typeof s === 'string' && s.trim().length > 0,
       );
     }
-    const candidateAction = parsedObj['actionRequired'];
-    if (candidateAction && typeof candidateAction === 'object' && !Array.isArray(candidateAction)) {
-      actionRequired = candidateAction as CopilotAction;
-    }
+    actionRequired = parseCopilotAction(parsedObj['actionRequired']);
   } else {
     const strippedFences = cleaned.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim();
     const looksLikeStructuredJsonPayload =
