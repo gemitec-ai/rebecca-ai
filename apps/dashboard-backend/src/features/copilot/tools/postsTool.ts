@@ -1,4 +1,4 @@
-import { FunctionDeclaration, Type } from '@google/genai';
+import type { ToolDeclaration } from '@rebecca/tools';
 import { CopilotAttachment, PostLeaderboard } from '@rebecca/types';
 import { CopilotTool, CopilotToolContext, CopilotToolExecutionResult } from '../types';
 
@@ -9,31 +9,32 @@ export class SearchTimelinePostsTool implements CopilotTool {
   readonly name = 'search_timeline_posts';
   readonly description = 'Searches and ranks timeline posts from the database by performance metrics (impressions, likes, replies, createdAt) across time periods.';
 
-  readonly declaration: FunctionDeclaration = {
+  readonly declaration: ToolDeclaration = {
     name: this.name,
     description: this.description,
     parameters: {
-      type: Type.OBJECT,
+      type: 'object',
       properties: {
         sortBy: {
-          type: Type.STRING,
+          type: 'string',
           description: 'Metric to rank by: impressions, likes, replies, or createdAt. Default is impressions.',
           enum: ['impressions', 'likes', 'replies', 'createdAt']
         },
         sortOrder: {
-          type: Type.STRING,
+          type: 'string',
           description: 'Sort direction: desc or asc. Default is desc.',
           enum: ['desc', 'asc']
         },
         period: {
-          type: Type.STRING,
+          type: 'string',
           description: "Time window for posts. Accepts standard presets ('today', 'weekly', 'monthly', 'yearly', 'all-time') or custom relative durations (e.g. '7d', '14d', '30d', '90d', '2w', '3m', '1y'). Default is 'all-time'."
         },
         limit: {
-          type: Type.INTEGER,
+          type: 'integer',
           description: 'Number of posts to return (1 to 20, default is 5).'
         }
-      }
+      },
+      required: []
     }
   };
 
@@ -51,6 +52,7 @@ export class SearchTimelinePostsTool implements CopilotTool {
       sortBy,
       sortOrder,
       period,
+      timezone: context.timezone,
       limit,
       page: 1
     });

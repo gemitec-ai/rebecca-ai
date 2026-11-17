@@ -1,4 +1,4 @@
-import { FunctionDeclaration, Type } from '@google/genai';
+import type { ToolDeclaration } from '@rebecca/tools';
 import { CopilotTool, CopilotToolContext, CopilotToolExecutionResult } from '../types';
 
 /**
@@ -8,18 +8,19 @@ export class GetKpiSummaryTool implements CopilotTool {
   readonly name = 'get_kpi_summary';
   readonly description = 'Retrieves high-level system KPI metrics (follower growth, engagement rate, DAU, API calls) and trends.';
 
-  readonly declaration: FunctionDeclaration = {
+  readonly declaration: ToolDeclaration = {
     name: this.name,
     description: this.description,
     parameters: {
-      type: Type.OBJECT,
+      type: 'object',
       properties: {
         period: {
-          type: Type.STRING,
+          type: 'string',
           description: 'Time period for the KPI summary: weekly, monthly, or yearly. Default is monthly.',
           enum: ['weekly', 'monthly', 'yearly']
         }
-      }
+      },
+      required: []
     }
   };
 

@@ -1,4 +1,5 @@
-import { FunctionDeclaration } from '@google/genai';
+import type { IMemoryVectorEmbedder } from '@rebecca/memory';
+import type { ToolDeclaration } from '@rebecca/tools';
 import { CopilotAction, CopilotAttachment } from '@rebecca/types';
 import { TimelineRepository } from '../timeline/repository';
 import { UsersRepository } from '../users/repository';
@@ -15,6 +16,8 @@ export interface CopilotToolContext {
   readonly assetsRepo?: AssetsRepository;
   readonly memoryRepo?: SystemMemoryRepository;
   readonly supportersRepo?: SupportersRepository;
+  readonly embedder?: IMemoryVectorEmbedder;
+  readonly timezone?: string;
   readonly isEn: boolean;
 }
 
@@ -31,15 +34,15 @@ export interface CopilotToolExecutionResult {
 }
 
 /**
- * Abstract interface for a typed Copilot Tool.
+ * Abstract interface for a typed provider-neutral Copilot Tool.
  */
 export interface CopilotTool {
-  /** Unique snake_case identifier matching Gemini function name. */
+  /** Unique snake_case identifier matching tool function name. */
   readonly name: string;
   /** Detailed English explanation of tool purpose and when to call it. */
   readonly description: string;
-  /** Gemini function declaration schema. */
-  readonly declaration: FunctionDeclaration;
+  /** Provider-agnostic JSON Schema tool declaration. */
+  readonly declaration: ToolDeclaration;
   /** Executes the tool logic against domain repositories. */
   execute(params: Record<string, unknown>, context: CopilotToolContext): Promise<CopilotToolExecutionResult>;
 }

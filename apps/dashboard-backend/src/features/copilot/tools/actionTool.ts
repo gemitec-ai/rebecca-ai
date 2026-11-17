@@ -1,4 +1,4 @@
-import { FunctionDeclaration, Type } from '@google/genai';
+import type { ToolDeclaration } from '@rebecca/tools';
 import { CopilotAction, CopilotActionType, UserDetail } from '@rebecca/types';
 import { CopilotTool, CopilotToolContext, CopilotToolExecutionResult } from '../types';
 
@@ -19,23 +19,23 @@ export class ProposeDestructiveActionTool implements CopilotTool {
   readonly name = 'propose_destructive_action';
   readonly description = 'Proposes a safety-gated administrative operation (BLOCK_USER, UNBLOCK_USER, DELETE_POST, FORCE_DREAMING, REGENERATE_CAPTIONS, SYNC_POSTS, TRIGGER_REPLY) requiring explicit confirmation from the operator. For BLOCK_USER and UNBLOCK_USER, you MUST FIRST investigate the account using search_users to obtain the exact username/ID before calling this function. If the target account does not exist in the database, this function returns an error.';
 
-  readonly declaration: FunctionDeclaration = {
+  readonly declaration: ToolDeclaration = {
     name: this.name,
     description: this.description,
     parameters: {
-      type: Type.OBJECT,
+      type: 'object',
       properties: {
         actionType: {
-          type: Type.STRING,
+          type: 'string',
           description: 'Type of administrative operation: BLOCK_USER, UNBLOCK_USER, DELETE_POST, FORCE_DREAMING, REGENERATE_CAPTIONS, SYNC_POSTS, or TRIGGER_REPLY.',
           enum: ['BLOCK_USER', 'UNBLOCK_USER', 'DELETE_POST', 'FORCE_DREAMING', 'REGENERATE_CAPTIONS', 'SYNC_POSTS', 'TRIGGER_REPLY']
         },
         targetId: {
-          type: Type.STRING,
+          type: 'string',
           description: 'Target identifier: exact verified user handle/ID for BLOCK/UNBLOCK (must be investigated with search_users first), postId for DELETE_POST, or empty for system actions.'
         },
         reason: {
-          type: Type.STRING,
+          type: 'string',
           description: 'Brief reason or summary of why this action is being proposed.'
         }
       },

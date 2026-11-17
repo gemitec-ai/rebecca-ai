@@ -1,4 +1,4 @@
-import { FunctionDeclaration, Type } from '@google/genai';
+import type { ToolDeclaration } from '@rebecca/tools';
 import { CopilotAttachment, UserDetail } from '@rebecca/types';
 import { CopilotTool, CopilotToolContext, CopilotToolExecutionResult } from '../types';
 
@@ -9,31 +9,32 @@ export class SearchUsersTool implements CopilotTool {
   readonly name = 'search_users';
   readonly description = 'Searches user profiles by handle/name prefix, account status (ACTIVE, BLOCKED, MUTED), and interaction rankings.';
 
-  readonly declaration: FunctionDeclaration = {
+  readonly declaration: ToolDeclaration = {
     name: this.name,
     description: this.description,
     parameters: {
-      type: Type.OBJECT,
+      type: 'object',
       properties: {
         query: {
-          type: Type.STRING,
+          type: 'string',
           description: 'Username or handle prefix to search for.'
         },
         status: {
-          type: Type.STRING,
+          type: 'string',
           description: 'Account status filter: ACTIVE, BLOCKED, MUTED, or ALL.',
           enum: ['ACTIVE', 'BLOCKED', 'MUTED', 'ALL']
         },
         sortBy: {
-          type: Type.STRING,
+          type: 'string',
           description: 'Field to sort users by: interactions, followersCount, or createdAt.',
           enum: ['interactions', 'followersCount', 'createdAt']
         },
         limit: {
-          type: Type.INTEGER,
+          type: 'integer',
           description: 'Number of users to return (1 to 20, default is 5).'
         }
-      }
+      },
+      required: []
     }
   };
 
@@ -58,10 +59,9 @@ export class SearchUsersTool implements CopilotTool {
       users = users.filter((u: UserDetail) => u.status === targetStatus);
     }
 
-    // 1. Filter out orphan records that lack user identifiers (neither username nor name)
+    // Omit orphan user documents lacking both username and display name.
     const validUsers = users.filter((u: UserDetail) => Boolean(u.username || u.name));
 
-    // 2. If a cleanQuery was provided, prioritize exact match over partial hits
     let candidateUsers = validUsers;
     if (cleanQuery.length > 0) {
       const exactMatch = validUsers.find(

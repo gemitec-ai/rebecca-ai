@@ -59,7 +59,7 @@ export function initializeSettingsModule(firestore: Firestore): Router {
         updatedAt: new Date().toISOString()
       };
       if (language) updates.language = language;
-      if (timezone) updates.timezone = timezone;
+      if (typeof timezone === 'string') updates.timezone = timezone.trim();
 
       const docRef = firestore.collection(COLLECTIONS.SYSTEM).doc('preferences');
       await docRef.set(updates, { merge: true });

@@ -1,6 +1,8 @@
-import { FunctionDeclaration, GoogleGenAI, Type } from '@google/genai';
+import { GoogleGenAI } from '@google/genai';
+import type { ToolDeclaration } from '@rebecca/tools';
 import { Asset, CopilotAttachment } from '@rebecca/types';
 import { CopilotTool, CopilotToolContext, CopilotToolExecutionResult } from '../types';
+import { createCopilotEmbeddingProvider } from '../embeddingAdapter';
 import { logger } from '../../../utils/logger';
 import { config } from '../../../config';
 
@@ -11,26 +13,27 @@ export class SearchAssetsTool implements CopilotTool {
   readonly name = 'search_assets';
   readonly description = 'Searches image assets using natural language semantic vector search against caption embeddings, or filters assets by processing status (e.g. FAILED).';
 
-  readonly declaration: FunctionDeclaration = {
+  readonly declaration: ToolDeclaration = {
     name: this.name,
     description: this.description,
     parameters: {
-      type: Type.OBJECT,
+      type: 'object',
       properties: {
         semanticQuery: {
-          type: Type.STRING,
+          type: 'string',
           description: 'Natural language description of the visual scene to find (e.g., "cyberpunk neon street", "eating sweets", "relaxing at a cafe").'
         },
         status: {
-          type: Type.STRING,
+          type: 'string',
           description: 'Filter by asset processing status: PENDING, PROCESSING, SUCCESS, FAILED, or ALL.',
           enum: ['PENDING', 'PROCESSING', 'SUCCESS', 'FAILED', 'ALL']
         },
         limit: {
-          type: Type.INTEGER,
+          type: 'integer',
           description: 'Number of assets to return (1 to 10, default is 5).'
         }
-      }
+      },
+      required: []
     }
   };
 
@@ -43,17 +46,16 @@ export class SearchAssetsTool implements CopilotTool {
     const semanticQuery = typeof params.semanticQuery === 'string' ? params.semanticQuery.trim() : '';
     let matchedAssets: Asset[] = [];
 
-    // 1. Semantic Vector Search if semanticQuery is provided
-    if (semanticQuery.length > 0 && config.gemini.apiKey) {
+    const embedder =
+      context.embedder ??
+      (config.gemini.apiKey
+        ? createCopilotEmbeddingProvider(new GoogleGenAI({ apiKey: config.gemini.apiKey }))
+        : undefined);
+
+    if (semanticQuery.length > 0 && embedder) {
       try {
-        const ai = new GoogleGenAI({ apiKey: config.gemini.apiKey });
-        const embedRes = await ai.models.embedContent({
-          model: config.gemini.embeddingModel,
-          contents: semanticQuery,
-          config: { outputDimensionality: 768 }
-        });
-        const vector = embedRes.embeddings?.[0]?.values;
-        if (Array.isArray(vector) && vector.length > 0) {
+        const vector = await embedder.generateEmbedding(semanticQuery);
+        if (vector.length > 0) {
           matchedAssets = await context.assetsRepo.findByVector(vector, limit);
         }
       } catch (err) {
@@ -63,7 +65,6 @@ export class SearchAssetsTool implements CopilotTool {
       }
     }
 
-    // 2. Keyword fallback or status query if vector search returned no candidates
     if (matchedAssets.length === 0) {
       const paginated = await context.assetsRepo.getPaginated({
         search: semanticQuery.length > 0 ? semanticQuery : undefined,

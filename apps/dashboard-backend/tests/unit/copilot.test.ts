@@ -1,7 +1,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { precomputedPersonaPatternEmbeddings } from '@rebecca/persona';
-import { CopilotUseCase, extractStructuredCopilotResponse } from '../../src/features/copilot/usecase';
+import { CopilotUseCase } from '../../src/features/copilot/usecase';
+import { extractStructuredCopilotResponse } from '../../src/features/copilot/responseParser';
 import { CopilotToolRegistry } from '../../src/features/copilot/toolRegistry';
 import { SearchTimelinePostsTool } from '../../src/features/copilot/tools/postsTool';
 import { SearchUsersTool } from '../../src/features/copilot/tools/usersTool';
@@ -150,8 +151,8 @@ describe('Copilot Autonomous Agent Suite (Redesign v3)', () => {
           {
             id: 'tx_01',
             stripeSessionId: 'sess_123',
-            rawName: 'Master Akina',
-            safeName: 'Master Akina',
+            rawName: 'Taro Example',
+            safeName: 'Taro Example',
             isNameSanitized: true,
             creditVisibility: 'PUBLIC',
             amount: 5000,
@@ -656,8 +657,15 @@ describe('Copilot Autonomous Agent Suite (Redesign v3)', () => {
     });
 
     it('should fall back gracefully when Gemini API is unconfigured', async () => {
-      const copilot = new CopilotUseCase(timelineRepo, usersRepo, assetsRepo, memoryRepo, supportersRepo);
-      (copilot as any).ai = null;
+      const copilot = new CopilotUseCase(
+        timelineRepo,
+        usersRepo,
+        assetsRepo,
+        memoryRepo,
+        supportersRepo,
+        undefined,
+        null,
+      );
 
       const res = await copilot.processChat({
         message: '画像アセットを見せて',
@@ -665,7 +673,7 @@ describe('Copilot Autonomous Agent Suite (Redesign v3)', () => {
         language: 'ja'
       });
 
-      expect(res.reply).toContain('レベッカAIの接続キーが設定されていません');
+      expect(res.reply).toContain('接続キーが設定されていません');
       expect(res.actionRequired).toBeNull();
     });
   });
@@ -728,6 +736,12 @@ describe('Copilot Autonomous Agent Suite (Redesign v3)', () => {
       );
       expect(prosePrefixedTruncated.reply).toBe('');
       expect(prosePrefixedTruncated.reply).not.toContain('PREFIX_SECRET_HONNE');
+
+      const reorderedTruncated = extractStructuredCopilotResponse(
+        '{"suggestionChips":["A"],"thought":"ORDER_SECRET_HONNE","reply":"trunc',
+      );
+      expect(reorderedTruncated.reply).toBe('');
+      expect(reorderedTruncated.reply).not.toContain('ORDER_SECRET_HONNE');
     });
   });
 
@@ -762,8 +776,8 @@ describe('Copilot Autonomous Agent Suite (Redesign v3)', () => {
           data: [
             {
               id: 'doc_123',
-              username: 'se_akina',
-              name: 'AKINA',
+              username: 'taro_example',
+              name: 'Taro Example',
               status: UserStatus.ACTIVE,
               interactions: 50
             }
@@ -772,13 +786,13 @@ describe('Copilot Autonomous Agent Suite (Redesign v3)', () => {
       } as unknown as UsersRepository;
 
       const res = await tool.execute(
-        { actionType: 'BLOCK_USER', targetId: 'AKINA' },
+        { actionType: 'BLOCK_USER', targetId: 'Taro Example' },
         { usersRepo: mockUsersRepo, isEn: false }
       );
       expect(res.actionRequired).toBeDefined();
       expect(res.actionRequired?.payload['userId']).toBe('doc_123');
-      expect(res.actionRequired?.payload['handle']).toBe('@se_akina');
-      expect(res.actionRequired?.title).toContain('AKINA (@se_akina)');
+      expect(res.actionRequired?.payload['handle']).toBe('@taro_example');
+      expect(res.actionRequired?.title).toContain('Taro Example (@taro_example)');
     });
 
     it('should resolve user directly when getById returns matching user with name', async () => {
@@ -844,7 +858,7 @@ describe('Copilot Autonomous Agent Suite (Redesign v3)', () => {
       const mockUsersRepo = {
         getAll: jest.fn().mockResolvedValue({
           data: [
-            { id: '1934600616791482369', username: 'se_akina', name: 'AKINA', status: UserStatus.BLOCKED, interactions: 10 },
+            { id: 'user_001', username: 'taro_example', name: 'Taro Example', status: UserStatus.BLOCKED, interactions: 10 },
             { id: 'orphan_1', username: '', name: '', status: UserStatus.BLOCKED, interactions: 0 },
             { id: 'orphan_2', username: '', name: '', status: UserStatus.BLOCKED, interactions: 0 },
             { id: 'other_user', username: 'other', name: 'Other User', status: UserStatus.BLOCKED, interactions: 5 }
@@ -853,15 +867,15 @@ describe('Copilot Autonomous Agent Suite (Redesign v3)', () => {
       } as unknown as UsersRepository;
 
       const res = await tool.execute(
-        { query: 'AKINA', status: 'BLOCKED' },
+        { query: 'Taro Example', status: 'BLOCKED' },
         { usersRepo: mockUsersRepo, isEn: true }
       );
 
       expect(res.attachments).toBeDefined();
       expect(res.attachments?.length).toBe(1);
-      expect(res.attachments?.[0].id).toBe('1934600616791482369');
-      expect(res.attachments?.[0].title).toBe('AKINA (@se_akina)');
-      expect(res.attachments?.[0].navigationPath).toBe('/users?userId=1934600616791482369');
+      expect(res.attachments?.[0].id).toBe('user_001');
+      expect(res.attachments?.[0].title).toBe('Taro Example (@taro_example)');
+      expect(res.attachments?.[0].navigationPath).toBe('/users?userId=user_001');
     });
 
     it('should format navigationPath correctly in SearchTimelinePostsTool and SearchAssetsTool', async () => {
@@ -907,7 +921,7 @@ describe('Copilot Autonomous Agent Suite (Redesign v3)', () => {
 
       const copilot = new CopilotUseCase(mockTimeline, mockUsers, mockAssets, mockMemory, mockSupporters);
 
-      // Turn 2: Phase 2 synthesis
+      // Tool calls executed before final constrained synthesis step
       mockGenerateContent
         .mockResolvedValueOnce({
           functionCalls: [
@@ -1017,19 +1031,20 @@ describe('Copilot Autonomous Agent Suite (Redesign v3)', () => {
     });
 
     it('should enforce unified composeSystemPrompt and Honne/Tatemae schema/history contracts in CopilotUseCase', () => {
-      const copilotUseCaseSrc = fs.readFileSync(
-        path.resolve(__dirname, '../../src/features/copilot/usecase.ts'),
-        'utf8',
-      );
+      const copilotDir = path.resolve(__dirname, '../../src/features/copilot');
+      const copilotUseCaseSrc = fs.readFileSync(path.join(copilotDir, 'usecase.ts'), 'utf8');
+      const copilotParserSrc = fs.readFileSync(path.join(copilotDir, 'responseParser.ts'), 'utf8');
+      const combinedSrc = `${copilotUseCaseSrc}\n${copilotParserSrc}`;
+
       expect(copilotUseCaseSrc).toContain('composeSystemPrompt(');
-      expect(copilotUseCaseSrc).toContain('createStructuredPersonaSchema(');
-      expect(copilotUseCaseSrc).toContain('parsePersonaJsonObject(');
+      expect(copilotParserSrc).toContain('createStructuredPersonaSchema(');
+      expect(copilotParserSrc).toContain('parsePersonaJsonObject(');
       expect(copilotUseCaseSrc).toContain('formatTurnWithInnerThought(');
       expect(copilotUseCaseSrc).toContain('runToolDialogueLoop');
-      expect(copilotUseCaseSrc).not.toMatch(/activePersona\.(?:composePrompt|getBasePrompt)\s*\(/);
-      expect(copilotUseCaseSrc).not.toContain('DateTime.now');
-      expect(copilotUseCaseSrc).not.toContain("'Asia/Tokyo'");
-      expect(copilotUseCaseSrc).not.toMatch(/finalResponseSchema\s*:\s*Schema\s*=\s*\{/);
+      expect(combinedSrc).not.toMatch(/activePersona\.(?:composePrompt|getBasePrompt)\s*\(/);
+      expect(combinedSrc).not.toContain('DateTime.now');
+      expect(combinedSrc).not.toContain("'Asia/Tokyo'");
+      expect(combinedSrc).not.toMatch(/finalResponseSchema\s*:\s*Schema\s*=\s*\{/);
     });
 
     it('should preserve Honne (thought) and Tatemae (reply) across multi-turn Copilot history via formatTurnWithInnerThought', async () => {
@@ -1228,6 +1243,48 @@ describe('Copilot Autonomous Agent Suite (Redesign v3)', () => {
       expect(finalCall.contents[finalCall.contents.length - 1].parts[0].functionResponse.name).toBe(
         'search_timeline_posts',
       );
+      expect(timelineRepo.getPosts).toHaveBeenCalledWith(
+        expect.objectContaining({ timezone: expect.any(String) }),
+      );
+    });
+
+    it('should fail fast (propagate UpstreamApiError) on non-retryable 401/403 client errors', async () => {
+      mockGenerateContent.mockRejectedValueOnce(
+        Object.assign(new Error('API key expired'), { status: 403 }),
+      );
+
+      const copilot = new CopilotUseCase(timelineRepo, usersRepo, assetsRepo, memoryRepo, supportersRepo);
+      await expect(
+        copilot.processChat({
+          message: 'ステータス確認',
+          language: 'ja',
+        }),
+      ).rejects.toMatchObject({ statusCode: 502 });
+    });
+
+    it('should enforce character-agnostic Pluggable Persona boundary with zero hardcoded Rebecca strings in dashboard-backend/src/features/copilot', () => {
+      const copilotDir = path.resolve(__dirname, '../../src/features/copilot');
+      const collectTsFiles = (dir: string): string[] => {
+        const out: string[] = [];
+        for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+          const full = path.join(dir, entry.name);
+          if (entry.isDirectory()) out.push(...collectTsFiles(full));
+          else if (entry.isFile() && entry.name.endsWith('.ts')) out.push(full);
+        }
+        return out;
+      };
+
+      const forbiddenPattern = /レベッカ|マスター|@rebecca_ai_gal|ギャル|ツンデレ|Gyaru/;
+      for (const filePath of collectTsFiles(copilotDir)) {
+        const content = fs.readFileSync(filePath, 'utf8');
+        expect({
+          file: path.relative(copilotDir, filePath),
+          leakedCharacterLiteral: forbiddenPattern.test(content),
+        }).toEqual({
+          file: path.relative(copilotDir, filePath),
+          leakedCharacterLiteral: false,
+        });
+      }
     });
   });
 });

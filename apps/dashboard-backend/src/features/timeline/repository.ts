@@ -270,10 +270,10 @@ export class TimelineRepository {
    * 
    * @returns A promise that resolves to an array of leaderboard posts.
    */
-  async getPosts(params?: { page?: number; limit?: number; sortBy?: string; sortOrder?: 'asc' | 'desc'; period?: string; date?: string; }): Promise<PaginatedResponse<PostLeaderboard>> {
+  async getPosts(params?: { page?: number; limit?: number; sortBy?: string; sortOrder?: 'asc' | 'desc'; period?: string; date?: string; timezone?: string; }): Promise<PaginatedResponse<PostLeaderboard>> {
     let query = this.collections.timelineHistory as Query<TimelinePost>;
 
-    const dateRange = getTimelinePeriodRangeInUtc(params?.period, params?.date);
+    const dateRange = getTimelinePeriodRangeInUtc(params?.period, params?.date, params?.timezone);
     if (dateRange) {
       if (dateRange.start) {
         query = query.where('timestamp', '>=', dateRange.start);
