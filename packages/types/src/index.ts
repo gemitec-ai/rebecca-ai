@@ -537,6 +537,8 @@ export interface CopilotChatMessage {
   id?: string;
   role: 'user' | 'model';
   text: string;
+  /** Internal persona monologue (Honne) retained in session state for working memory continuity. */
+  thought?: string;
   time?: string;
   attachments?: CopilotAttachment[];
   actionRequired?: CopilotAction;
@@ -547,13 +549,15 @@ export interface CopilotChatMessage {
 export interface CopilotRequest {
   message: string;
   currentContext?: string;
-  history?: { role: 'user' | 'model'; text: string; time?: string }[];
+  history?: { role: 'user' | 'model'; text: string; thought?: string; time?: string }[];
   language?: 'ja' | 'en';
   /** Optional IANA time zone identifier (e.g. `'America/New_York'`, `'Asia/Tokyo'`) from the UI. */
   timezone?: string;
 }
 
 export interface CopilotResponse {
+  /** Internal persona monologue (Honne) generated alongside the spoken reply. */
+  thought?: string;
   reply: string;
   attachments?: CopilotAttachment[];
   actionRequired?: CopilotAction | null;
