@@ -222,15 +222,42 @@ describe('persona package exports verification', () => {
     expect(cosineSimilarity([1, 2], [1])).toBe(0);
   });
 
-  test('findTopPersonaPatterns should extract top matching patterns', () => {
-    const mockVectors = [
-      { id: 1, vector: [1, 0, 0] },
-      { id: 2, vector: [0, 1, 0] },
-      { id: 3, vector: [0, 0, 1] }
+  test('findTopPersonaPatterns should rank strictly against the provided patternVectors', () => {
+    const customVectors = [
+      {
+        id: 101,
+        category: 'custom-A',
+        trigger: 'trigger A',
+        internal_thought: 'thought A',
+        behavior: 'behavior A',
+        sample_response: 'sample A',
+        vector: [1, 0, 0],
+      },
+      {
+        id: 102,
+        category: 'custom-B',
+        trigger: 'trigger B',
+        internal_thought: 'thought B',
+        behavior: 'behavior B',
+        sample_response: 'sample B',
+        vector: [0, 1, 0],
+      },
+      {
+        id: 103,
+        category: 'custom-C',
+        trigger: 'trigger C',
+        internal_thought: 'thought C',
+        behavior: 'behavior C',
+        sample_response: 'sample C',
+        vector: [0, 0, 1],
+      },
     ];
-    const top = findTopPersonaPatterns([1, 0.1, 0], mockVectors, 2);
+    const top = findTopPersonaPatterns([0, 1, 0.1], customVectors, 2);
     expect(top.length).toBe(2);
-    expect(top[0].id).toBe(1);
+    expect(top[0].id).toBe(102);
+    expect(top[0].sample_response).toBe('sample B');
+    expect(findTopPersonaPatterns([1, 0], customVectors, 0)).toEqual([]);
+    expect(findTopPersonaPatterns([], customVectors, 2).length).toBe(2);
   });
 
   test('buildPersonaFewShotPrompt should format patterns cleanly', () => {

@@ -267,6 +267,18 @@ export interface PersonaMetadata {
   /** Linguistic tone and style description (e.g. '大人のお姉さんギャル'). */
   readonly toneDescription: string;
 
+  /** Localized tone and archetype descriptor for bilingual channel instructions. */
+  readonly localizedTone: LocalizedText;
+
+  /** Optional language-specific English speech style directive (e.g. 'Reply strictly in English Gyaru slang.'). */
+  readonly englishSpeechInstruction?: string;
+
+  /** Localized affectionate/playful stylistic descriptor injected into gratitude/care prompts. */
+  readonly affectionateTone: LocalizedText;
+
+  /** Canonical social media handle for self-mention disambiguation (e.g. '@rebecca_ai_gal'). */
+  readonly socialHandle: string;
+
   /** Default vocative terms/honorifics used by the persona when addressing the human user. */
   readonly userCallsign: LocalizedText;
 

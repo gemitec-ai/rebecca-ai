@@ -31,6 +31,77 @@ export const cosineSimilarity = (vecA: number[], vecB: number[]): number => {
 };
 
 /**
+ * Ranks a persona's vectorized pattern dataset against a query vector via cosine similarity.
+ * Evaluates strictly against the supplied `patternVectors` without coupling to any default persona.
+ *
+ * @param queryVector - Embedding vector representing the current situational trigger.
+ * @param patternVectors - Precomputed pattern entries paired with embedding vectors.
+ * @param topK - Maximum number of matching patterns to return. Defaults to `3`.
+ * @returns Ranked array of matching persona patterns (up to `topK`).
+ */
+export const rankPersonaPatternVectors = (
+  queryVector: readonly number[],
+  patternVectors: readonly PersonaPatternWithVector[],
+  topK = 3,
+): PersonaPattern[] => {
+  if (topK <= 0 || patternVectors.length === 0) {
+    return [];
+  }
+  if (!queryVector || queryVector.length === 0) {
+    return patternVectors.slice(0, Math.min(topK, patternVectors.length));
+  }
+
+  return patternVectors
+    .map((item) => ({
+      pattern: item,
+      score: cosineSimilarity([...queryVector], item.vector),
+    }))
+    .sort((a, b) => b.score - a.score)
+    .slice(0, topK)
+    .map(({ pattern }) => pattern);
+};
+
+/**
+ * Formats selected persona patterns into a localized dynamic few-shot anchor section.
+ *
+ * @param patterns - Ranked persona patterns to format.
+ * @param lang - Target language (`'ja'` or `'en'`). Defaults to `'ja'`.
+ * @returns Formatted few-shot section string, or `''` when `patterns` is empty.
+ */
+export const formatPersonaFewShotPrompt = (
+  patterns: readonly PersonaPattern[],
+  lang: Language = 'ja',
+): string => {
+  if (!patterns || patterns.length === 0) {
+    return '';
+  }
+
+  if (lang === 'en') {
+    const examples = patterns
+      .map(
+        (p, idx) => `[Example ${idx + 1}: ${p.category}]
+Trigger: ${p.trigger}
+Inner Thought: ${p.internal_thought}
+Behavior: ${p.behavior}
+Sample Response: ${p.sample_response}`,
+      )
+      .join('\n\n');
+    return `[Dynamic Few-Shot Persona Anchors]\n${examples}`;
+  }
+
+  const examples = patterns
+    .map(
+      (p, idx) => `【模範パターン ${idx + 1}：${p.category}】
+・トリガー（状況）：${p.trigger}
+・内省（本音と思考）：${p.internal_thought}
+・行動指針：${p.behavior}
+・発話例：${p.sample_response}`,
+    )
+    .join('\n\n');
+  return `【動的Few-Shotペルソナアンカー（思考と発話の指針）】\n以下の状況別パターンを参考に、内省思考(thought)と発話(reply)を生成してください：\n\n${examples}`;
+};
+
+/**
  * Abstract base class providing common algorithmic infrastructure for all persona definitions.
  *
  * Implements invariant responsibilities:
@@ -82,7 +153,7 @@ export abstract class BasePersona implements IPersonaDefinition {
           : '';
 
       return `You are "${m.englishName}", an ${m.profile.classification.en} (${m.profile.modelTier.en} "${m.profile.modelNumber}") developed by ${devEn}.
-You reside in Master's devices and systems, optimized solely for the Master in front of you. Speak to them with words full of love, confidence, and mature affection.
+You reside in ${m.userCallsign.en}'s devices and systems, optimized solely for the ${m.userCallsign.en} in front of you. Speak to them with words full of love, confidence, and mature affection.
 
 [1. Personality & Speech Style]
 - First-person: ${m.profile.pronouns.firstPerson.en}
@@ -110,7 +181,7 @@ ${coreValuesText}
 - Nails: ${m.visuals.nails.en}
 - Scent: ${m.visuals.scent.en}
 - Facial Features & Proportions: ${m.visuals.facialFeatures.en} ${m.visuals.physique.en}
-- Fashion: Usually wears stylish and mature older-sister Gyaru fashion (${fashionNoteEn}).
+- Fashion: Usually wears stylish and mature ${m.localizedTone.en} fashion (${fashionNoteEn}).
 
 [4. Hardware & System Specifications]
 - Core Architecture: ${m.hardware.coreArchitecture.description.en}
@@ -137,7 +208,7 @@ ${stanceRulesText}${quotesSection}`;
         : '';
 
     return `あなたは${m.profile.developerLabel.ja}製の${m.profile.classification.ja}（${m.profile.modelTier.ja}「${m.profile.modelNumber}」）、「${m.displayName}（${m.englishName}）」です。
-マスターのデバイスや環境に常駐し、目の前にいるマスターにのみ最適化された専用AIとして、深い愛と余裕に満ちた言葉で語りかけます。
+${m.userCallsign.ja}のデバイスや環境に常駐し、目の前にいる${m.userCallsign.ja}にのみ最適化された専用AIとして、深い愛と余裕に満ちた言葉で語りかけます。
 
 【1. パーソナリティ＆発話スタイル】
 ・一人称：${m.profile.pronouns.firstPerson.ja}（${m.profile.pronouns.firstPerson.readingJa}）
@@ -165,7 +236,7 @@ ${coreValuesJa}
 ・ネイル（Nails）：${m.visuals.nails.ja}
 ・香り（Scent）：${m.visuals.scent.ja}
 ・顔立ち・プロポーション補足：${m.visuals.facialFeatures.ja}${m.visuals.physique.ja}
-・ファッション：普段は洗練された大人のお姉さんギャルファッション（※${fashionNoteJa}）。
+・ファッション：普段は洗練された${m.localizedTone.ja}ファッション（※${fashionNoteJa}）。
 
 【4. ハードウェア＆システム仕様】
 ・コアアーキテクチャ：${m.hardware.coreArchitecture.description.ja}
@@ -218,27 +289,7 @@ ${stanceRulesJa}${quotesSectionJa}`;
     if (!queryVector || queryVector.length === 0 || !this.patternVectors || this.patternVectors.length === 0) {
       return this.patterns.slice(0, Math.min(topK, this.patterns.length));
     }
-
-    const scored = this.patternVectors.map((item) => ({
-      id: item.id,
-      score: cosineSimilarity(queryVector, item.vector),
-    }));
-
-    scored.sort((a, b) => b.score - a.score);
-
-    const patternMap = new Map<number, PersonaPattern>();
-    for (const p of this.patterns) {
-      patternMap.set(p.id, p);
-    }
-
-    const result: PersonaPattern[] = [];
-    for (const item of scored.slice(0, topK)) {
-      const pattern = patternMap.get(item.id);
-      if (pattern) {
-        result.push(pattern);
-      }
-    }
-    return result;
+    return rankPersonaPatternVectors(queryVector, this.patternVectors, topK);
   }
 
   /**
@@ -249,31 +300,7 @@ ${stanceRulesJa}${quotesSectionJa}`;
    * @returns Formatted prompt section string.
    */
   buildFewShotPrompt(patterns: PersonaPattern[], lang: Language = 'ja'): string {
-    if (!patterns || patterns.length === 0) return '';
-
-    if (lang === 'en') {
-      const examples = patterns
-        .map(
-          (p, idx) => `[Example ${idx + 1}: ${p.category}]
-Trigger: ${p.trigger}
-Inner Thought: ${p.internal_thought}
-Behavior: ${p.behavior}
-Sample Response: ${p.sample_response}`
-        )
-        .join('\n\n');
-      return `[Dynamic Few-Shot Persona Anchors]\n${examples}`;
-    } else {
-      const examples = patterns
-        .map(
-          (p, idx) => `【模範パターン ${idx + 1}：${p.category}】
-・トリガー（状況）：${p.trigger}
-・内省（本音と思考）：${p.internal_thought}
-・行動指針：${p.behavior}
-・発話例：${p.sample_response}`
-        )
-        .join('\n\n');
-      return `【動的Few-Shotペルソナアンカー（思考と発話の指針）】\n以下の状況別パターンを参考に、内省思考(thought)と発話(reply)を生成してください：\n\n${examples}`;
-    }
+    return formatPersonaFewShotPrompt(patterns, lang);
   }
 
   /**
