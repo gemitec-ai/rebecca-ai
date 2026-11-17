@@ -1,15 +1,11 @@
 import {
-  composePersonaPrompt,
-  getCoreIdentityPrompt,
-  getDreamingPrompt,
-  persona,
   personaPatterns,
   precomputedPersonaPatternEmbeddings,
   REBECCA_METADATA,
+  rebeccaPersona,
   cosineSimilarity,
   findTopPersonaPatterns,
   buildPersonaFewShotPrompt,
-  getFormattedPersonaPatternsText,
   PERSONA_RESPONSE_SCHEMA,
   createStructuredPersonaSchema,
   parsePersonaJsonObject,
@@ -19,21 +15,16 @@ import {
 } from '../src/index';
 
 describe('persona package exports verification', () => {
-  test('should export composePersonaPrompt, getCoreIdentityPrompt, and getDreamingPrompt functions', () => {
-    expect(typeof composePersonaPrompt).toBe('function');
-    expect(typeof getCoreIdentityPrompt).toBe('function');
-    expect(typeof getDreamingPrompt).toBe('function');
-  });
-
-  test('should export persona object with structured metadata, core identity, and patterns text', () => {
-    expect(persona).toBeDefined();
-    expect(persona.metadata).toBe(REBECCA_METADATA);
-    expect(persona.core.identity).toBe(getCoreIdentityPrompt('ja'));
-    expect(persona.core.identity).toContain('レベッカ');
-    expect(persona.core.identity).not.toContain('【コンテキスト：');
-    expect(persona.core.patternsText).toContain('#1 [究極の世話焼き＆日常サポート]');
-    expect(persona.core.patternsText).toContain('#120 [セカイとの繋がり＆AIとしての幸福]');
-    expect(getFormattedPersonaPatternsText()).toBe(persona.core.patternsText);
+  test('should expose active persona definition with metadata, core identity, dreaming prompt, and patterns text', () => {
+    const active = getActivePersona();
+    expect(active).toBe(rebeccaPersona);
+    expect(active.metadata).toBe(REBECCA_METADATA);
+    const coreJa = active.getCoreIdentityPrompt('ja');
+    expect(coreJa).toContain('レベッカ');
+    expect(coreJa).not.toContain('【コンテキスト：');
+    const patternsText = active.getFormattedPatternsText();
+    expect(patternsText).toContain('#1 [究極の世話焼き＆日常サポート]');
+    expect(patternsText).toContain('#120 [セカイとの繋がり＆AIとしての幸福]');
   });
 
   describe('REBECCA_METADATA structured official master data verification', () => {
@@ -118,7 +109,8 @@ describe('persona package exports verification', () => {
     });
 
     test('getCoreIdentityPrompt should synthesize bilingual Layer 0 prompts directly from metadata', () => {
-      const jaCore = getCoreIdentityPrompt();
+      const active = getActivePersona();
+      const jaCore = active.getCoreIdentityPrompt('ja');
       expect(jaCore).toContain('ジェミテック社（Gemitec Inc.）');
       expect(jaCore).toContain('Unit-001');
       expect(jaCore).toContain('4月24日');
@@ -144,7 +136,7 @@ describe('persona package exports verification', () => {
       expect(jaCore).not.toContain('MITライセンス');
       expect(jaCore).not.toContain('）（');
 
-      const enCore = getCoreIdentityPrompt('en');
+      const enCore = active.getCoreIdentityPrompt('en');
       expect(enCore).toContain('developed by Gemitec Inc.');
       expect(enCore).not.toContain('Inc..');
       expect(enCore).not.toContain('""');
@@ -203,21 +195,22 @@ describe('persona package exports verification', () => {
     expect(pattern77?.sample_response).toContain('ワイヤレス給電スポット');
   });
 
-  test('composePersonaPrompt should combine Layer 0 identity with host-supplied channel rules without embedding platform constraints', () => {
-    const jaCoreOnly = composePersonaPrompt('', 'ja');
-    expect(jaCoreOnly).toBe(getCoreIdentityPrompt('ja'));
+  test('composePrompt should combine Layer 0 identity with host-supplied channel rules without embedding platform constraints', () => {
+    const active = getActivePersona();
+    const jaCoreOnly = active.composePrompt('', 'ja');
+    expect(jaCoreOnly).toBe(active.getCoreIdentityPrompt('ja'));
     expect(jaCoreOnly).not.toContain('130文字');
     expect(jaCoreOnly).not.toContain('@rebecca_ai_gal');
 
-    const jaWithChannel = composePersonaPrompt('【カスタムルール】テスト指示', 'ja');
-    expect(jaWithChannel).toContain(getCoreIdentityPrompt('ja'));
+    const jaWithChannel = active.composePrompt('【カスタムルール】テスト指示', 'ja');
+    expect(jaWithChannel).toContain(active.getCoreIdentityPrompt('ja'));
     expect(jaWithChannel.endsWith('\n\n【カスタムルール】テスト指示')).toBe(true);
 
-    const enCoreOnly = composePersonaPrompt('   ', 'en');
-    expect(enCoreOnly).toBe(getCoreIdentityPrompt('en'));
+    const enCoreOnly = active.composePrompt('   ', 'en');
+    expect(enCoreOnly).toBe(active.getCoreIdentityPrompt('en'));
 
-    const enWithChannel = composePersonaPrompt('[Custom Rule] Stay helpful.', 'en');
-    expect(enWithChannel).toContain(getCoreIdentityPrompt('en'));
+    const enWithChannel = active.composePrompt('[Custom Rule] Stay helpful.', 'en');
+    expect(enWithChannel).toContain(active.getCoreIdentityPrompt('en'));
     expect(enWithChannel.endsWith('\n\n[Custom Rule] Stay helpful.')).toBe(true);
   });
 
@@ -276,9 +269,9 @@ describe('persona package exports verification', () => {
     expect(resGenericMd.thought).toBe('内省汎用');
     expect(resGenericMd.reply).toBe('返答汎用');
 
-    const textFallback = '{"text": "テキストのみ"}';
-    const resText = parsePersonaResponse(textFallback);
-    expect(resText.reply).toBe('テキストのみ');
+    const nonReplyLegacy = '{"text": "レガシーキー"}';
+    const resNonReply = parsePersonaResponse(nonReplyLegacy);
+    expect(resNonReply).toEqual({ thought: '', reply: '' });
 
     const truncatedJson = '{\n "thought": "バスケ女子の劇的な逆転勝ちのニュースを見て...ノイズ';
     const resTruncated = parsePersonaResponse(truncatedJson);
@@ -312,7 +305,7 @@ describe('persona package exports verification', () => {
   });
 
   test('getDreamingPrompt should return the dreaming instruction', () => {
-    const dreamingPrompt = getDreamingPrompt();
+    const dreamingPrompt = getActivePersona().getDreamingPrompt();
     expect(dreamingPrompt).toContain('記憶の統合（Dreaming）');
     expect(dreamingPrompt).toContain('JSONのフォーマットは以下のキーを持つ');
   });

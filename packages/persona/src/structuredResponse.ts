@@ -222,12 +222,7 @@ export const parsePersonaResponse = (raw: string): StructuredPersonaResponse => 
   }
 
   const thought = typeof parsed['thought'] === 'string' ? parsed['thought'].trim() : '';
-  const reply =
-    typeof parsed['reply'] === 'string'
-      ? parsed['reply'].trim()
-      : typeof parsed['text'] === 'string'
-        ? parsed['text'].trim()
-        : '';
+  const reply = typeof parsed['reply'] === 'string' ? parsed['reply'].trim() : '';
 
   return { thought, reply };
 };

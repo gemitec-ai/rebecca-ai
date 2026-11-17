@@ -23,12 +23,10 @@ Houses Rebecca's structured official master specifications (`PersonaMetadata`), 
 
 ## Exported Structure
 The module exports the persona definition, structured metadata, and helper utilities:
-- **`REBECCA_METADATA` / `persona.metadata`**: Strongly typed `PersonaMetadata` object for direct programmatic access without string parsing.
-- **`getActivePersona(id?: string)`**: Resolves the active persona implementation (e.g. `rebeccaPersona`).
-- **`getCoreIdentityPrompt(lang?: Language)`**: Synthesizes the pure Layer 0 core identity prompt (`ja` or `en`) directly from structured `metadata`.
-- **`composePersonaPrompt(channelInstruction?: string, lang?: Language)`**: Combines `getCoreIdentityPrompt(lang)` with caller-supplied channel or application behavioral rules without hardcoding platform constraints inside persona definitions.
-- **`findTopPersonaPatterns` / `buildPersonaFewShotPrompt`**: Dynamic few-shot anchoring via cosine similarity over 120 situation patterns.
-- **`PERSONA_RESPONSE_SCHEMA` / `parsePersonaResponse`**: Gemini Structured Outputs schema (`{ thought, reply }`) and resilient JSON parsing.
+- **`REBECCA_METADATA` / `rebeccaPersona`**: Strongly typed `PersonaMetadata` object and canonical Rebecca persona definition for direct programmatic access without string parsing.
+- **`getActivePersona(id?: string)`**: Resolves the active `IPersonaDefinition` implementation (e.g. `rebeccaPersona`), exposing `getCoreIdentityPrompt`, `composePrompt`, `getDreamingPrompt`, `formatAbsenceInstruction`, `findTopPatterns`, and `buildFewShotPrompt`.
+- **`findTopPersonaPatterns` / `buildPersonaFewShotPrompt`**: Dynamic few-shot anchoring utilities consumed by `@rebecca/prompt`.
+- **`createStructuredPersonaSchema` / `PERSONA_RESPONSE_SCHEMA` / `parsePersonaJsonObject` / `parsePersonaResponse`**: Unified Honne & Tatemae Structured Outputs schema builder (`{ thought, reply }`) and resilient JSON parsing.
 
 ---
 
