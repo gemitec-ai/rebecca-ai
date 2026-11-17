@@ -502,6 +502,7 @@ describe('Copilot Autonomous Agent Suite (Redesign v3)', () => {
       // Turn 2: Model synthesizes final analytical response with attachments
       mockGenerateContent.mockResolvedValueOnce({
         text: JSON.stringify({
+          thought: '45,000インプレッション超えは素晴らしい成果ね。マスターにも喜んで報告しましょ。',
           reply: 'マスター！直近で一番伸びたのは新モデル発表のポストよ♡ 45,000インプレッション超えで大好評ね！',
           suggestionChips: ['他の投稿を見る', 'ユーザー分析', 'アセット確認']
         })
@@ -514,6 +515,7 @@ describe('Copilot Autonomous Agent Suite (Redesign v3)', () => {
         language: 'ja'
       });
 
+      expect(res.thought).toContain('45,000インプレッション超え');
       expect(res.reply).toContain('マスター！直近で一番伸びたのは');
       expect(res.attachments).toBeDefined();
       expect(res.attachments?.length).toBe(1);
@@ -524,6 +526,7 @@ describe('Copilot Autonomous Agent Suite (Redesign v3)', () => {
     it('should directly reply for casual conversation without triggering tools', async () => {
       mockGenerateContent.mockResolvedValueOnce({
         text: JSON.stringify({
+          thought: 'マスターが労ってくれて嬉しいわね。全肯定ギャルらしく優しく返しましょ。',
           reply: 'マスター、今日もお疲れ様〜！♡ いつでも頼りにしてね！',
           suggestionChips: ['ありがとう', '調子はどう？', '今日のサマリー']
         })
@@ -536,6 +539,7 @@ describe('Copilot Autonomous Agent Suite (Redesign v3)', () => {
         language: 'ja'
       });
 
+      expect(res.thought).toContain('マスターが労ってくれて');
       expect(res.reply).toContain('マスター、今日もお疲れ様〜！♡');
       expect(res.attachments).toBeUndefined();
       expect(res.actionRequired).toBeNull();
@@ -562,6 +566,7 @@ describe('Copilot Autonomous Agent Suite (Redesign v3)', () => {
 
       mockGenerateContent.mockResolvedValueOnce({
         text: JSON.stringify({
+          thought: '悪質アカウントへの対応ね。マスターの安全を守るため確認カードを用意したわ。',
           reply: 'マスターの指示通り、悪質なユーザー @bad_bot のブロック承認カードを用意したわよ♡ 確認して実行してね！',
           suggestionChips: ['承認する', 'キャンセル']
         })
@@ -585,9 +590,10 @@ describe('Copilot Autonomous Agent Suite (Redesign v3)', () => {
         text: 'マスター、今のところシステムは安定してるわ♡'
       });
 
-      // Phase 2: Constrained synthesis produces verified JSON
+      // Phase 2: Constrained synthesis produces verified JSON with thought + reply + chips
       mockGenerateContent.mockResolvedValueOnce({
         text: JSON.stringify({
+          thought: 'システムが安定しているからマスターも安心してくれるはずね。',
           reply: 'マスター、今のところシステムは安定してるわ♡',
           suggestionChips: ['KPIを見る', '最新投稿を確認', 'アセット一覧']
         })
@@ -600,15 +606,48 @@ describe('Copilot Autonomous Agent Suite (Redesign v3)', () => {
         language: 'ja'
       });
 
+      expect(res.thought).toBe('システムが安定しているからマスターも安心してくれるはずね。');
       expect(res.reply).toContain('マスター、今のところシステムは安定してるわ♡');
       expect(res.suggestionChips).toEqual(['KPIを見る', '最新投稿を確認', 'アセット一覧']);
       expect(mockGenerateContent).toHaveBeenCalledTimes(2);
       expect(mockGenerateContent).toHaveBeenLastCalledWith(expect.objectContaining({
         config: expect.objectContaining({
           responseMimeType: 'application/json',
-          responseSchema: expect.any(Object)
+          responseSchema: expect.objectContaining({
+            required: expect.arrayContaining(['thought', 'reply', 'suggestionChips'])
+          })
         })
       }));
+    });
+
+    it('should enforce Phase 2 Constrained Synthesis when Phase 1 omits inner thought', async () => {
+      // Phase 1 omits thought despite having reply + suggestionChips
+      mockGenerateContent.mockResolvedValueOnce({
+        text: JSON.stringify({
+          reply: '仮の応答',
+          suggestionChips: ['確認']
+        })
+      });
+
+      // Phase 2 enforces unified Honne & Tatemae schema
+      mockGenerateContent.mockResolvedValueOnce({
+        text: JSON.stringify({
+          thought: 'ちゃんと本音と建前を分けて思考しないとね。',
+          reply: 'データを確認したわ、マスター♡',
+          suggestionChips: ['詳細を表示']
+        })
+      });
+
+      const copilot = new CopilotUseCase(timelineRepo, usersRepo, assetsRepo, memoryRepo, supportersRepo);
+      const res = await copilot.processChat({
+        message: 'データを確認して',
+        currentContext: 'Overview',
+        language: 'ja'
+      });
+
+      expect(mockGenerateContent).toHaveBeenCalledTimes(2);
+      expect(res.thought).toBe('ちゃんと本音と建前を分けて思考しないとね。');
+      expect(res.reply).toBe('データを確認したわ、マスター♡');
     });
 
     it('should fail fast on empty message', async () => {
@@ -632,10 +671,11 @@ describe('Copilot Autonomous Agent Suite (Redesign v3)', () => {
   });
 
   describe('extractStructuredCopilotResponse Robust JSON Extraction & Unwrapping', () => {
-    it('should parse raw JSON properly', () => {
+    it('should parse raw JSON properly including thought, reply, and suggestionChips', () => {
       const res = extractStructuredCopilotResponse(
-        '{"reply": "Hello Master♡", "suggestionChips": ["A", "B"]}'
+        '{"thought": "マスターを笑顔にしたいわ♡", "reply": "Hello Master♡", "suggestionChips": ["A", "B"]}'
       );
+      expect(res.thought).toBe('マスターを笑顔にしたいわ♡');
       expect(res.reply).toBe('Hello Master♡');
       expect(res.suggestionChips).toEqual(['A', 'B']);
     });
@@ -851,7 +891,7 @@ describe('Copilot Autonomous Agent Suite (Redesign v3)', () => {
 
       const copilot = new CopilotUseCase(mockTimeline, mockUsers, mockAssets, mockMemory, mockSupporters);
 
-      // Turn 1: Gemini calls propose_destructive_action with target target_u1
+      // Turn 2: Phase 2 synthesis
       mockGenerateContent
         .mockResolvedValueOnce({
           functionCalls: [
@@ -869,6 +909,7 @@ describe('Copilot Autonomous Agent Suite (Redesign v3)', () => {
         .mockResolvedValueOnce({
           // Phase 2 synthesis
           text: JSON.stringify({
+            thought: '解除対象を確認したから承認カードを出しましょ。',
             reply: 'Target user unblock prepared♡',
             suggestionChips: ['Check status', 'Audit']
           })
@@ -908,7 +949,11 @@ describe('Copilot Autonomous Agent Suite (Redesign v3)', () => {
           candidates: [{ content: { role: 'model', parts: [{ text: 'Found post' }] } }]
         })
         .mockResolvedValueOnce({
-          text: JSON.stringify({ reply: 'Post deletion ready', suggestionChips: ['Confirm'] })
+          text: JSON.stringify({
+            thought: '対象投稿p1の確認カードを準備したわ。',
+            reply: 'Post deletion ready',
+            suggestionChips: ['Confirm']
+          })
         });
 
       const res = await copilot.processChat({
@@ -927,7 +972,11 @@ describe('Copilot Autonomous Agent Suite (Redesign v3)', () => {
         embeddings: [{ values: [...precomputedPersonaPatternEmbeddings[0].vector] }],
       });
       mockGenerateContent.mockResolvedValueOnce({
-        text: JSON.stringify({ reply: 'お疲れ様、マスター♡', suggestionChips: ['詳細を見る'] }),
+        text: JSON.stringify({
+          thought: '遅くまでお疲れ様。ちゃんと労わってあげたいわ。',
+          reply: 'お疲れ様、マスター♡',
+          suggestionChips: ['詳細を見る'],
+        }),
       });
 
       const copilot = new CopilotUseCase();
@@ -937,6 +986,7 @@ describe('Copilot Autonomous Agent Suite (Redesign v3)', () => {
         language: 'ja',
       });
 
+      expect(res.thought).toBe('遅くまでお疲れ様。ちゃんと労わってあげたいわ。');
       expect(res.reply).toBe('お疲れ様、マスター♡');
       expect(mockEmbedContent).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -950,15 +1000,55 @@ describe('Copilot Autonomous Agent Suite (Redesign v3)', () => {
       expect(genConfig.systemInstruction).toContain('【現在時刻】');
     });
 
-    it('should enforce unified composeSystemPrompt usage in CopilotUseCase without raw unanchored composePrompt or hardcoded timezones', () => {
+    it('should enforce unified composeSystemPrompt and Honne/Tatemae schema/history contracts in CopilotUseCase', () => {
       const copilotUseCaseSrc = fs.readFileSync(
         path.resolve(__dirname, '../../src/features/copilot/usecase.ts'),
         'utf8',
       );
       expect(copilotUseCaseSrc).toContain('composeSystemPrompt(');
+      expect(copilotUseCaseSrc).toContain('createStructuredPersonaSchema(');
+      expect(copilotUseCaseSrc).toContain('parsePersonaJsonObject(');
+      expect(copilotUseCaseSrc).toContain('formatTurnWithInnerThought(');
       expect(copilotUseCaseSrc).not.toMatch(/activePersona\.(?:composePrompt|getBasePrompt)\s*\(/);
       expect(copilotUseCaseSrc).not.toContain('DateTime.now');
       expect(copilotUseCaseSrc).not.toContain("'Asia/Tokyo'");
+      expect(copilotUseCaseSrc).not.toMatch(/finalResponseSchema\s*:\s*Schema\s*=\s*\{/);
+    });
+
+    it('should preserve Honne (thought) and Tatemae (reply) across multi-turn Copilot history via formatTurnWithInnerThought', async () => {
+      mockEmbedContent.mockResolvedValueOnce({
+        embeddings: [{ values: [...precomputedPersonaPatternEmbeddings[0].vector] }],
+      });
+      mockGenerateContent.mockResolvedValueOnce({
+        text: JSON.stringify({
+          thought: '前回の私の内心も覚えてるから話がスムーズね♡',
+          reply: 'もちろん覚えてるわよ、マスター♡',
+          suggestionChips: ['続ける'],
+        }),
+      });
+
+      const copilot = new CopilotUseCase();
+      const res = await copilot.processChat({
+        message: 'さっきの話の続きなんだけど',
+        currentContext: 'Dashboard',
+        language: 'ja',
+        timezone: 'America/New_York',
+        history: [
+          { role: 'user', text: '調子はどう？', time: '2026-11-17T01:00:00.000Z' },
+          {
+            role: 'model',
+            text: 'バッチリよ、マスター♡',
+            thought: 'マスターが話しかけてくれて最高に嬉しいわ！',
+            time: '2026-11-17T01:00:05.000Z',
+          },
+        ],
+      });
+
+      expect(res.thought).toBe('前回の私の内心も覚えてるから話がスムーズね♡');
+      const sentContents = mockGenerateContent.mock.calls[0][0].contents;
+      expect(sentContents[0].parts[0].text).toContain('2026-11-16 20:00');
+      expect(sentContents[1].parts[0].text).toContain('【思考・本音】マスターが話しかけてくれて最高に嬉しいわ！');
+      expect(sentContents[1].parts[0].text).toContain('【発話】バッチリよ、マスター♡');
     });
 
     it('should align Rebecca temporal bracket and Current Time header to the frontend-specified timezone (user night == Rebecca night)', async () => {
@@ -968,7 +1058,11 @@ describe('Copilot Autonomous Agent Suite (Redesign v3)', () => {
           embeddings: [{ values: [...precomputedPersonaPatternEmbeddings[0].vector] }],
         });
         mockGenerateContent.mockResolvedValueOnce({
-          text: JSON.stringify({ reply: '夜遅くまでお疲れ様、マスター♡', suggestionChips: ['休憩する'] }),
+          text: JSON.stringify({
+            thought: 'ニューヨークはもう夜なのね。しっかり労ってあげなきゃ♡',
+            reply: '夜遅くまでお疲れ様、マスター♡',
+            suggestionChips: ['休憩する'],
+          }),
         });
 
         const copilot = new CopilotUseCase();

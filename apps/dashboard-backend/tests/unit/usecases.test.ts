@@ -764,6 +764,7 @@ describe('Dashboard Backend UseCases Unit Tests', () => {
     it('processChat should handle Gemini response with structured action card', async () => {
       mockGenerateContent.mockResolvedValueOnce({
         text: JSON.stringify({
+          thought: '悪質ユーザーへの対処をすぐ用意しないとね。',
           reply: 'マスター！悪質ユーザー @toxic_user をブロックするわね♡',
           actionRequired: {
             type: 'BLOCK_USER',
@@ -784,6 +785,7 @@ describe('Dashboard Backend UseCases Unit Tests', () => {
         language: 'ja'
       });
 
+      expect(res.thought).toBe('悪質ユーザーへの対処をすぐ用意しないとね。');
       expect(res.reply).toContain('マスター！');
       expect(res.actionRequired).toBeDefined();
       expect(res.actionRequired?.type).toBe('BLOCK_USER');

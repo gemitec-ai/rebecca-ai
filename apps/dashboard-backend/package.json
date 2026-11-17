@@ -28,6 +28,7 @@
     "@google/genai": "^2.30.0",
     "@rebecca/db": "*",
     "@rebecca/logger": "*",
+    "@rebecca/memory": "*",
     "@rebecca/persona": "*",
     "@rebecca/prompt": "*",
     "@rebecca/types": "*",

@@ -537,7 +537,9 @@ describe('Dashboard Backend Controllers Unit Tests', () => {
         body: {
           message: 'Good evening!',
           currentContext: 'Home',
-          history: [],
+          history: [
+            { role: 'model', text: 'Prev reply', thought: '  Inner Honne note  ', time: '2026-11-17T01:00:00Z' },
+          ],
           language: 'en',
           timezone: ' America/New_York ',
         },
@@ -547,7 +549,9 @@ describe('Dashboard Backend Controllers Unit Tests', () => {
       expect(useCase.processChat).toHaveBeenCalledWith({
         message: 'Good evening!',
         currentContext: 'Home',
-        history: [],
+        history: [
+          { role: 'model', text: 'Prev reply', thought: 'Inner Honne note', time: '2026-11-17T01:00:00Z' },
+        ],
         language: 'en',
         timezone: 'America/New_York',
       });

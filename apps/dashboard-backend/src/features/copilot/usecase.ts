@@ -1,7 +1,18 @@
-import { CopilotAction, CopilotAttachment, CopilotRequest, CopilotResponse } from '@rebecca/types';
-import { Content, GoogleGenAI, Schema, Type } from '@google/genai';
+import {
+  ConversationLogEntry,
+  CopilotAction,
+  CopilotAttachment,
+  CopilotRequest,
+  CopilotResponse,
+} from '@rebecca/types';
+import { Content, GoogleGenAI } from '@google/genai';
 import { config, isValidTimezone } from '../../config';
-import { getActivePersona } from '@rebecca/persona';
+import {
+  createStructuredPersonaSchema,
+  getActivePersona,
+  parsePersonaJsonObject,
+} from '@rebecca/persona';
+import { formatTurnWithInnerThought } from '@rebecca/memory';
 import { composeSystemPrompt, formatZonedDateTime } from '@rebecca/prompt';
 import { TimelineRepository } from '../timeline/repository';
 import { UsersRepository } from '../users/repository';
@@ -118,7 +129,7 @@ export class CopilotUseCase {
   private async executeReActLoop(
     userMessage: string,
     currentContext: string,
-    rawHistory: { role: 'user' | 'model'; text: string }[],
+    rawHistory: { role: 'user' | 'model'; text: string; thought?: string; time?: string }[],
     toolContext: CopilotToolContext,
     isEn: boolean,
     targetTimezone: string
@@ -154,7 +165,7 @@ ${languageInstruction}
    - Only after confirming the exact user ID from \`search_users\` or [Active View], invoke \`propose_destructive_action\`.
    - If the account does not exist or search returns 0 results, do NOT propose an action; warmly explain to the operator that the account could not be found in the system.
    - If the operator asks to synchronize timeline posts (\`SYNC_POSTS\`), trigger mention replies (\`TRIGGER_REPLY\`), run memory consolidation (\`FORCE_DREAMING\`), or regenerate failed image captions (\`REGENERATE_CAPTIONS\`), invoke \`propose_destructive_action\` with the corresponding \`actionType\`.
-5. **Final Output Schema**: You must provide your final answer strictly as a valid JSON object matching the schema: {"reply": "<your conversational answer>", "suggestionChips": ["<chip 1>", "<chip 2>", "<chip 3>"]}. Do NOT wrap the JSON in backticks or markdown code fences (e.g. no \`\`\`json). Output raw JSON only.`;
+5. **Final Output Schema (Honne & Tatemae)**: You must provide your final answer strictly as a valid JSON object matching the schema: {"thought": "<your inner monologue / true feelings in character, max 150 chars>", "reply": "<your conversational answer>", "suggestionChips": ["<chip 1>", "<chip 2>", "<chip 3>"]}. Do NOT wrap the JSON in backticks or markdown code fences (e.g. no \`\`\`json). Output raw JSON only.`;
 
     const { systemInstruction } = await composeSystemPrompt({
       persona: activePersona,
@@ -175,25 +186,23 @@ ${languageInstruction}
       additionalSections: [copilotOperationalRules],
     });
 
-    const finalResponseSchema: Schema = {
-      type: Type.OBJECT,
-      properties: {
-        reply: {
-          type: Type.STRING,
-          description: 'Conversational reply embodying the active persona.'
-        },
+    const finalResponseSchema = createStructuredPersonaSchema({
+      thoughtDescription:
+        'Inner thoughts, true feelings, and emotional reflection based on the active persona (Honne, within 150 characters).',
+      replyDescription: 'Conversational reply embodying the active persona (Tatemae).',
+      additionalProperties: {
         suggestionChips: {
-          type: Type.ARRAY,
-          items: { type: Type.STRING },
-          description: '1 to 3 relevant follow-up prompt chips for the user.'
-        }
+          type: 'array',
+          items: { type: 'string' },
+          description: '1 to 3 relevant follow-up prompt chips for the user.',
+        },
       },
-      required: ['reply', 'suggestionChips']
-    };
+      additionalRequired: ['suggestionChips'],
+    });
 
     const contents: Content[] = [];
 
-    // 1. Build sanitized alternating history
+    // 1. Build sanitized alternating history preserving Tatemae/Honne working memory continuity
     const priorHistory = rawHistory.filter((h, idx) => {
       if (idx === rawHistory.length - 1 && h.text === userMessage) return false;
       return typeof h.text === 'string' && h.text.trim().length > 0;
@@ -203,9 +212,16 @@ ${languageInstruction}
     for (const h of priorHistory.slice(-6)) {
       const role = h.role === 'model' ? 'model' : 'user';
       if (role === expectedRole) {
-        contents.push({
+        const entry: ConversationLogEntry = {
           role,
-          parts: [{ text: h.text }]
+          content: h.text,
+          ...(role === 'model' && h.thought ? { thought: h.thought } : {}),
+          ...(h.time ? { timestamp: h.time } : {}),
+        };
+        const formatted = formatTurnWithInnerThought(entry, targetTimezone);
+        contents.push({
+          role: formatted.role,
+          parts: [{ text: formatted.text }],
         });
         expectedRole = expectedRole === 'user' ? 'model' : 'user';
       }
@@ -324,9 +340,10 @@ ${languageInstruction}
 
     if (finalCandidateText) {
       const directExtracted = extractStructuredCopilotResponse(finalCandidateText);
-      if (directExtracted.reply && directExtracted.suggestionChips.length > 0) {
+      if (directExtracted.thought && directExtracted.reply && directExtracted.suggestionChips.length > 0) {
         const action = proposedAction ?? directExtracted.actionRequired ?? null;
         return {
+          thought: directExtracted.thought,
           reply: directExtracted.reply,
           attachments: resolveFinalAttachments(accumulatedAttachments, action),
           actionRequired: action,
@@ -338,7 +355,7 @@ ${languageInstruction}
     // Constrained Synthesis: Invoke Phase 2 with strict responseSchema and application/json
     // Because tools are not passed in Phase 2, Gemini's constrained decoding is 100% active.
     const synthesisConfig = {
-      systemInstruction: `${systemInstruction}\n\nSynthesize your final response and 1-3 relevant suggestionChips strictly in JSON matching the response schema.`,
+      systemInstruction: `${systemInstruction}\n\nSynthesize your final response with internal thought (Honne), spoken reply (Tatemae), and 1-3 relevant suggestionChips strictly in JSON matching the response schema.`,
       temperature: 0.7,
       responseMimeType: 'application/json',
       responseSchema: finalResponseSchema
@@ -360,6 +377,7 @@ ${languageInstruction}
     const action = proposedAction ?? extracted.actionRequired ?? null;
 
     return {
+      ...(extracted.thought !== undefined ? { thought: extracted.thought } : {}),
       reply: extracted.reply,
       attachments: resolveFinalAttachments(accumulatedAttachments, action),
       actionRequired: action,
@@ -369,61 +387,41 @@ ${languageInstruction}
 }
 
 /**
- * Safely extracts and parses JSON payload containing reply, suggestion chips, and optional action from Gemini output.
- * Strips markdown code fences (```json ... ``` or ``` ... ```) and parses the structured response.
+ * Safely extracts and parses JSON payload containing Honne (`thought`), Tatemae (`reply`),
+ * suggestion chips, and optional action from Gemini output using `@rebecca/persona`'s shared parser.
  * If output is not JSON, safely returns the raw message with empty suggestion chips without hardcoded fallbacks.
  */
 export function extractStructuredCopilotResponse(
   rawText: string
 ): {
+  thought?: string;
   reply: string;
   suggestionChips: string[];
   actionRequired?: CopilotAction | null;
 } {
   const cleaned = rawText.trim();
-  let parsedObj: { reply?: string; suggestionChips?: string[]; actionRequired?: CopilotAction | null } | null = null;
+  const parsedObj = parsePersonaJsonObject(cleaned);
 
-  // 1. Check if directly parseable as raw JSON
-  try {
-    parsedObj = JSON.parse(cleaned);
-  } catch {
-    // 2. Try stripping markdown code fences ```json ... ``` or ``` ... ```
-    const fenceMatch = cleaned.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
-    if (fenceMatch && fenceMatch[1]) {
-      try {
-        parsedObj = JSON.parse(fenceMatch[1].trim());
-      } catch {
-        // Fall through to bracket search
-      }
-    }
-
-    // 3. Try finding outermost { ... }
-    if (!parsedObj) {
-      const firstBrace = cleaned.indexOf('{');
-      const lastBrace = cleaned.lastIndexOf('}');
-      if (firstBrace !== -1 && lastBrace > firstBrace) {
-        try {
-          parsedObj = JSON.parse(cleaned.slice(firstBrace, lastBrace + 1));
-        } catch {
-          // Parse failed completely
-        }
-      }
-    }
-  }
-
+  let thoughtText: string | undefined;
   let replyText = cleaned;
   let suggestionChips: string[] = [];
   let actionRequired: CopilotAction | null = null;
 
-  if (parsedObj && typeof parsedObj === 'object') {
-    if (typeof parsedObj.reply === 'string' && parsedObj.reply.trim().length > 0) {
-      replyText = parsedObj.reply.trim();
+  if (parsedObj) {
+    if (typeof parsedObj['thought'] === 'string' && parsedObj['thought'].trim().length > 0) {
+      thoughtText = parsedObj['thought'].trim();
     }
-    if (Array.isArray(parsedObj.suggestionChips)) {
-      suggestionChips = parsedObj.suggestionChips.filter(s => typeof s === 'string' && s.trim().length > 0);
+    if (typeof parsedObj['reply'] === 'string' && parsedObj['reply'].trim().length > 0) {
+      replyText = parsedObj['reply'].trim();
     }
-    if (parsedObj.actionRequired) {
-      actionRequired = parsedObj.actionRequired;
+    if (Array.isArray(parsedObj['suggestionChips'])) {
+      suggestionChips = parsedObj['suggestionChips'].filter(
+        (s): s is string => typeof s === 'string' && s.trim().length > 0,
+      );
+    }
+    const candidateAction = parsedObj['actionRequired'];
+    if (candidateAction && typeof candidateAction === 'object' && !Array.isArray(candidateAction)) {
+      actionRequired = candidateAction as CopilotAction;
     }
   } else {
     // If not JSON, but wrapped in code fences, strip them so raw ```json doesn't leak into chat bubble
@@ -432,6 +430,7 @@ export function extractStructuredCopilotResponse(
   }
 
   return {
+    ...(thoughtText !== undefined ? { thought: thoughtText } : {}),
     reply: replyText,
     suggestionChips,
     actionRequired

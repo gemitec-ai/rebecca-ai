@@ -39,9 +39,15 @@ export class CopilotController {
 
     const boundedMessage = message.slice(0, 2000);
     const boundedHistory = Array.isArray(history)
-      ? history.slice(-20).map((item: { role?: string; text?: string }) => ({
+      ? history.slice(-20).map((item: { role?: string; text?: string; thought?: string; time?: string }) => ({
           role: item?.role === 'model' ? ('model' as const) : ('user' as const),
           text: typeof item?.text === 'string' ? item.text.slice(0, 2000) : '',
+          ...(typeof item?.thought === 'string' && item.thought.trim().length > 0
+            ? { thought: item.thought.trim().slice(0, 500) }
+            : {}),
+          ...(typeof item?.time === 'string' && item.time.trim().length > 0
+            ? { time: item.time.trim() }
+            : {}),
         }))
       : history;
 

@@ -654,6 +654,7 @@ describe('Dashboard Backend Exhaustive Branch Coverage Tests', () => {
     it('processChat should handle alternating history with multiple consecutive user/model roles', async () => {
       mockGenerateContent.mockResolvedValueOnce({
         text: JSON.stringify({
+          thought: 'Summary prepared with clear insights for Master.',
           reply: 'Here is the analysis!',
           actionRequired: null,
           suggestionChips: ['Good']
@@ -672,6 +673,7 @@ describe('Dashboard Backend Exhaustive Branch Coverage Tests', () => {
         language: 'en'
       });
 
+      expect(res.thought).toBe('Summary prepared with clear insights for Master.');
       expect(res.reply).toBe('Here is the analysis!');
       expect(mockGenerateContent).toHaveBeenCalled();
     });
@@ -698,6 +700,7 @@ describe('Dashboard Backend Exhaustive Branch Coverage Tests', () => {
       // 2. Final response turn
       mockGenerateContent.mockResolvedValueOnce({
         text: JSON.stringify({
+          thought: 'スパマー対策の承認カードをちゃんと確認してもらいましょ。',
           reply: 'ユーザー @spammer_user をブロックする承認カードを用意したわよ！',
           suggestionChips: ['承認する', 'キャンセル']
         })

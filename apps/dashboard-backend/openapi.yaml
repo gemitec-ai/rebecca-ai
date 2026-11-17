@@ -1410,6 +1410,9 @@ components:
                 enum: [user, model]
               text:
                 type: string
+              thought:
+                type: string
+                description: Internal persona monologue (Honne) persisted across turns for working memory continuity.
               time:
                 type: string
         language:
@@ -1427,6 +1430,10 @@ components:
         - reply
         - suggestionChips
       properties:
+        thought:
+          type: string
+          description: Internal persona monologue (Honne) generated alongside the spoken reply.
+          example: "マスターがアクティブユーザーの動向を気にしているわね。データをもとに的確に支えてあげなきゃ。"
         reply:
           type: string
           example: "マスター、最近のアクティブユーザーの傾向を分析したわよ♡"
