@@ -549,6 +549,8 @@ export interface CopilotRequest {
   currentContext?: string;
   history?: { role: 'user' | 'model'; text: string; time?: string }[];
   language?: 'ja' | 'en';
+  /** Optional IANA time zone identifier (e.g. `'America/New_York'`, `'Asia/Tokyo'`) from the UI. */
+  timezone?: string;
 }
 
 export interface CopilotResponse {
