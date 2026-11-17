@@ -11,6 +11,8 @@ import {
   buildPersonaFewShotPrompt,
   getFormattedPersonaPatternsText,
   PERSONA_RESPONSE_SCHEMA,
+  createStructuredPersonaSchema,
+  parsePersonaJsonObject,
   parsePersonaResponse,
   cleanJsonString,
   getActivePersona
@@ -355,6 +357,68 @@ describe('persona package exports verification', () => {
       const enWithChannel = p.composePrompt('[Channel Context]', 'en');
       expect(enWithChannel).toContain(p.getCoreIdentityPrompt('en'));
       expect(enWithChannel).toContain('[Channel Context]');
+    });
+  });
+
+  describe('Unified Honne & Tatemae schema builder and JSON object parser', () => {
+    test('createStructuredPersonaSchema always enforces thought and spoken reply fields across extensions', () => {
+      expect(PERSONA_RESPONSE_SCHEMA.required).toEqual(['thought', 'reply']);
+      expect(Object.keys(PERSONA_RESPONSE_SCHEMA.properties)).toEqual(['thought', 'reply']);
+
+      const extended = createStructuredPersonaSchema({
+        thoughtDescription: 'Custom Honne',
+        replyDescription: 'Custom Tatemae',
+        additionalProperties: {
+          suggestionChips: {
+            type: 'array',
+            items: { type: 'string' },
+            description: 'Follow-up suggestions',
+          },
+        },
+        additionalRequired: ['suggestionChips'],
+      });
+      expect(extended.required).toEqual(['thought', 'reply', 'suggestionChips']);
+      expect(extended.properties['thought'].description).toBe('Custom Honne');
+      expect(extended.properties['reply'].description).toBe('Custom Tatemae');
+      expect(extended.properties['suggestionChips'].type).toBe('array');
+
+      const supportLike = createStructuredPersonaSchema({ replyFieldName: 'replyBody' });
+      expect(supportLike.required).toEqual(['thought', 'replyBody']);
+      expect(supportLike.properties['replyBody'].type).toBe('string');
+    });
+
+    test('createStructuredPersonaSchema fails fast on invalid replyFieldName or field override attempts', () => {
+      expect(() => createStructuredPersonaSchema({ replyFieldName: '' })).toThrow(/distinct from "thought"/);
+      expect(() => createStructuredPersonaSchema({ replyFieldName: 'thought' })).toThrow(/distinct from "thought"/);
+      expect(() =>
+        createStructuredPersonaSchema({
+          additionalProperties: { thought: { type: 'string' } },
+        }),
+      ).toThrow(/must not override/);
+      expect(() =>
+        createStructuredPersonaSchema({
+          replyFieldName: 'replyBody',
+          additionalProperties: { replyBody: { type: 'string' } },
+        }),
+      ).toThrow(/must not override/);
+    });
+
+    test('parsePersonaJsonObject extracts fenced, surrounded, and control-char JSON records safely', () => {
+      expect(parsePersonaJsonObject('')).toBeNull();
+      expect(parsePersonaJsonObject(null as unknown as string)).toBeNull();
+      expect(parsePersonaJsonObject('[1, 2, 3]')).toBeNull();
+      expect(parsePersonaJsonObject('plain conversational text without braces')).toBeNull();
+      expect(parsePersonaJsonObject('{broken json}')).toBeNull();
+
+      const fenced = '```json\n{"thought": "本音", "reply": "建前"}\n```';
+      expect(parsePersonaJsonObject(fenced)).toEqual({ thought: '本音', reply: '建前' });
+
+      const surrounded = 'Sure:\n{"thought": "内心\nメモ", "reply": "返事", "suggestionChips": ["次へ"]}\nThanks!';
+      expect(parsePersonaJsonObject(surrounded)).toEqual({
+        thought: '内心\nメモ',
+        reply: '返事',
+        suggestionChips: ['次へ'],
+      });
     });
   });
 });
