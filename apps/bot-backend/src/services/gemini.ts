@@ -89,7 +89,13 @@ const toGeminiContents = (ctx: ToolDialogueStepContext): Content[] => {
   return contents;
 };
 import { ConversationLogEntry, UserCoreProfile, IGeminiService } from '../types';
-import { parsePersonaResponse, cleanJsonString, StructuredPersonaResponse, PERSONA_RESPONSE_SCHEMA } from '@rebecca/persona';
+import {
+  createStructuredPersonaSchema,
+  parsePersonaJsonObject,
+  parsePersonaResponse,
+  StructuredPersonaResponse,
+  PERSONA_RESPONSE_SCHEMA,
+} from '@rebecca/persona';
 import { StructuredNewsPostResponse } from '../features/news/types';
 import { StructuredPollPostResponse } from '../features/poll/types';
 import { StructuredSupportPostResponse } from '../features/support/types';
@@ -99,40 +105,30 @@ import { rethrowUpstreamApiError } from '../utils/httpError';
 /**
  * Creates the JSON schema for structured news post generation with enum-constrained candidate title selection.
  */
-const createStructuredNewsPostSchema = (candidateHeadlines: string[]) => ({
-  type: 'object',
-  properties: {
-    selectedTitle: {
-      type: 'string',
-      enum: candidateHeadlines,
-      description: 'The exact headline title chosen from the candidate list.',
+const createStructuredNewsPostSchema = (candidateHeadlines: string[]) =>
+  createStructuredPersonaSchema({
+    thoughtDescription:
+      'Inner thoughts, true feelings, and emotional shifts based on the persona (within 150 characters).',
+    replyDescription: 'The public tweet text (within 100 characters).',
+    additionalProperties: {
+      selectedTitle: {
+        type: 'string',
+        enum: candidateHeadlines,
+        description: 'The exact headline title chosen from the candidate list.',
+      },
     },
-    thought: {
-      type: 'string',
-      description: 'Inner thoughts, true feelings, and emotional shifts based on the persona (within 150 characters).',
-    },
-    reply: {
-      type: 'string',
-      description: 'The public tweet text (within 100 characters).',
-    },
-  },
-  required: ['selectedTitle', 'thought', 'reply'],
-});
+    additionalRequired: ['selectedTitle'],
+  });
 
 /**
  * JSON schema for structured poll post generation (thought, reply, and 3-4 poll options).
  */
-const STRUCTURED_POLL_POST_SCHEMA = {
-  type: 'object',
-  properties: {
-    thought: {
-      type: 'string',
-      description: 'Inner thoughts, true feelings, and why this poll topic was chosen (within 150 characters).',
-    },
-    reply: {
-      type: 'string',
-      description: 'The public poll tweet text inviting followers to vote and reply (within 100 characters).',
-    },
+const STRUCTURED_POLL_POST_SCHEMA = createStructuredPersonaSchema({
+  thoughtDescription:
+    'Inner thoughts, true feelings, and why this poll topic was chosen (within 150 characters).',
+  replyDescription:
+    'The public poll tweet text inviting followers to vote and reply (within 100 characters).',
+  additionalProperties: {
     options: {
       type: 'array',
       items: {
@@ -143,27 +139,19 @@ const STRUCTURED_POLL_POST_SCHEMA = {
       description: '3 to 4 poll choices, each strictly within 25 characters.',
     },
   },
-  required: ['thought', 'reply', 'options'],
-};
-
+  additionalRequired: ['options'],
+});
 
 /**
  * JSON schema for structured support appreciation post generation.
  */
-const STRUCTURED_SUPPORT_POST_SCHEMA = {
-  type: 'object',
-  properties: {
-    thought: {
-      type: 'string',
-      description: 'レベッカの内心の思考。差し入れをもらって照れたり強がったりしながら、今の自分の作業や近況と結びつけて喜ぶ心の声。',
-    },
-    replyBody: {
-      type: 'string',
-      description: 'レベッカがサポーターの名前を直接呼びながら、アイテムへの感謝とツンデレな激励をゼロから語るオリジナル本文（最大90文字以内）。定型文は厳禁。',
-    },
-  },
-  required: ['thought', 'replyBody'],
-};
+const STRUCTURED_SUPPORT_POST_SCHEMA = createStructuredPersonaSchema({
+  replyFieldName: 'replyBody',
+  thoughtDescription:
+    'レベッカの内心の思考。差し入れをもらって照れたり強がったりしながら、今の自分の作業や近況と結びつけて喜ぶ心の声。',
+  replyDescription:
+    'レベッカがサポーターの名前を直接呼びながら、アイテムへの感謝とツンデレな激励をゼロから語るオリジナル本文（最大90文字以内）。定型文は厳禁。',
+});
 
 /**
  * Configuration options required by GeminiService.
@@ -416,25 +404,25 @@ export class GeminiService implements IGeminiService {
         throw new Error('Gemini API returned empty response for structured news post');
       }
 
-      const cleaned = cleanJsonString(rawText);
-      const parsed = JSON.parse(cleaned);
+      const parsed = parsePersonaJsonObject(rawText);
 
       if (
-        typeof parsed.thought !== 'string' ||
-        typeof parsed.reply !== 'string' ||
-        typeof parsed.selectedTitle !== 'string'
+        !parsed ||
+        typeof parsed['thought'] !== 'string' ||
+        typeof parsed['reply'] !== 'string' ||
+        typeof parsed['selectedTitle'] !== 'string'
       ) {
         throw new Error('Gemini API returned malformed response schema for structured news post');
       }
 
-      const trimmedReply = parsed.reply.trim();
+      const trimmedReply = parsed['reply'].trim();
       if (!trimmedReply) {
         throw new Error('Gemini API returned structured news post with empty reply');
       }
 
       return {
-        selectedTitle: parsed.selectedTitle.trim(),
-        thought: parsed.thought.trim(),
+        selectedTitle: parsed['selectedTitle'].trim(),
+        thought: parsed['thought'].trim(),
         reply: trimmedReply,
       };
     } catch (e) {
@@ -484,23 +472,23 @@ export class GeminiService implements IGeminiService {
         throw new Error('Gemini API returned empty response for structured poll post');
       }
 
-      const cleaned = cleanJsonString(rawText);
-      const parsed = JSON.parse(cleaned);
+      const parsed = parsePersonaJsonObject(rawText);
 
       if (
-        typeof parsed.thought !== 'string' ||
-        typeof parsed.reply !== 'string' ||
-        !Array.isArray(parsed.options)
+        !parsed ||
+        typeof parsed['thought'] !== 'string' ||
+        typeof parsed['reply'] !== 'string' ||
+        !Array.isArray(parsed['options'])
       ) {
         throw new Error('Gemini API returned malformed response schema for structured poll post');
       }
 
-      const trimmedReply = parsed.reply.trim();
+      const trimmedReply = parsed['reply'].trim();
       if (!trimmedReply) {
         throw new Error('Gemini API returned structured poll post with empty reply');
       }
 
-      const validOptions = parsed.options
+      const validOptions = parsed['options']
         .filter((opt: unknown): opt is string => typeof opt === 'string' && opt.trim().length > 0)
         .map((opt: string) => opt.trim().slice(0, 25))
         .slice(0, 4);
@@ -510,7 +498,7 @@ export class GeminiService implements IGeminiService {
       }
 
       return {
-        thought: parsed.thought.trim(),
+        thought: parsed['thought'].trim(),
         reply: trimmedReply,
         options: validOptions,
       };
@@ -559,23 +547,23 @@ export class GeminiService implements IGeminiService {
         throw new Error('Gemini API returned empty response for structured support post');
       }
 
-      const cleaned = cleanJsonString(rawText);
-      const parsed = JSON.parse(cleaned);
+      const parsed = parsePersonaJsonObject(rawText);
 
       if (
-        typeof parsed.thought !== 'string' ||
-        typeof parsed.replyBody !== 'string'
+        !parsed ||
+        typeof parsed['thought'] !== 'string' ||
+        typeof parsed['replyBody'] !== 'string'
       ) {
         throw new Error('Gemini API returned malformed response schema for structured support post');
       }
 
-      const trimmedReply = parsed.replyBody.trim();
+      const trimmedReply = parsed['replyBody'].trim();
       if (!trimmedReply) {
         throw new Error('Gemini API returned structured support post with empty replyBody');
       }
 
       return {
-        thought: parsed.thought.trim(),
+        thought: parsed['thought'].trim(),
         replyBody: trimmedReply,
       };
     } catch (error) {

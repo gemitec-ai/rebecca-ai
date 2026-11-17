@@ -68,4 +68,14 @@ describe('Bot Single-Pipeline Prompt Architecture Guards', () => {
     expect(channelPromptsSrc).not.toContain('buildBotChannelBasePrompt');
     expect(channelPromptsSrc).not.toContain('buildGroundedBotChannelPrompt');
   });
+
+  it('enforces unified Honne & Tatemae structured response schemas via @rebecca/persona without hand-rolled schema duplicates', () => {
+    const geminiServiceSrc = fs.readFileSync(
+      path.join(BOT_SRC_ROOT, 'services/gemini.ts'),
+      'utf8',
+    );
+    expect(geminiServiceSrc).toContain('PERSONA_RESPONSE_SCHEMA');
+    expect(geminiServiceSrc).toContain('createStructuredPersonaSchema(');
+    expect(geminiServiceSrc).not.toMatch(/required:\s*\[\s*['"](?:selectedTitle|thought)['"]/);
+  });
 });
