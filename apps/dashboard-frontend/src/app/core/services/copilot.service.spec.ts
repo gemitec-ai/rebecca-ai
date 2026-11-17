@@ -95,6 +95,7 @@ describe('CopilotService', () => {
 
   it('should send a message and handle AI reply with suggestions in Japanese and English', () => {
     copilotRepoSpy.chat.and.returnValue(of({
+      thought: 'マスターのためにKPI要点をわかりやすくまとめましょ♡',
       reply: 'Here is the KPI summary',
       suggestionChips: ['Explain more', 'Export data']
     }));
@@ -114,18 +115,26 @@ describe('CopilotService', () => {
     expect(msgs[1].text).toBe('Summarize KPI');
     expect(msgs[2].role).toBe('model');
     expect(msgs[2].text).toBe('Here is the KPI summary');
+    expect(msgs[2].thought).toBe('マスターのためにKPI要点をわかりやすくまとめましょ♡');
     expect(msgs[2].suggestionChips).toEqual(['Explain more', 'Export data']);
     expect(service.isLoading()).toBeFalse();
 
-    // In English and a non-JST frontend timezone
+    // In English and a non-JST frontend timezone, subsequent history preserves prior thought
     currentLangSignal.set('en');
     currentTzSignal.set('America/New_York');
     service.sendMessage('Explain DAU');
     expect(copilotRepoSpy.chat).toHaveBeenCalledWith(
-      jasmine.objectContaining({
+      expect.objectContaining({
         message: 'Explain DAU',
         language: 'en',
-        timezone: 'America/New_York'
+        timezone: 'America/New_York',
+        history: expect.arrayContaining([
+          expect.objectContaining({
+            role: 'model',
+            text: 'Here is the KPI summary',
+            thought: 'マスターのためにKPI要点をわかりやすくまとめましょ♡',
+          })
+        ])
       })
     );
   });

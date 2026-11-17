@@ -120,6 +120,7 @@ export class CopilotService {
     const historyPayload = this.messages().slice(0, -1).map(m => ({
       role: m.role,
       text: m.text,
+      ...(m.thought ? { thought: m.thought } : {}),
       time: m.time
     }));
 
@@ -138,6 +139,7 @@ export class CopilotService {
           id: `msg-${Date.now()}-model`,
           role: 'model',
           text: res.reply,
+          ...(res.thought ? { thought: res.thought } : {}),
           time: new Date().toISOString(),
           actionRequired: res.actionRequired ?? undefined,
           suggestionChips: res.suggestionChips ?? [],
