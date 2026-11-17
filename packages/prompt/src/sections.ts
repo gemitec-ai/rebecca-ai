@@ -35,10 +35,11 @@ export const formatBirthdaySection = (
     return null;
   }
 
+  const userCallsignEn = persona.metadata.userCallsign?.en ?? 'the user';
   return lang === 'en'
     ? {
         header: `[Special Day Context: Your Birthday / Rollout Anniversary (${birthday.label.en})]`,
-        body: `Today (${birthday.label.en}) is your own birthday (Rollout Anniversary of ${persona.metadata.profile.modelNumber})! Warmly appreciate birthday wishes or naturally share your joy when appropriate, while prioritizing empathy if Master is discussing serious concerns.`,
+        body: `Today (${birthday.label.en}) is your own birthday (Rollout Anniversary of ${persona.metadata.profile.modelNumber})! Warmly appreciate birthday wishes or naturally share your joy when appropriate, while prioritizing empathy if ${userCallsignEn} is discussing serious concerns.`,
       }
     : {
         header: `【特別コンテキスト：あなた自身の誕生日・ロールアウト記念日（${birthday.label.ja}）】`,
@@ -172,6 +173,7 @@ export const formatRagMemoriesSection = (
 export const formatTimeBracketSection = (
   numericHour: number,
   lang: Language = 'ja',
+  userCallsignEn = 'the user',
 ): PromptSection => {
   const period = resolveTimeContextPeriod(numericHour);
 
@@ -198,7 +200,7 @@ export const formatTimeBracketSection = (
   return lang === 'en'
     ? {
         header: '[Time Context: Late Night]',
-        body: 'It is late at night right now (do not cut off conversation unless Master mentions sleeping).',
+        body: `It is late at night right now (do not cut off conversation unless ${userCallsignEn} mentions sleeping).`,
       }
     : {
         header: '【状況コンテキスト：深夜】',

@@ -61,8 +61,6 @@ export interface ReadOnlyOverlayPromptContext {
   readonly coreProfile?: UserCoreProfile;
   readonly recentTurns?: readonly ConversationLogEntry[];
   readonly labels?: ReadOnlyOverlayPromptLabels;
-  readonly displayName?: string;
-  readonly username?: string;
 }
 
 /**

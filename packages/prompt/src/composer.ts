@@ -101,6 +101,10 @@ export const composeSystemPrompt = async (
   const temporalParts = temporal ? resolveParts(now, timezone) : null;
   const formattedCurrentTime = temporal ? resolveFormatted(now, timezone) : '';
 
+  const userData = memory?.userData ?? null;
+  const callsign =
+    lang === 'en' ? persona.metadata.userCallsign.en : persona.metadata.userCallsign.ja;
+
   const currentTimeSection = temporal
     ? formatCurrentTimeSection(formattedCurrentTime, lang)
     : null;
@@ -110,12 +114,8 @@ export const composeSystemPrompt = async (
       : null;
   const timeBracketSection =
     temporal && temporalParts && temporal.includeTimeBracket !== false
-      ? formatTimeBracketSection(temporalParts.numericHour, lang)
+      ? formatTimeBracketSection(temporalParts.numericHour, lang, persona.metadata.userCallsign.en)
       : null;
-
-  const userData = memory?.userData ?? null;
-  const callsign =
-    lang === 'en' ? persona.metadata.userCallsign.en : persona.metadata.userCallsign.ja;
 
   const systemInstruction = assemblePromptSections([
     basePrompt,

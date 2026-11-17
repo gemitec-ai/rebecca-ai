@@ -105,3 +105,24 @@ export const resolveTimeContextPeriod = (numericHour: number): TimeContextPeriod
   }
   return 'late_night';
 };
+
+/**
+ * Resolves a localized human-readable label for a {@link TimeContextPeriod}.
+ *
+ * @param period - Discrete time-of-day period bracket.
+ * @param lang - Target language (`'ja'` or `'en'`). Defaults to `'ja'`.
+ * @returns Localized label (`'早朝'`/`'朝'`/`'昼'`/`'夕方・夜'`/`'深夜'` or English equivalent).
+ */
+export const formatTimeContextPeriodLabel = (
+  period: TimeContextPeriod,
+  lang: 'ja' | 'en' = 'ja',
+): string => {
+  const labels: Readonly<Record<TimeContextPeriod, { ja: string; en: string }>> = {
+    early_morning: { ja: '早朝', en: 'Early Morning' },
+    morning: { ja: '朝', en: 'Morning' },
+    daytime: { ja: '昼', en: 'Daytime' },
+    evening: { ja: '夕方・夜', en: 'Evening' },
+    late_night: { ja: '深夜', en: 'Late Night' },
+  };
+  return labels[period][lang];
+};

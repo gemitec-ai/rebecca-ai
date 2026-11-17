@@ -1,5 +1,6 @@
 import {
   DEFAULT_APP_TIMEZONE,
+  formatTimeContextPeriodLabel,
   formatZonedDateTime,
   getZonedDateParts,
   resolveTimeContextPeriod,
@@ -74,6 +75,17 @@ describe('@rebecca/prompt time utilities', () => {
       [0, 'late_night'],
     ])('maps boundary hour %i to %s', (hour, expected) => {
       expect(resolveTimeContextPeriod(hour)).toBe(expected);
+    });
+  });
+
+  describe('formatTimeContextPeriodLabel', () => {
+    it('returns localized labels for every TimeContextPeriod', () => {
+      expect(formatTimeContextPeriodLabel('early_morning', 'ja')).toBe('早朝');
+      expect(formatTimeContextPeriodLabel('morning', 'ja')).toBe('朝');
+      expect(formatTimeContextPeriodLabel('daytime', 'ja')).toBe('昼');
+      expect(formatTimeContextPeriodLabel('evening', 'ja')).toBe('夕方・夜');
+      expect(formatTimeContextPeriodLabel('late_night', 'ja')).toBe('深夜');
+      expect(formatTimeContextPeriodLabel('evening', 'en')).toBe('Evening');
     });
   });
 });
