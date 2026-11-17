@@ -28,6 +28,21 @@ export class CopilotController {
       return;
     }
 
+    if (currentContext !== undefined && typeof currentContext !== 'string') {
+      res.status(400).json({ error: 'Invalid currentContext: must be a string' });
+      return;
+    }
+
+    if (history !== undefined && !Array.isArray(history)) {
+      res.status(400).json({ error: 'Invalid history: must be an array' });
+      return;
+    }
+
+    if (language !== undefined && language !== 'ja' && language !== 'en') {
+      res.status(400).json({ error: 'Invalid language: must be "ja" or "en"' });
+      return;
+    }
+
     let validatedTimezone: string | undefined;
     if (timezone !== undefined) {
       if (typeof timezone !== 'string' || !isValidTimezone(timezone)) {
@@ -49,13 +64,13 @@ export class CopilotController {
             ? { time: item.time.trim() }
             : {}),
         }))
-      : history;
+      : undefined;
 
     try {
       const response = await this.useCase.processChat({
         message: boundedMessage,
-        currentContext,
-        history: boundedHistory,
+        ...(currentContext !== undefined ? { currentContext } : {}),
+        ...(boundedHistory !== undefined ? { history: boundedHistory } : {}),
         ...(language !== undefined ? { language } : {}),
         ...(validatedTimezone !== undefined ? { timezone: validatedTimezone } : {}),
       });

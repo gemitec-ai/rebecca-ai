@@ -564,6 +564,17 @@ describe('Dashboard Backend Controllers Unit Tests', () => {
         await controller.chat(reqBad, resBad);
         expect(resBad.status).toHaveBeenCalledWith(400);
       }
+
+      for (const invalidBody of [
+        { message: 'Hello', history: 'not-an-array' },
+        { message: 'Hello', history: { role: 'user' } },
+        { message: 'Hello', currentContext: 42 },
+        { message: 'Hello', language: 'fr' },
+      ]) {
+        const { req: reqInvalid, res: resInvalid } = createMockReqRes({ body: invalidBody });
+        await controller.chat(reqInvalid, resInvalid);
+        expect(resInvalid.status).toHaveBeenCalledWith(400);
+      }
     });
   });
 

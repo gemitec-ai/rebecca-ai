@@ -4,8 +4,9 @@ import {
   CopilotAttachment,
   CopilotRequest,
   CopilotResponse,
+  parseUpstreamApiError,
 } from '@rebecca/types';
-import { Content, GoogleGenAI } from '@google/genai';
+import { Content, FunctionDeclaration, GoogleGenAI } from '@google/genai';
 import { config, isValidTimezone } from '../../config';
 import {
   createStructuredPersonaSchema,
@@ -14,6 +15,17 @@ import {
 } from '@rebecca/persona';
 import { formatTurnWithInnerThought } from '@rebecca/memory';
 import { composeSystemPrompt, formatZonedDateTime } from '@rebecca/prompt';
+import {
+  type DialogueTurn,
+  type ILLMToolDialogueClient,
+  type JsonSchemaPrimitiveType,
+  PersonaToolRegistry,
+  runToolDialogueLoop,
+  type ToolDeclaration,
+  type ToolDialogueStepContext,
+  type ToolParameterProperty,
+  type ToolRoundRecord,
+} from '@rebecca/tools';
 import { TimelineRepository } from '../timeline/repository';
 import { UsersRepository } from '../users/repository';
 import { AssetsRepository } from '../assets/repository';
@@ -25,7 +37,71 @@ import { createCopilotEmbeddingProvider } from './embeddingAdapter';
 import { getCopilotChannelContext } from './prompts';
 import { logger } from '../../utils/logger';
 
-const MAX_REACT_ITERATIONS = 3;
+const MAX_TOOL_ROUNDS = 2;
+
+const toNeutralParamType = (geminiType: unknown): JsonSchemaPrimitiveType => {
+  const normalized = String(geminiType ?? 'STRING').toLowerCase();
+  switch (normalized) {
+    case 'number':
+    case 'integer':
+    case 'boolean':
+    case 'array':
+    case 'object':
+      return normalized;
+    default:
+      return 'string';
+  }
+};
+
+const toNeutralToolDeclaration = (decl: FunctionDeclaration): ToolDeclaration => {
+  const properties: Record<string, ToolParameterProperty> = {};
+  const rawProps = decl.parameters?.properties ?? {};
+  for (const [key, prop] of Object.entries(rawProps)) {
+    properties[key] = {
+      type: toNeutralParamType(prop.type),
+      description: prop.description ?? '',
+      ...(Array.isArray(prop.enum) ? { enum: prop.enum.map(String) } : {}),
+    };
+  }
+  return {
+    name: decl.name ?? '',
+    description: decl.description ?? '',
+    parameters: {
+      type: 'object',
+      properties,
+      required: Array.isArray(decl.parameters?.required) ? [...decl.parameters.required] : [],
+    },
+  };
+};
+
+const isGeminiContent = (value: unknown): value is Content => {
+  return typeof value === 'object' && value !== null && 'parts' in value;
+};
+
+const toGeminiContents = (ctx: ToolDialogueStepContext): Content[] => {
+  const contents: Content[] = ctx.initialTurns.map((turn) => ({
+    role: turn.role === 'assistant' ? 'model' : 'user',
+    parts: [{ text: turn.text }],
+  }));
+  contents.push({ role: 'user', parts: [{ text: ctx.userInput }] });
+
+  for (const round of ctx.rounds) {
+    if (isGeminiContent(round.opaqueProviderTurn)) {
+      contents.push(round.opaqueProviderTurn);
+    }
+    contents.push({
+      role: 'user',
+      parts: round.outcomes.map((outcome) => ({
+        functionResponse: {
+          name: outcome.name,
+          response: outcome.result,
+        },
+      })),
+    });
+  }
+
+  return contents;
+};
 
 /**
  * Resolves the target IANA time zone for Copilot temporal anchoring, validating any explicit UI
@@ -97,7 +173,7 @@ export class CopilotUseCase {
       isEn
     };
 
-    if (!this.ai || !config.gemini.apiKey) {
+    if (!this.ai) {
       return {
         reply: isEn
           ? 'Rebecca AI connection key is not configured.'
@@ -110,7 +186,15 @@ export class CopilotUseCase {
     try {
       return await this.executeReActLoop(userMessage, currentContext, rawHistory, toolContext, isEn, targetTimezone);
     } catch (err) {
-      logger.error('Gemini autonomous agent loop failed in Copilot', err);
+      const upstream = parseUpstreamApiError(err);
+      if (upstream && (upstream.statusCode === 429 || (upstream.statusCode >= 400 && upstream.statusCode < 500))) {
+        logger.warn('Copilot Gemini API call rate-limited or rejected', {
+          statusCode: upstream.statusCode,
+          message: upstream.message,
+        });
+      } else {
+        logger.error('Gemini autonomous agent loop failed in Copilot', err);
+      }
       return {
         reply: isEn
           ? 'A temporary communication error occurred with the Rebecca AI thinking engine. Please wait a moment and try talking to me again!♡'
@@ -200,14 +284,13 @@ ${languageInstruction}
       additionalRequired: ['suggestionChips'],
     });
 
-    const contents: Content[] = [];
-
     // 1. Build sanitized alternating history preserving Tatemae/Honne working memory continuity
     const priorHistory = rawHistory.filter((h, idx) => {
       if (idx === rawHistory.length - 1 && h.text === userMessage) return false;
       return typeof h.text === 'string' && h.text.trim().length > 0;
     });
 
+    const initialTurns: DialogueTurn[] = [];
     let expectedRole: 'user' | 'model' = 'user';
     for (const h of priorHistory.slice(-6)) {
       const role = h.role === 'model' ? 'model' : 'user';
@@ -219,9 +302,9 @@ ${languageInstruction}
           ...(h.time ? { timestamp: h.time } : {}),
         };
         const formatted = formatTurnWithInnerThought(entry, targetTimezone);
-        contents.push({
-          role: formatted.role,
-          parts: [{ text: formatted.text }],
+        initialTurns.push({
+          role: formatted.role === 'model' ? 'assistant' : 'user',
+          text: formatted.text,
         });
         expectedRole = expectedRole === 'user' ? 'model' : 'user';
       }
@@ -229,86 +312,11 @@ ${languageInstruction}
 
     // 2. Latest user turn
     const currentTimestampZoned = formatZonedDateTime(new Date(), targetTimezone);
-    contents.push({
-      role: 'user',
-      parts: [{ text: `[Active View: ${currentContext}] [Current Time: ${currentTimestampZoned}]\n\n${userMessage}` }]
-    });
+    const userInput = `[Active View: ${currentContext}] [Current Time: ${currentTimestampZoned}]\n\n${userMessage}`;
 
     const accumulatedAttachments: CopilotAttachment[] = [];
     let proposedAction: CopilotAction | null = null;
-    let finalCandidateText = '';
 
-    // 3. Phase 1: Autonomous Reasoning & Tool Execution Loop
-    for (let iteration = 0; iteration < MAX_REACT_ITERATIONS; iteration++) {
-      const declarations = this.toolRegistry.getFunctionDeclarations();
-      const callConfig = {
-        systemInstruction,
-        temperature: 0.7,
-        tools: [{ functionDeclarations: declarations }]
-      };
-
-      const geminiCall = this.ai.models.generateContent({
-        model: config.gemini.model,
-        contents,
-        config: callConfig
-      });
-
-      const timeoutGuard = new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error('Gemini API call timed out')), config.gemini.timeoutMs)
-      );
-
-      const response = await Promise.race([geminiCall, timeoutGuard]);
-      const functionCalls = response.functionCalls;
-
-      if (Array.isArray(functionCalls) && functionCalls.length > 0 && iteration < MAX_REACT_ITERATIONS - 1) {
-        // Model called one or more tools
-        if (response.candidates?.[0]?.content) {
-          contents.push(response.candidates[0].content);
-        }
-
-        const functionResponseParts = await Promise.all(
-          functionCalls.map(async (call) => {
-            const toolName = call.name ?? 'unknown_tool';
-            const toolResult = await this.toolRegistry.execute(
-              toolName,
-              (call.args ?? {}) as Record<string, unknown>,
-              toolContext
-            );
-
-            if (toolResult.attachments && toolResult.attachments.length > 0) {
-              accumulatedAttachments.push(...toolResult.attachments);
-            }
-            if (toolResult.actionRequired) {
-              proposedAction = toolResult.actionRequired;
-            }
-
-            return {
-              functionResponse: {
-                name: toolName,
-                response: { result: toolResult.data }
-              }
-            };
-          })
-        );
-
-        contents.push({
-          role: 'user',
-          parts: functionResponseParts
-        });
-        continue;
-      }
-
-      // No more function calls — Phase 1 tool gathering is complete
-      finalCandidateText = response.text?.trim() ?? '';
-      if (response.candidates?.[0]?.content) {
-        contents.push(response.candidates[0].content);
-      }
-      break;
-    }
-
-    // 4. Phase 2: Structured Output Synthesis
-    // Fast path: If the model directly generated valid structured JSON with reply and suggestion chips,
-    // return it immediately to avoid an extra network roundtrip.
     const resolveFinalAttachments = (
       accumulated: CopilotAttachment[],
       action: CopilotAction | null
@@ -338,58 +346,161 @@ ${languageInstruction}
       return unique;
     };
 
-    if (finalCandidateText) {
-      const directExtracted = extractStructuredCopilotResponse(finalCandidateText);
-      if (directExtracted.thought && directExtracted.reply && directExtracted.suggestionChips.length > 0) {
-        const action = proposedAction ?? directExtracted.actionRequired ?? null;
-        return {
-          thought: directExtracted.thought,
-          reply: directExtracted.reply,
-          attachments: resolveFinalAttachments(accumulatedAttachments, action),
-          actionRequired: action,
-          suggestionChips: directExtracted.suggestionChips
-        };
+    const generateContentWithTimeout = async (
+      contents: Content[],
+      callConfig: Record<string, unknown>,
+    ) => {
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      try {
+        const timeoutGuard = new Promise<never>((_, reject) => {
+          timer = setTimeout(
+            () => reject(new Error('Gemini API call timed out')),
+            config.gemini.timeoutMs,
+          );
+        });
+        return await Promise.race([
+          aiClient.models.generateContent({
+            model: config.gemini.model,
+            contents,
+            config: callConfig,
+          }),
+          timeoutGuard,
+        ]);
+      } finally {
+        if (timer !== undefined) {
+          clearTimeout(timer);
+        }
       }
+    };
+
+    const rawDeclarations = this.toolRegistry.getFunctionDeclarations();
+    const adaptedRegistry = new PersonaToolRegistry();
+    for (const decl of rawDeclarations) {
+      const neutralDecl = toNeutralToolDeclaration(decl);
+      adaptedRegistry.register({
+        declaration: neutralDecl,
+        execute: async (args) => {
+          const toolResult = await this.toolRegistry.execute(
+            neutralDecl.name,
+            args ?? {},
+            toolContext,
+          );
+          if (toolResult.attachments && toolResult.attachments.length > 0) {
+            accumulatedAttachments.push(...toolResult.attachments);
+          }
+          if (toolResult.actionRequired) {
+            proposedAction = toolResult.actionRequired;
+          }
+          const rawData = toolResult.data;
+          if (rawData && typeof rawData === 'object' && !Array.isArray(rawData)) {
+            return rawData as Record<string, unknown>;
+          }
+          return { result: rawData };
+        },
+      });
     }
 
-    // Constrained Synthesis: Invoke Phase 2 with strict responseSchema and application/json
-    // Because tools are not passed in Phase 2, Gemini's constrained decoding is 100% active.
     const synthesisConfig = {
       systemInstruction: `${systemInstruction}\n\nSynthesize your final response with internal thought (Honne), spoken reply (Tatemae), and 1-3 relevant suggestionChips strictly in JSON matching the response schema.`,
       temperature: 0.7,
       responseMimeType: 'application/json',
-      responseSchema: finalResponseSchema
+      responseSchema: finalResponseSchema,
     };
 
-    const synthesisCall = this.ai.models.generateContent({
-      model: config.gemini.model,
-      contents,
-      config: synthesisConfig
+    let latestRounds: ReadonlyArray<ToolRoundRecord> = [];
+
+    const dialogueClient: ILLMToolDialogueClient = {
+      generateStep: async (ctx) => {
+        latestRounds = ctx.rounds;
+        const geminiContents = toGeminiContents(ctx);
+        const stepConfig =
+          ctx.declarations.length > 0
+            ? {
+                systemInstruction,
+                temperature: 0.7,
+                tools: [{ functionDeclarations: rawDeclarations }],
+              }
+            : synthesisConfig;
+
+        const response = await generateContentWithTimeout(geminiContents, stepConfig);
+        const rawModelContent = response.candidates?.[0]?.content;
+        const mappedCalls = (response.functionCalls ?? [])
+          .filter(
+            (call): call is { name: string; args?: Record<string, unknown> } =>
+              typeof call.name === 'string' && call.name.length > 0,
+          )
+          .map((call) => ({
+            name: call.name,
+            args: call.args,
+          }));
+
+        return {
+          text: mappedCalls.length === 0 ? response.text : undefined,
+          toolCalls: mappedCalls,
+          opaqueProviderTurn: rawModelContent,
+        };
+      },
+    };
+
+    return await runToolDialogueLoop<Promise<CopilotResponse>>({
+      initialTurns,
+      userInput,
+      toolRegistry: adaptedRegistry,
+      maxToolRounds: MAX_TOOL_ROUNDS,
+      client: dialogueClient,
+      parseOutput: async (rawText) => {
+        const extracted = extractStructuredCopilotResponse(rawText);
+
+        // Fast path: if the step already yielded valid Honne/Tatemae JSON + chips, return directly
+        if (extracted.thought && extracted.reply && extracted.suggestionChips.length > 0) {
+          const action = proposedAction ?? extracted.actionRequired ?? null;
+          return {
+            thought: extracted.thought,
+            reply: extracted.reply,
+            attachments: resolveFinalAttachments(accumulatedAttachments, action),
+            actionRequired: action,
+            suggestionChips: extracted.suggestionChips,
+          };
+        }
+
+        // Otherwise (whether 0 tool rounds or 1+ tool rounds ending with unstructured text or omitted fields),
+        // synthesize via schema-constrained Phase 2 preserving accumulated tool rounds while excluding
+        // any incomplete model text turn.
+        const cleanSynthesisContents = toGeminiContents({
+          initialTurns,
+          userInput,
+          rounds: latestRounds,
+          declarations: [],
+        });
+        const synthesisResponse = await generateContentWithTimeout(
+          cleanSynthesisContents,
+          synthesisConfig,
+        );
+        const finalExtracted = extractStructuredCopilotResponse(
+          synthesisResponse.text?.trim() ?? '',
+        );
+
+        if (!finalExtracted.reply.trim() || !finalExtracted.thought?.trim()) {
+          throw new Error('Copilot structured synthesis returned incomplete Honne/Tatemae payload');
+        }
+
+        const action = proposedAction ?? finalExtracted.actionRequired ?? null;
+        return {
+          thought: finalExtracted.thought,
+          reply: finalExtracted.reply,
+          attachments: resolveFinalAttachments(accumulatedAttachments, action),
+          actionRequired: action,
+          suggestionChips: finalExtracted.suggestionChips,
+        };
+      },
     });
-
-    const timeoutGuard = new Promise<never>((_, reject) =>
-      setTimeout(() => reject(new Error('Gemini API call timed out')), config.gemini.timeoutMs)
-    );
-
-    const synthesisResponse = await Promise.race([synthesisCall, timeoutGuard]);
-    const synthesisText = synthesisResponse.text?.trim() ?? '';
-    const extracted = extractStructuredCopilotResponse(synthesisText);
-    const action = proposedAction ?? extracted.actionRequired ?? null;
-
-    return {
-      ...(extracted.thought !== undefined ? { thought: extracted.thought } : {}),
-      reply: extracted.reply,
-      attachments: resolveFinalAttachments(accumulatedAttachments, action),
-      actionRequired: action,
-      suggestionChips: extracted.suggestionChips
-    };
   }
 }
 
 /**
  * Safely extracts and parses JSON payload containing Honne (`thought`), Tatemae (`reply`),
  * suggestion chips, and optional action from Gemini output using `@rebecca/persona`'s shared parser.
- * If output is not JSON, safely returns the raw message with empty suggestion chips without hardcoded fallbacks.
+ * Never leaks raw or truncated JSON payloads containing private `thought` back into `reply`.
  */
 export function extractStructuredCopilotResponse(
   rawText: string
@@ -403,7 +514,7 @@ export function extractStructuredCopilotResponse(
   const parsedObj = parsePersonaJsonObject(cleaned);
 
   let thoughtText: string | undefined;
-  let replyText = cleaned;
+  let replyText = '';
   let suggestionChips: string[] = [];
   let actionRequired: CopilotAction | null = null;
 
@@ -424,9 +535,13 @@ export function extractStructuredCopilotResponse(
       actionRequired = candidateAction as CopilotAction;
     }
   } else {
-    // If not JSON, but wrapped in code fences, strip them so raw ```json doesn't leak into chat bubble
+    // Strip markdown fences for genuine plain conversational text, while blocking
+    // leakage of malformed/truncated JSON payloads containing `"thought"` or `"reply"`.
     const strippedFences = cleaned.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim();
-    replyText = strippedFences;
+    const looksLikeStructuredJsonPayload = /\{\s*"(?:thought|reply)"\s*:/.test(strippedFences);
+    if (!looksLikeStructuredJsonPayload) {
+      replyText = strippedFences;
+    }
   }
 
   return {

@@ -713,6 +713,22 @@ describe('Copilot Autonomous Agent Suite (Redesign v3)', () => {
       expect(res.reply).toBe('マスター、お疲れ様♡ 今日は何をする？');
       expect(res.suggestionChips).toEqual([]);
     });
+
+    it('should never leak raw JSON or truncated private thought payloads into reply', () => {
+      const emptyReplyJson = extractStructuredCopilotResponse('{"thought": "PRIVATE_HONNE", "reply": "   "}');
+      expect(emptyReplyJson.thought).toBe('PRIVATE_HONNE');
+      expect(emptyReplyJson.reply).toBe('');
+
+      const truncatedJson = extractStructuredCopilotResponse('```json\n{"thought": "SECRET_HONNE", "reply": "途中');
+      expect(truncatedJson.reply).toBe('');
+      expect(truncatedJson.reply).not.toContain('SECRET_HONNE');
+
+      const prosePrefixedTruncated = extractStructuredCopilotResponse(
+        'Here you go:\n{"thought": "PREFIX_SECRET_HONNE", "reply": "trunc',
+      );
+      expect(prosePrefixedTruncated.reply).toBe('');
+      expect(prosePrefixedTruncated.reply).not.toContain('PREFIX_SECRET_HONNE');
+    });
   });
 
   describe('ProposeDestructiveActionTool Target Existence & Disambiguation', () => {
@@ -1009,6 +1025,7 @@ describe('Copilot Autonomous Agent Suite (Redesign v3)', () => {
       expect(copilotUseCaseSrc).toContain('createStructuredPersonaSchema(');
       expect(copilotUseCaseSrc).toContain('parsePersonaJsonObject(');
       expect(copilotUseCaseSrc).toContain('formatTurnWithInnerThought(');
+      expect(copilotUseCaseSrc).toContain('runToolDialogueLoop');
       expect(copilotUseCaseSrc).not.toMatch(/activePersona\.(?:composePrompt|getBasePrompt)\s*\(/);
       expect(copilotUseCaseSrc).not.toContain('DateTime.now');
       expect(copilotUseCaseSrc).not.toContain("'Asia/Tokyo'");
@@ -1095,6 +1112,122 @@ describe('Copilot Autonomous Agent Suite (Redesign v3)', () => {
           timezone: 'Invalid/Timezone',
         }),
       ).rejects.toThrow(/Invalid IANA timezone/);
+    });
+
+    it('should complete final constrained synthesis without unmatched functionCall when tools run through max rounds', async () => {
+      // Round 1 tool call
+      mockGenerateContent.mockResolvedValueOnce({
+        functionCalls: [{ name: 'get_kpi_summary', args: { period: 'weekly' } }],
+        candidates: [
+          {
+            content: {
+              role: 'model',
+              parts: [{ functionCall: { name: 'get_kpi_summary', args: { period: 'weekly' } } }],
+            },
+          },
+        ],
+      });
+      // Round 2 tool call (reaches maxToolRounds = 2)
+      mockGenerateContent.mockResolvedValueOnce({
+        functionCalls: [{ name: 'search_timeline_posts', args: { limit: 1 } }],
+        candidates: [
+          {
+            content: {
+              role: 'model',
+              parts: [{ functionCall: { name: 'search_timeline_posts', args: { limit: 1 } } }],
+            },
+          },
+        ],
+      });
+      // Final step (declarations: []) must receive matching functionResponses and constrained responseSchema
+      mockGenerateContent.mockResolvedValueOnce({
+        text: JSON.stringify({
+          thought: '全ツール結果が揃ったから的確に答えるわね♡',
+          reply: 'KPIと最新投稿の両方をまとめておいたわ、マスター♡',
+          suggestionChips: ['もう少し詳しく'],
+        }),
+      });
+
+      const copilot = new CopilotUseCase(timelineRepo, usersRepo, assetsRepo, memoryRepo, supportersRepo);
+      const res = await copilot.processChat({
+        message: 'KPIとトップ投稿を順番に調べて',
+        language: 'ja',
+      });
+
+      expect(res.thought).toBe('全ツール結果が揃ったから的確に答えるわね♡');
+      expect(res.reply).toBe('KPIと最新投稿の両方をまとめておいたわ、マスター♡');
+      expect(mockGenerateContent).toHaveBeenCalledTimes(3);
+
+      const finalCall = mockGenerateContent.mock.calls[2][0];
+      expect(finalCall.config.responseSchema).toBeDefined();
+      expect(finalCall.config.tools).toBeUndefined();
+      // Final contents must end with functionResponse user turn (never an unmatched functionCall)
+      expect(finalCall.contents[finalCall.contents.length - 1].role).toBe('user');
+      expect(finalCall.contents[finalCall.contents.length - 1].parts[0].functionResponse.name).toBe(
+        'search_timeline_posts',
+      );
+    });
+
+    it('should return safe localized error fallback instead of leaking empty reply or raw JSON when Phase 2 omits reply/thought', async () => {
+      mockGenerateContent
+        .mockResolvedValueOnce({ text: 'incomplete plain reply without chips or thought' })
+        .mockResolvedValueOnce({ text: JSON.stringify({ thought: 'LEAK_CHECK', reply: '' }) });
+
+      const copilot = new CopilotUseCase(timelineRepo, usersRepo, assetsRepo, memoryRepo, supportersRepo);
+      const res = await copilot.processChat({
+        message: '様子はどう？',
+        language: 'ja',
+      });
+
+      expect(res.reply).toContain('一時的なエラーが発生');
+      expect(res.reply).not.toContain('LEAK_CHECK');
+      // Verify Phase 2 contents did not end with incomplete Phase 1 model turn
+      const phase2Contents = mockGenerateContent.mock.calls[1][0].contents;
+      expect(phase2Contents[phase2Contents.length - 1].role).toBe('user');
+    });
+
+    it('should invoke Phase 2 Constrained Synthesis after 1-round tool call when Round 1 emits unstructured text', async () => {
+      // Round 0 calls search_timeline_posts
+      mockGenerateContent.mockResolvedValueOnce({
+        functionCalls: [{ name: 'search_timeline_posts', args: { limit: 1 } }],
+        candidates: [
+          {
+            content: {
+              role: 'model',
+              parts: [{ functionCall: { name: 'search_timeline_posts', args: { limit: 1 } } }],
+            },
+          },
+        ],
+      });
+      // Round 1 emits plain text without thought/chips
+      mockGenerateContent.mockResolvedValueOnce({
+        text: '投稿の分析結果だよ！',
+      });
+      // Constrained synthesis preserves Round 0 tool call + response and enforces finalResponseSchema
+      mockGenerateContent.mockResolvedValueOnce({
+        text: JSON.stringify({
+          thought: '1ツール呼んだ後の自然文も自動で構造化補完できるわ♡',
+          reply: '直近トップ投稿は45,000インプレッションよ、マスター♡',
+          suggestionChips: ['他の指標を見る'],
+        }),
+      });
+
+      const copilot = new CopilotUseCase(timelineRepo, usersRepo, assetsRepo, memoryRepo, supportersRepo);
+      const res = await copilot.processChat({
+        message: '人気投稿を調べて',
+        language: 'ja',
+      });
+
+      expect(mockGenerateContent).toHaveBeenCalledTimes(3);
+      expect(res.thought).toBe('1ツール呼んだ後の自然文も自動で構造化補完できるわ♡');
+      expect(res.reply).toBe('直近トップ投稿は45,000インプレッションよ、マスター♡');
+      expect(res.attachments?.length).toBe(1);
+
+      const finalCall = mockGenerateContent.mock.calls[2][0];
+      expect(finalCall.config.responseSchema).toBeDefined();
+      expect(finalCall.contents[finalCall.contents.length - 1].parts[0].functionResponse.name).toBe(
+        'search_timeline_posts',
+      );
     });
   });
 });
