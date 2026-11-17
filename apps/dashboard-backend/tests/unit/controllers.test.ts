@@ -531,6 +531,36 @@ describe('Dashboard Backend Controllers Unit Tests', () => {
       await controller.chat(req, res);
       expect(res.status).toHaveBeenCalledWith(500);
     });
+
+    it('chat should forward trimmed valid IANA timezone and reject invalid timezones with 400', async () => {
+      const { req: reqValid, res: resValid } = createMockReqRes({
+        body: {
+          message: 'Good evening!',
+          currentContext: 'Home',
+          history: [],
+          language: 'en',
+          timezone: ' America/New_York ',
+        },
+      });
+      useCase.processChat.mockResolvedValueOnce({ reply: 'Evening, Master!' } as any);
+      await controller.chat(reqValid, resValid);
+      expect(useCase.processChat).toHaveBeenCalledWith({
+        message: 'Good evening!',
+        currentContext: 'Home',
+        history: [],
+        language: 'en',
+        timezone: 'America/New_York',
+      });
+      expect(resValid.json).toHaveBeenCalledWith({ reply: 'Evening, Master!' });
+
+      for (const badTz of ['', '   ', 'Mars/Phobos', 123]) {
+        const { req: reqBad, res: resBad } = createMockReqRes({
+          body: { message: 'Hello', timezone: badTz },
+        });
+        await controller.chat(reqBad, resBad);
+        expect(resBad.status).toHaveBeenCalledWith(400);
+      }
+    });
   });
 
   describe('AuthController', () => {

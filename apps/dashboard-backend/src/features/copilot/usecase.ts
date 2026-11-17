@@ -1,6 +1,6 @@
 import { CopilotAction, CopilotAttachment, CopilotRequest, CopilotResponse } from '@rebecca/types';
 import { Content, GoogleGenAI, Schema, Type } from '@google/genai';
-import { config } from '../../config';
+import { config, isValidTimezone } from '../../config';
 import { getActivePersona } from '@rebecca/persona';
 import { composeSystemPrompt, formatZonedDateTime } from '@rebecca/prompt';
 import { TimelineRepository } from '../timeline/repository';
@@ -15,6 +15,24 @@ import { getCopilotChannelContext } from './prompts';
 import { logger } from '../../utils/logger';
 
 const MAX_REACT_ITERATIONS = 3;
+
+/**
+ * Resolves the target IANA time zone for Copilot temporal anchoring, validating any explicit UI
+ * override at the boundary or falling back to `config.appTimezone` when omitted.
+ *
+ * @param requestedTimezone - Optional IANA time zone identifier sent by the client.
+ * @returns Validated IANA time zone identifier.
+ */
+function resolveTargetTimezone(requestedTimezone?: string): string {
+  if (requestedTimezone === undefined) {
+    return config.appTimezone;
+  }
+  const trimmed = requestedTimezone.trim();
+  if (!isValidTimezone(trimmed)) {
+    throw new Error(`Invalid IANA timezone "${requestedTimezone}".`);
+  }
+  return trimmed;
+}
 
 /**
  * Enterprise-grade UseCase for the Admin Copilot feature.
@@ -54,6 +72,7 @@ export class CopilotUseCase {
       throw new Error('User message is required and cannot be empty');
     }
 
+    const targetTimezone = resolveTargetTimezone(request.timezone);
     const currentContext = request.currentContext ?? 'Global Dashboard';
     const rawHistory = request.history ?? [];
     const isEn = request.language === 'en';
@@ -78,7 +97,7 @@ export class CopilotUseCase {
     }
 
     try {
-      return await this.executeReActLoop(userMessage, currentContext, rawHistory, toolContext, isEn);
+      return await this.executeReActLoop(userMessage, currentContext, rawHistory, toolContext, isEn, targetTimezone);
     } catch (err) {
       logger.error('Gemini autonomous agent loop failed in Copilot', err);
       return {
@@ -101,7 +120,8 @@ export class CopilotUseCase {
     currentContext: string,
     rawHistory: { role: 'user' | 'model'; text: string }[],
     toolContext: CopilotToolContext,
-    isEn: boolean
+    isEn: boolean,
+    targetTimezone: string
   ): Promise<CopilotResponse> {
     if (!this.ai) {
       throw new Error('GoogleGenAI client is not initialized');
@@ -141,7 +161,7 @@ ${languageInstruction}
       channelInstruction: getCopilotChannelContext(targetLang),
       lang: targetLang,
       temporal: {
-        timezone: 'Asia/Tokyo',
+        timezone: targetTimezone,
         includeTimeBracket: true,
       },
       anchoring: {
@@ -192,10 +212,10 @@ ${languageInstruction}
     }
 
     // 2. Latest user turn
-    const currentTimestampJst = formatZonedDateTime(new Date(), 'Asia/Tokyo');
+    const currentTimestampZoned = formatZonedDateTime(new Date(), targetTimezone);
     contents.push({
       role: 'user',
-      parts: [{ text: `[Active View: ${currentContext}] [Current Time: ${currentTimestampJst}]\n\n${userMessage}` }]
+      parts: [{ text: `[Active View: ${currentContext}] [Current Time: ${currentTimestampZoned}]\n\n${userMessage}` }]
     });
 
     const accumulatedAttachments: CopilotAttachment[] = [];

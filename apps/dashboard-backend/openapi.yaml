@@ -583,7 +583,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/CopilotResponse'
         '400':
-          description: Missing or invalid message
+          description: Missing/invalid message or invalid timezone
         '500':
           description: Internal processing error
 
@@ -1416,6 +1416,10 @@ components:
           type: string
           enum: [ja, en]
           example: "ja"
+        timezone:
+          type: string
+          description: Optional IANA time zone identifier configured in the frontend UI (defaults to server `APP_TIMEZONE` when omitted).
+          example: "America/New_York"
 
     CopilotResponse:
       type: object

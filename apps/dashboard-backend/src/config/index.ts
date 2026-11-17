@@ -31,6 +31,25 @@ function parseStorageEmulatorEndpoint(): string | undefined {
 }
 
 /**
+ * Checks whether the provided string is a non-empty valid IANA time zone identifier (ECMA-402).
+ *
+ * @param tz - Candidate IANA time zone identifier.
+ * @returns `true` if non-empty and supported by `Intl.DateTimeFormat`.
+ */
+export const isValidTimezone = (tz: string): boolean => {
+  const trimmed = tz.trim();
+  if (!trimmed) {
+    return false;
+  }
+  try {
+    Intl.DateTimeFormat(undefined, { timeZone: trimmed });
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+/**
  * Validates whether the provided string is a valid IANA time zone identifier (RFC 6557 / ECMA-402).
  * Throws on invalid input (fail-fast) or defaults to 'Asia/Tokyo' if unset.
  */

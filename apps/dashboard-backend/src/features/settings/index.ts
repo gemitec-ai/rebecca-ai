@@ -2,16 +2,8 @@ import { Router } from 'express';
 import { Firestore } from '@google-cloud/firestore';
 import { SystemSettings } from '@rebecca/types';
 import { COLLECTIONS } from '@rebecca/db/schema';
+import { isValidTimezone } from '../../config';
 import { logger } from '../../utils/logger';
-
-function isValidTimezone(tz: string): boolean {
-  try {
-    Intl.DateTimeFormat(undefined, { timeZone: tz });
-    return true;
-  } catch {
-    return false;
-  }
-}
 
 /**
  * Initializes the Settings module with routes for managing global application preferences.

@@ -950,7 +950,7 @@ describe('Copilot Autonomous Agent Suite (Redesign v3)', () => {
       expect(genConfig.systemInstruction).toContain('【現在時刻】');
     });
 
-    it('should enforce unified composeSystemPrompt usage in CopilotUseCase without raw unanchored composePrompt or custom clock formatting', () => {
+    it('should enforce unified composeSystemPrompt usage in CopilotUseCase without raw unanchored composePrompt or hardcoded timezones', () => {
       const copilotUseCaseSrc = fs.readFileSync(
         path.resolve(__dirname, '../../src/features/copilot/usecase.ts'),
         'utf8',
@@ -958,6 +958,49 @@ describe('Copilot Autonomous Agent Suite (Redesign v3)', () => {
       expect(copilotUseCaseSrc).toContain('composeSystemPrompt(');
       expect(copilotUseCaseSrc).not.toMatch(/activePersona\.(?:composePrompt|getBasePrompt)\s*\(/);
       expect(copilotUseCaseSrc).not.toContain('DateTime.now');
+      expect(copilotUseCaseSrc).not.toContain("'Asia/Tokyo'");
+    });
+
+    it('should align Rebecca temporal bracket and Current Time header to the frontend-specified timezone (user night == Rebecca night)', async () => {
+      jest.useFakeTimers().setSystemTime(new Date('2026-11-17T01:00:00.000Z'));
+      try {
+        mockEmbedContent.mockResolvedValueOnce({
+          embeddings: [{ values: [...precomputedPersonaPatternEmbeddings[0].vector] }],
+        });
+        mockGenerateContent.mockResolvedValueOnce({
+          text: JSON.stringify({ reply: '夜遅くまでお疲れ様、マスター♡', suggestionChips: ['休憩する'] }),
+        });
+
+        const copilot = new CopilotUseCase();
+        // 2026-11-17T01:00:00Z is 10:00 JST (morning) in Tokyo, but 20:00 EST (evening/night) in America/New_York
+        const res = await copilot.processChat({
+          message: '夜遅くなったよ',
+          currentContext: 'Dashboard',
+          language: 'ja',
+          timezone: 'America/New_York',
+        });
+
+        expect(res.reply).toBe('夜遅くまでお疲れ様、マスター♡');
+        const callArg = mockGenerateContent.mock.calls[0][0];
+        const systemInstruction: string = callArg.config.systemInstruction;
+        const userMessageText: string = callArg.contents[callArg.contents.length - 1].parts[0].text;
+
+        expect(systemInstruction).toContain('2026-11-16 20:00');
+        expect(systemInstruction).toContain('夜');
+        expect(userMessageText).toContain('[Current Time: 2026-11-16 20:00');
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+
+    it('should fail fast on invalid timezone passed directly to CopilotUseCase.processChat', async () => {
+      const copilot = new CopilotUseCase();
+      await expect(
+        copilot.processChat({
+          message: 'Hello',
+          timezone: 'Invalid/Timezone',
+        }),
+      ).rejects.toThrow(/Invalid IANA timezone/);
     });
   });
 });
