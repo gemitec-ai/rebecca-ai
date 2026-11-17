@@ -620,6 +620,8 @@ describe('GeminiService Unit Tests', () => {
             expect(await gemini.auditEvolutionPrompt('cand', 'audit')).toEqual({ pass: true });
             expect(await gemini.analyzeUserProfile('desc')).toEqual({});
             await expect(gemini.generateStructuredNewsPost('sys', 'prompt', ['news'])).rejects.toThrow('Gemini API client not initialized');
+            await expect(gemini.generateStructuredPollPost('sys', 'poll')).rejects.toThrow('Gemini API client not initialized');
+            await expect(gemini.generateStructuredSupportPost('sys', 'support')).rejects.toThrow('Gemini API client not initialized');
             await expect(gemini.generateStructuredTimelinePost('sys', 'soliloquy')).rejects.toThrow('Gemini API client not initialized');
             await expect(gemini.generateTimelineSummary(['post'])).rejects.toThrow('Gemini API client not initialized');
             expect(await gemini.detectLanguage('test')).toBe('ja');

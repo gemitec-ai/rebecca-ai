@@ -72,7 +72,7 @@ export class SoliloquyUseCase {
       })) || [];
 
       const formattedPastSoliloquies = recentSoliloquies.map((p) => {
-        const timeStr = formatZonedDateTime(p.timestamp);
+        const timeStr = formatZonedDateTime(p.timestamp, this.config.timezone);
         const prefix = timeStr ? `[${timeStr}] ` : '';
         const thoughtPart = p.thought ? ` (内心: ${p.thought})` : '';
         return `${prefix}${p.text}${thoughtPart}`;

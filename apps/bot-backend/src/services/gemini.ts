@@ -10,6 +10,14 @@ import {
   formatHistoryWithInnerThought,
 } from '@rebecca/memory';
 import {
+  createStructuredPersonaSchema,
+  parsePersonaJsonObject,
+  parsePersonaResponse,
+  type StructuredPersonaObjectSchema,
+  type StructuredPersonaResponse,
+  PERSONA_RESPONSE_SCHEMA,
+} from '@rebecca/persona';
+import {
   createSearchWebTool,
   type DialogueTurn,
   EmptyDialogueResponseError,
@@ -20,6 +28,12 @@ import {
   type ToolDeclaration,
   type ToolDialogueStepContext,
 } from '@rebecca/tools';
+import { ConversationLogEntry, UserCoreProfile, IGeminiService } from '../types';
+import { StructuredNewsPostResponse } from '../features/news/types';
+import { StructuredPollPostResponse } from '../features/poll/types';
+import { StructuredSupportPostResponse } from '../features/support/types';
+import { logger } from '../utils/logger';
+import { rethrowUpstreamApiError } from '../utils/httpError';
 
 const JSON_SCHEMA_TO_GEMINI_TYPE: Readonly<Record<JsonSchemaPrimitiveType, Type>> = {
   string: Type.STRING,
@@ -88,19 +102,6 @@ const toGeminiContents = (ctx: ToolDialogueStepContext): Content[] => {
 
   return contents;
 };
-import { ConversationLogEntry, UserCoreProfile, IGeminiService } from '../types';
-import {
-  createStructuredPersonaSchema,
-  parsePersonaJsonObject,
-  parsePersonaResponse,
-  StructuredPersonaResponse,
-  PERSONA_RESPONSE_SCHEMA,
-} from '@rebecca/persona';
-import { StructuredNewsPostResponse } from '../features/news/types';
-import { StructuredPollPostResponse } from '../features/poll/types';
-import { StructuredSupportPostResponse } from '../features/support/types';
-import { logger } from '../utils/logger';
-import { rethrowUpstreamApiError } from '../utils/httpError';
 
 /**
  * Creates the JSON schema for structured news post generation with enum-constrained candidate title selection.
@@ -148,9 +149,9 @@ const STRUCTURED_POLL_POST_SCHEMA = createStructuredPersonaSchema({
 const STRUCTURED_SUPPORT_POST_SCHEMA = createStructuredPersonaSchema({
   replyFieldName: 'replyBody',
   thoughtDescription:
-    'レベッカの内心の思考。差し入れをもらって照れたり強がったりしながら、今の自分の作業や近況と結びつけて喜ぶ心の声。',
+    'キャラクターの内心の思考。差し入れをもらって照れたり喜んだりしながら、今の自分の作業や近況と結びつけて感謝する心の声。',
   replyDescription:
-    'レベッカがサポーターの名前を直接呼びながら、アイテムへの感謝とツンデレな激励をゼロから語るオリジナル本文（最大90文字以内）。定型文は厳禁。',
+    'サポーターの名前を直接呼びながら、アイテムへの感謝と温かい激励をゼロから語るオリジナル本文（最大90文字以内）。定型文は厳禁。',
 });
 
 /**
@@ -275,11 +276,8 @@ export class GeminiService implements IGeminiService {
           responseMimeType: 'application/json',
         },
       });
-      let jsonStr = response.text?.trim() || '{}';
-      if (jsonStr.startsWith('```json')) jsonStr = jsonStr.replace(/^```json\n/, '').replace(/\n```$/, '');
-      else if (jsonStr.startsWith('```')) jsonStr = jsonStr.replace(/^```\n/, '').replace(/\n```$/, '');
-
-      return JSON.parse(jsonStr);
+      const parsed = parsePersonaJsonObject(response.text || '{}');
+      return (parsed as { pass: boolean; reason?: string } | null) ?? { pass: false, reason: 'Audit API Error' };
     } catch (e) {
       logger.error('Error in Evolution audit', e);
       return { pass: false, reason: 'Audit API Error' };
@@ -308,30 +306,36 @@ export class GeminiService implements IGeminiService {
   }
 
   /**
-   * Internal helper to generate structured persona post (thought + reply) via Gemini.
+   * Executes a constrained structured JSON generation request via Gemini and returns
+   * the parsed JSON object record, applying unified guardrails and error propagation.
    */
-  private async generateStructuredPostInternal(
-    systemInstruction: string,
-    prompt: string | string[],
-    maxOutputTokens: number = 1000,
-  ): Promise<StructuredPersonaResponse> {
+  private async executeStructuredJsonGeneration(options: {
+    systemInstruction: string;
+    prompt: string | string[];
+    responseSchema: StructuredPersonaObjectSchema;
+    operationErrorLabel: string;
+    targetLabel: string;
+    model?: string;
+    maxOutputTokens?: number;
+    errorContext?: Record<string, unknown>;
+  }): Promise<Record<string, unknown>> {
     if (!this.ai) {
       throw new Error('Gemini API client not initialized');
     }
-    if (!prompt || (Array.isArray(prompt) && prompt.length === 0)) {
-      throw new Error('Prompt cannot be empty for structured post generation');
+    const contentStr = Array.isArray(options.prompt) ? options.prompt.join('\n') : options.prompt;
+    if (!contentStr || !contentStr.trim()) {
+      throw new Error(`Prompt cannot be empty for ${options.targetLabel} generation`);
     }
+
     try {
-      const contentStr = Array.isArray(prompt) ? prompt.join('\n') : prompt;
-      const modelToUse = this.config.model;
       const response = await this.ai.models.generateContent({
-        model: modelToUse,
+        model: options.model ?? this.config.model,
         contents: contentStr,
         config: {
-          systemInstruction: systemInstruction,
-          maxOutputTokens: maxOutputTokens,
+          systemInstruction: options.systemInstruction,
+          maxOutputTokens: options.maxOutputTokens ?? 1000,
           responseMimeType: 'application/json',
-          responseSchema: PERSONA_RESPONSE_SCHEMA,
+          responseSchema: options.responseSchema,
           safetySettings: [] as never[],
           temperature: this.config.temperature ?? 1.20,
           topP: this.config.topP ?? 0.95,
@@ -340,18 +344,45 @@ export class GeminiService implements IGeminiService {
           },
         },
       });
+
       const rawText = response.text?.trim();
       if (!rawText) {
-        throw new Error('Gemini API returned empty structured response or content was filtered');
+        throw new Error(`Gemini API returned empty response for ${options.targetLabel}`);
       }
-      const parsed = parsePersonaResponse(rawText);
-      if (!parsed.reply || !parsed.reply.trim()) {
-        throw new Error('Gemini API returned structured response with empty reply');
+
+      const parsed = parsePersonaJsonObject(rawText);
+      if (!parsed) {
+        throw new Error(`Gemini API returned malformed response schema for ${options.targetLabel}`);
       }
       return parsed;
     } catch (e) {
-      return rethrowUpstreamApiError(e, 'Error generating structured timeline post');
+      return rethrowUpstreamApiError(e, options.operationErrorLabel, options.errorContext);
     }
+  }
+
+  /**
+   * Internal helper to generate structured persona post (thought + reply) via Gemini.
+   */
+  private async generateStructuredPostInternal(
+    systemInstruction: string,
+    prompt: string | string[],
+    maxOutputTokens: number = 1000,
+  ): Promise<StructuredPersonaResponse> {
+    const parsed = await this.executeStructuredJsonGeneration({
+      systemInstruction,
+      prompt,
+      responseSchema: PERSONA_RESPONSE_SCHEMA,
+      operationErrorLabel: 'Error generating structured timeline post',
+      targetLabel: 'structured post',
+      maxOutputTokens,
+    });
+
+    const thought = typeof parsed['thought'] === 'string' ? parsed['thought'].trim() : '';
+    const reply = typeof parsed['reply'] === 'string' ? parsed['reply'].trim() : '';
+    if (!reply) {
+      throw new Error('Gemini API returned structured response with empty reply');
+    }
+    return { thought, reply };
   }
 
   /**
@@ -368,66 +399,37 @@ export class GeminiService implements IGeminiService {
     prompt: string | string[],
     candidateHeadlines: string[],
   ): Promise<StructuredNewsPostResponse> {
-    if (!this.ai) {
-      throw new Error('Gemini API client not initialized');
-    }
-    if (!prompt || (Array.isArray(prompt) && prompt.length === 0)) {
-      throw new Error('Prompt cannot be empty for structured news post generation');
-    }
     if (!candidateHeadlines || candidateHeadlines.length === 0) {
       throw new Error('Candidate headlines cannot be empty for structured news post generation');
     }
 
-    try {
-      const contentStr = Array.isArray(prompt) ? prompt.join('\n') : prompt;
-      const modelToUse = this.config.newsPostModel || this.config.model;
-      const responseSchema = createStructuredNewsPostSchema(candidateHeadlines);
-      const response = await this.ai.models.generateContent({
-        model: modelToUse,
-        contents: contentStr,
-        config: {
-          systemInstruction,
-          maxOutputTokens: 1000,
-          responseMimeType: 'application/json',
-          responseSchema,
-          safetySettings: [] as never[],
-          temperature: this.config.temperature ?? 1.20,
-          topP: this.config.topP ?? 0.95,
-          thinkingConfig: {
-            thinkingLevel: this.config.thinkingLevel ?? ThinkingLevel.MEDIUM,
-          },
-        },
-      });
+    const parsed = await this.executeStructuredJsonGeneration({
+      systemInstruction,
+      prompt,
+      responseSchema: createStructuredNewsPostSchema(candidateHeadlines),
+      operationErrorLabel: 'Error generating structured news post',
+      targetLabel: 'structured news post',
+      model: this.config.newsPostModel || this.config.model,
+    });
 
-      const rawText = response.text?.trim();
-      if (!rawText) {
-        throw new Error('Gemini API returned empty response for structured news post');
-      }
-
-      const parsed = parsePersonaJsonObject(rawText);
-
-      if (
-        !parsed ||
-        typeof parsed['thought'] !== 'string' ||
-        typeof parsed['reply'] !== 'string' ||
-        typeof parsed['selectedTitle'] !== 'string'
-      ) {
-        throw new Error('Gemini API returned malformed response schema for structured news post');
-      }
-
-      const trimmedReply = parsed['reply'].trim();
-      if (!trimmedReply) {
-        throw new Error('Gemini API returned structured news post with empty reply');
-      }
-
-      return {
-        selectedTitle: parsed['selectedTitle'].trim(),
-        thought: parsed['thought'].trim(),
-        reply: trimmedReply,
-      };
-    } catch (e) {
-      return rethrowUpstreamApiError(e, 'Error generating structured news post');
+    if (
+      typeof parsed['thought'] !== 'string' ||
+      typeof parsed['reply'] !== 'string' ||
+      typeof parsed['selectedTitle'] !== 'string'
+    ) {
+      throw new Error('Gemini API returned malformed response schema for structured news post');
     }
+
+    const trimmedReply = parsed['reply'].trim();
+    if (!trimmedReply) {
+      throw new Error('Gemini API returned structured news post with empty reply');
+    }
+
+    return {
+      selectedTitle: parsed['selectedTitle'].trim(),
+      thought: parsed['thought'].trim(),
+      reply: trimmedReply,
+    };
   }
 
   /**
@@ -441,138 +443,84 @@ export class GeminiService implements IGeminiService {
     systemInstruction: string,
     prompt: string | string[],
   ): Promise<StructuredPollPostResponse> {
-    if (!this.ai) {
-      throw new Error('Gemini API client not initialized');
+    const parsed = await this.executeStructuredJsonGeneration({
+      systemInstruction,
+      prompt,
+      responseSchema: STRUCTURED_POLL_POST_SCHEMA,
+      operationErrorLabel: 'Error generating structured poll post',
+      targetLabel: 'structured poll post',
+    });
+
+    if (
+      typeof parsed['thought'] !== 'string' ||
+      typeof parsed['reply'] !== 'string' ||
+      !Array.isArray(parsed['options'])
+    ) {
+      throw new Error('Gemini API returned malformed response schema for structured poll post');
     }
-    if (!prompt || (Array.isArray(prompt) && prompt.length === 0)) {
-      throw new Error('Prompt cannot be empty for structured poll post generation');
+
+    const trimmedReply = parsed['reply'].trim();
+    if (!trimmedReply) {
+      throw new Error('Gemini API returned structured poll post with empty reply');
     }
 
-    try {
-      const contentStr = Array.isArray(prompt) ? prompt.join('\n') : prompt;
-      const response = await this.ai.models.generateContent({
-        model: this.config.model,
-        contents: contentStr,
-        config: {
-          systemInstruction,
-          maxOutputTokens: 1000,
-          responseMimeType: 'application/json',
-          responseSchema: STRUCTURED_POLL_POST_SCHEMA,
-          safetySettings: [] as never[],
-          temperature: this.config.temperature ?? 1.20,
-          topP: this.config.topP ?? 0.95,
-          thinkingConfig: {
-            thinkingLevel: this.config.thinkingLevel ?? ThinkingLevel.MEDIUM,
-          },
-        },
-      });
+    const validOptions = parsed['options']
+      .filter((opt: unknown): opt is string => typeof opt === 'string' && opt.trim().length > 0)
+      .map((opt: string) => opt.trim().slice(0, 25))
+      .slice(0, 4);
 
-      const rawText = response.text?.trim();
-      if (!rawText) {
-        throw new Error('Gemini API returned empty response for structured poll post');
-      }
-
-      const parsed = parsePersonaJsonObject(rawText);
-
-      if (
-        !parsed ||
-        typeof parsed['thought'] !== 'string' ||
-        typeof parsed['reply'] !== 'string' ||
-        !Array.isArray(parsed['options'])
-      ) {
-        throw new Error('Gemini API returned malformed response schema for structured poll post');
-      }
-
-      const trimmedReply = parsed['reply'].trim();
-      if (!trimmedReply) {
-        throw new Error('Gemini API returned structured poll post with empty reply');
-      }
-
-      const validOptions = parsed['options']
-        .filter((opt: unknown): opt is string => typeof opt === 'string' && opt.trim().length > 0)
-        .map((opt: string) => opt.trim().slice(0, 25))
-        .slice(0, 4);
-
-      if (validOptions.length < 2) {
-        throw new Error('Gemini API returned fewer than 2 valid poll options');
-      }
-
-      return {
-        thought: parsed['thought'].trim(),
-        reply: trimmedReply,
-        options: validOptions,
-      };
-    } catch (e) {
-      return rethrowUpstreamApiError(e, 'Error generating structured poll post');
+    if (validOptions.length < 2) {
+      throw new Error('Gemini API returned fewer than 2 valid poll options');
     }
+
+    return {
+      thought: parsed['thought'].trim(),
+      reply: trimmedReply,
+      options: validOptions,
+    };
   }
 
   /**
-   * Generates a structured timeline post (inner thought and public tweet text) based on situational context.
-   */
-
-
-  /**
-   * Generates a structured support appreciation post (inner thought and dynamic tsundere replyBody).
+   * Generates a structured support appreciation post (inner thought and dynamic replyBody).
+   *
+   * @param systemInstruction - System instruction defining character persona and behavior.
+   * @param prompt - Contextual prompt containing supporter details and guidelines.
+   * @returns A promise resolving to StructuredSupportPostResponse.
    */
   async generateStructuredSupportPost(
     systemInstruction: string,
     prompt: string
   ): Promise<StructuredSupportPostResponse> {
-    if (!prompt || !prompt.trim()) {
-      throw new Error('Prompt cannot be empty for structured support post generation');
+    const parsed = await this.executeStructuredJsonGeneration({
+      systemInstruction,
+      prompt,
+      responseSchema: STRUCTURED_SUPPORT_POST_SCHEMA,
+      operationErrorLabel: 'Failed to generate structured support post via Gemini',
+      targetLabel: 'structured support post',
+      errorContext: { promptLength: prompt.length },
+    });
+
+    if (
+      typeof parsed['thought'] !== 'string' ||
+      typeof parsed['replyBody'] !== 'string'
+    ) {
+      throw new Error('Gemini API returned malformed response schema for structured support post');
     }
 
-    try {
-      const contentStr = Array.isArray(prompt) ? prompt.join('\n') : prompt;
-      const response = await this.ai.models.generateContent({
-        model: this.config.model,
-        contents: contentStr,
-        config: {
-          systemInstruction,
-          maxOutputTokens: 1000,
-          responseMimeType: 'application/json',
-          responseSchema: STRUCTURED_SUPPORT_POST_SCHEMA,
-          safetySettings: [] as never[],
-          temperature: this.config.temperature ?? 1.20,
-          topP: this.config.topP ?? 0.95,
-          thinkingConfig: {
-            thinkingLevel: this.config.thinkingLevel ?? ThinkingLevel.MEDIUM,
-          },
-        },
-      });
-
-      const rawText = response.text?.trim();
-      if (!rawText) {
-        throw new Error('Gemini API returned empty response for structured support post');
-      }
-
-      const parsed = parsePersonaJsonObject(rawText);
-
-      if (
-        !parsed ||
-        typeof parsed['thought'] !== 'string' ||
-        typeof parsed['replyBody'] !== 'string'
-      ) {
-        throw new Error('Gemini API returned malformed response schema for structured support post');
-      }
-
-      const trimmedReply = parsed['replyBody'].trim();
-      if (!trimmedReply) {
-        throw new Error('Gemini API returned structured support post with empty replyBody');
-      }
-
-      return {
-        thought: parsed['thought'].trim(),
-        replyBody: trimmedReply,
-      };
-    } catch (error) {
-      return rethrowUpstreamApiError(error, 'Failed to generate structured support post via Gemini', {
-        promptLength: prompt.length,
-      });
+    const trimmedReply = parsed['replyBody'].trim();
+    if (!trimmedReply) {
+      throw new Error('Gemini API returned structured support post with empty replyBody');
     }
+
+    return {
+      thought: parsed['thought'].trim(),
+      replyBody: trimmedReply,
+    };
   }
 
+  /**
+   * Generates a structured timeline post (inner thought and public tweet text) based on situational context.
+   */
   async generateStructuredTimelinePost(
     systemInstruction: string,
     prompt: string | string[]
@@ -790,10 +738,8 @@ ${imageCaption}
         },
       });
 
-      const text = response.text?.trim() || '{}';
-      const cleaned = text.startsWith('```') ? text.replace(/^```json\s*/, '').replace(/^```\s*/, '').replace(/\s*```$/, '') : text;
-      const parsed = JSON.parse(cleaned);
-      return Boolean(parsed.relevant);
+      const parsed = parsePersonaJsonObject(response.text || '{}');
+      return Boolean(parsed?.['relevant']);
     } catch (e) {
       return rethrowUpstreamApiError(e, 'Error verifying image relevance');
     }
