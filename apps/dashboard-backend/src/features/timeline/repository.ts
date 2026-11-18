@@ -3,6 +3,7 @@ import { KpiMetrics, PostLeaderboard, PostDetail, SystemAlert, PaginatedResponse
 import { getCollections } from '@rebecca/db';
 import { extractGcsObjectPath } from '../../utils/gcs';
 import { getTimelinePeriodRangeInUtc } from '../../core/dateUtils';
+import { config } from '../../config';
 
 /**
  * Computes the relative percentage change between current and baseline metrics.
@@ -273,7 +274,11 @@ export class TimelineRepository {
   async getPosts(params?: { page?: number; limit?: number; sortBy?: string; sortOrder?: 'asc' | 'desc'; period?: string; date?: string; timezone?: string; }): Promise<PaginatedResponse<PostLeaderboard>> {
     let query = this.collections.timelineHistory as Query<TimelinePost>;
 
-    const dateRange = getTimelinePeriodRangeInUtc(params?.period, params?.date, params?.timezone);
+    const dateRange = getTimelinePeriodRangeInUtc(
+      params?.period,
+      params?.date,
+      params?.timezone ?? config.appTimezone,
+    );
     if (dateRange) {
       if (dateRange.start) {
         query = query.where('timestamp', '>=', dateRange.start);

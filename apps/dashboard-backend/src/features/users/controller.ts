@@ -29,7 +29,9 @@ export class UsersController {
     const search = req.query.search as string | undefined;
     const rawSortBy = typeof req.query.sortBy === 'string' ? req.query.sortBy.trim() : undefined;
     const sortBy = rawSortBy ? resolveUserSortBy(rawSortBy) : undefined;
-    const sortOrder = req.query.sortOrder as 'asc' | 'desc' | undefined;
+    const rawSortOrder = typeof req.query.sortOrder === 'string' ? req.query.sortOrder.trim() : undefined;
+    const sortOrder: 'asc' | 'desc' | undefined =
+      rawSortOrder === 'asc' || rawSortOrder === 'desc' ? rawSortOrder : undefined;
     const period = req.query.period as 'monthly' | 'yearly' | 'all-time' | undefined;
     const date = req.query.date as string | undefined;
     try {

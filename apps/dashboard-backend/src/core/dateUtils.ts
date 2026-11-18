@@ -1,4 +1,5 @@
 import { DateTime } from 'luxon';
+import { config } from '../config';
 
 /**
  * Standard preset periods for query filtering.
@@ -61,13 +62,13 @@ export function parseRelativeDuration(input: string): RelativeDuration | null {
  *
  * @param period - The aggregation period. Accepted values are 'monthly', 'yearly', or 'all-time'.
  * @param isoDate - The ISO-8601 formatted date string representing the target period (e.g., '2026-07' or '2026').
- * @param timezone - Target IANA timezone identifier (defaults to `'Asia/Tokyo'`).
+ * @param timezone - Target IANA timezone identifier (defaults to `config.appTimezone`).
  * @returns An object containing the start and end ISO strings in UTC, or null if the period is 'all-time', invalid, or not provided.
  */
 export function getJstDateRangeInUtc(
   period: string,
   isoDate?: string,
-  timezone: string = 'Asia/Tokyo',
+  timezone: string = config.appTimezone,
 ): { start: string; end: string } | null {
   if (period === StandardTimePeriod.ALL_TIME || !isoDate) {
     return null;
@@ -109,13 +110,13 @@ export function getJstDateRangeInUtc(
  *
  * @param period - The period window ('today', 'weekly', 'monthly', 'yearly', 'all-time', or duration '7d', '14d', '2w', etc.).
  * @param isoDate - Optional specific calendar date ('yyyy-MM' or 'yyyy').
- * @param timezone - Target IANA timezone identifier (defaults to `'Asia/Tokyo'`).
+ * @param timezone - Target IANA timezone identifier (defaults to `config.appTimezone`).
  * @returns Object with start and end ISO strings in UTC, or null.
  */
 export function getTimelinePeriodRangeInUtc(
   period?: string,
   isoDate?: string,
-  timezone: string = 'Asia/Tokyo',
+  timezone: string = config.appTimezone,
 ): { start: string; end: string } | null {
   if (!period || period === StandardTimePeriod.ALL_TIME) {
     return null;

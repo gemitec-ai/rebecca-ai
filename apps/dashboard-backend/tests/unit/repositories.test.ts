@@ -2,6 +2,7 @@ import { UsersRepository } from '../../src/features/users/repository';
 import { AssetsRepository } from '../../src/features/assets/repository';
 import { TimelineRepository } from '../../src/features/timeline/repository';
 import { SystemMemoryRepository } from '../../src/features/system-memory/repository';
+import { COLLECTIONS } from '@rebecca/db';
 import { UserStatus, AssetStatus } from '@rebecca/types';
 import { createMockFirestore } from './testUtils';
 
@@ -186,31 +187,32 @@ describe('Dashboard Backend Repositories Unit Tests', () => {
           }),
         },
       ];
-      (usersRepo as any).collections.users.get = jest.fn().mockResolvedValue({
-        empty: false,
-        docs: mockDocs,
-      });
-      (usersRepo as any).collections.conversationLogs.where = jest.fn().mockReturnValue({
+      const typedMock = createMockFirestore();
+      const usersCollection = typedMock.firestore.collection(COLLECTIONS.USERS);
+      usersCollection.get.mockResolvedValue({ empty: false, docs: mockDocs });
+      const logsCollection = typedMock.firestore.collection(COLLECTIONS.CONVERSATION_LOGS);
+      logsCollection.where.mockReturnValue({
         count: jest.fn().mockReturnValue({
           get: jest.fn().mockResolvedValue({ data: () => ({ count: 0 }) }),
         }),
       });
+      const isolatedRepo = new UsersRepository(typedMock.firestore);
 
-      const byCreatedDesc = await usersRepo.getAll({ sortBy: 'createdAt', sortOrder: 'desc' });
+      const byCreatedDesc = await isolatedRepo.getAll({ sortBy: 'createdAt', sortOrder: 'desc' });
       expect(byCreatedDesc.data.map((u) => u.id)).toEqual(['user_new_quiet', 'user_old_popular']);
 
-      const byCreatedAsc = await usersRepo.getAll({ sortBy: 'createdAt', sortOrder: 'asc' });
+      const byCreatedAsc = await isolatedRepo.getAll({ sortBy: 'createdAt', sortOrder: 'asc' });
       expect(byCreatedAsc.data.map((u) => u.id)).toEqual(['user_old_popular', 'user_new_quiet']);
 
-      const byFollowersDesc = await usersRepo.getAll({ sortBy: 'followersCount', sortOrder: 'desc' });
+      const byFollowersDesc = await isolatedRepo.getAll({ sortBy: 'followersCount', sortOrder: 'desc' });
       expect(byFollowersDesc.data.map((u) => u.id)).toEqual(['user_old_popular', 'user_new_quiet']);
 
-      const byFollowersAsc = await usersRepo.getAll({ sortBy: 'followersCount', sortOrder: 'asc' });
+      const byFollowersAsc = await isolatedRepo.getAll({ sortBy: 'followersCount', sortOrder: 'asc' });
       expect(byFollowersAsc.data.map((u) => u.id)).toEqual(['user_new_quiet', 'user_old_popular']);
 
       // Prototype / arbitrary keys must safely fall back to allowlisted interactions ordering
       for (const unsafeKey of ['constructor', 'toString', '__proto__']) {
-        const resSafe = await usersRepo.getAll({ sortBy: unsafeKey, sortOrder: 'desc' });
+        const resSafe = await isolatedRepo.getAll({ sortBy: unsafeKey, sortOrder: 'desc' });
         expect(resSafe.data.map((u) => u.id)).toEqual(['user_old_popular', 'user_new_quiet']);
       }
     });
@@ -505,6 +507,15 @@ describe('Dashboard Backend Repositories Unit Tests', () => {
       expect(res.data).toHaveLength(1);
       expect(res.data[0].id).toBe('post_1');
       expect(res.data[0].impressions).toBe(300);
+
+      // Default timezone uses config.appTimezone (Asia/Tokyo), while explicit timezone overrides boundary calculation
+      const tzMock = createMockFirestore();
+      const historyCol = tzMock.firestore.collection(COLLECTIONS.TIMELINE_HISTORY);
+      const tzRepo = new TimelineRepository(tzMock.firestore);
+      await tzRepo.getPosts({ period: 'monthly', date: '2026-07' });
+      expect(historyCol.where).toHaveBeenCalledWith('timestamp', '>=', '2026-06-30T15:00:00.000Z');
+      await tzRepo.getPosts({ period: 'monthly', date: '2026-07', timezone: 'UTC' });
+      expect(historyCol.where).toHaveBeenCalledWith('timestamp', '>=', '2026-07-01T00:00:00.000Z');
     });
 
     it('getPosts should resolve canonical streaming API URLs for gs:// images and preserve campaign URLs as-is', async () => {

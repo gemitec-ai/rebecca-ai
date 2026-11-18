@@ -75,12 +75,12 @@ describe('Dashboard Backend Controllers Unit Tests', () => {
       );
 
       const { req: reqCreatedAt, res: resCreatedAt } = createMockReqRes({
-        query: { sortBy: 'createdAt' },
+        query: { sortBy: 'createdAt', sortOrder: 'invalid_order' },
       });
       useCase.getAllUsers.mockResolvedValueOnce({ data: [], meta: { totalItems: 0, totalPages: 0, currentPage: 1, limit: 30 } });
       await controller.getAll(reqCreatedAt, resCreatedAt);
       expect(useCase.getAllUsers).toHaveBeenLastCalledWith(
-        expect.objectContaining({ sortBy: 'createdAt' })
+        expect.objectContaining({ sortBy: 'createdAt', sortOrder: undefined })
       );
     });
 
