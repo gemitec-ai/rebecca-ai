@@ -7,7 +7,7 @@ info:
     
     ### Timezones
     All datetimes are returned in ISO-8601 UTC format (with `Z` suffix).
-    Aggregation endpoints (like `/posts`) handle JST (Japan Standard Time, UTC+09:00) conversions internally when using the `period` and `isoDate` query parameters to prevent date boundary alignment bugs.
+    Aggregation endpoints (like `/posts`) align `period` and `isoDate` boundary calculations to the configured application IANA timezone (`APP_TIMEZONE`, defaulting to `Asia/Tokyo` / JST) to prevent date boundary alignment bugs.
   version: 1.0.0
 servers:
   - url: http://localhost:8081/api/v1
@@ -87,7 +87,18 @@ paths:
           required: false
           schema:
             type: string
-            enum: [interactions, username, id, lastSeen]
+            enum:
+              - interactions
+              - daily_reply_count
+              - username
+              - id
+              - lastSeen
+              - last_reply_date
+              - lastInteraction
+              - createdAt
+              - firstSeen
+              - followersCount
+            default: interactions
         - name: sortOrder
           in: query
           required: false
@@ -214,7 +225,7 @@ paths:
   /posts:
     get:
       summary: Retrieve timeline posts history
-      description: Retrieves paginated timeline posts, filtered by period and JST-aligned range.
+      description: Retrieves paginated timeline posts, filtered by period and configured application timezone range.
       parameters:
         - name: limit
           in: query
@@ -243,7 +254,7 @@ paths:
         - name: isoDate
           in: query
           required: false
-          description: JST-aligned date boundary parameter (e.g. "2026-07" for monthly, "2026" for yearly)
+          description: Application-timezone-aligned date boundary parameter (e.g. "2026-07" for monthly, "2026" for yearly)
           schema:
             type: string
         - name: sortBy
