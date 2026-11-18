@@ -59,6 +59,18 @@ describe('GeminiService Unit Tests', () => {
                 'Gemini API returned empty Dreaming consolidation response',
             );
         });
+
+        it('should fail fast if parsed response is null or array', async () => {
+            const gemini = getGeminiService();
+            mockGenerateContent.mockResolvedValueOnce({ text: 'null' });
+            await expect(gemini.generateDreaming('sys', [], {})).rejects.toThrow(
+                'Gemini API returned non-object Dreaming consolidation response',
+            );
+            mockGenerateContent.mockResolvedValueOnce({ text: '[]' });
+            await expect(gemini.generateDreaming('sys', [], {})).rejects.toThrow(
+                'Gemini API returned non-object Dreaming consolidation response',
+            );
+        });
     });
 
     describe('generateStructuredNewsPost', () => {

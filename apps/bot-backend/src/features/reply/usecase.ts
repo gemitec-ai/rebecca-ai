@@ -15,10 +15,6 @@ import {
 import { logger } from '../../utils/logger';
 
 /**
- * Use case for handling reply tasks.
- * Responsible for processing mentions, managing rate limits, interacting with the LLM, and publishing replies.
- */
-/**
  * Objective visual caption prompt used for both incoming user mentions and parent timeline posts.
  * Captures concrete, detailed visual descriptions (hair/eyes/fashion for characters, or physical objects
  * such as plastic models, pets, food, landscapes) without bias or speculative hallucination.
@@ -43,6 +39,10 @@ const REPLY_PLATFORM_GUIDELINES_EN = `[SNS Platform Constraints: Follow-backs an
 - Direct Message (DM) requests: Never promise or invite private chat (e.g., "Let's chat in DMs", "Send me a DM"). DMs are strictly reserved for administrative/operational support, not private casual chatting. Guide the user in character to continue casual conversation right here in the public replies.
 - Repetitive Phrase Suppression: Treat character-specific catchphrases, distinctive jargon, and fixed patterns as an occasional spice. If used in the immediate previous turn, prioritize your own subjective thoughts, genuine feelings, and a forward-moving conversational catchball.`;
 
+/**
+ * Use case for handling reply tasks.
+ * Responsible for processing mentions, managing rate limits, interacting with the LLM, and publishing replies.
+ */
 export class ReplyTaskUseCase {
     /**
      * Initializes the use case with application dependencies.

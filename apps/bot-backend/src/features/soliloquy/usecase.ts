@@ -58,6 +58,7 @@ export class SoliloquyUseCase {
         lang: 'ja',
         gemini: this.deps.gemini,
         includeTemporalContext: true,
+        timezone: this.config.timezone,
         anchoringContext: [
           `【現在の時間帯】${timePeriodLabel}`,
           extendedPrompt ? `【近況・気分】${extendedPrompt}` : '',

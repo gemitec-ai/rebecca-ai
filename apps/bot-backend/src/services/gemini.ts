@@ -117,7 +117,11 @@ export class GeminiService implements IGeminiService {
       if (!rawText) {
         throw new Error('Gemini API returned empty Dreaming consolidation response');
       }
-      return JSON.parse(rawText);
+      const parsed: unknown = JSON.parse(rawText);
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+        throw new Error('Gemini API returned non-object Dreaming consolidation response');
+      }
+      return parsed as UserCoreProfile;
     } catch (error) {
       return rethrowUpstreamApiError(error, 'Error in Dreaming generation');
     }
@@ -197,9 +201,13 @@ export class GeminiService implements IGeminiService {
       });
       const rawText = response.text?.trim();
       if (!rawText) {
-        throw new Error('Gemini API returned empty Dreaming consolidation response');
+        throw new Error('Gemini API returned empty user profile analysis response');
       }
-      return JSON.parse(rawText);
+      const parsed: unknown = JSON.parse(rawText);
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+        throw new Error('Gemini API returned non-object user profile analysis response');
+      }
+      return parsed as UserCoreProfile;
     } catch (e) {
       logger.error('Error analyzing user profile', e);
       return {} as UserCoreProfile;

@@ -67,6 +67,7 @@ export interface BuildBotSystemPromptOptions {
   readonly lang?: Language;
   readonly topK?: number;
   readonly includeTemporalContext?: boolean;
+  readonly timezone?: string;
   readonly userData?: FirestoreUser | null;
   readonly extendedPrompt?: string;
   readonly timelineSummary?: string;
@@ -97,6 +98,7 @@ const buildSystemPrompt = async (
     lang = 'ja',
     topK = 3,
     includeTemporalContext = false,
+    timezone = config.appTimezone,
     userData = null,
     extendedPrompt = '',
     timelineSummary = '',
@@ -125,7 +127,7 @@ const buildSystemPrompt = async (
     ...(includeTemporalContext
       ? {
           temporal: {
-            timezone: config.appTimezone,
+            timezone,
             timeResolver: {
               getZonedDateParts,
               formatZonedDateTime,

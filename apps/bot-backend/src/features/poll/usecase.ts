@@ -70,6 +70,7 @@ export class PollUseCase {
         lang: 'ja',
         gemini: this.deps.gemini,
         includeTemporalContext: true,
+        timezone: this.config.timezone,
         anchoringContext: [
           `【現在の時間帯】${timePeriodLabel}`,
           `【シチュエーション】タイムラインのフォロワーに向けたアンケート出題（関心領域: ${interestsStr}）`,
@@ -235,6 +236,7 @@ ${defaultHashtag ? `- ハッシュタグ（${defaultHashtag} 等）はシステ�
         lang: 'ja',
         gemini: this.deps.gemini,
         includeTemporalContext: true,
+        timezone: this.config.timezone,
         anchoringContext: [
           `【現在の時間帯】${timePeriodLabel}`,
           `【シチュエーション】アンケート結果発表と感想トーク`,
