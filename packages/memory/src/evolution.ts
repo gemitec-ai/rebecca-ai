@@ -131,13 +131,27 @@ ${safeCandidate}
  * a safety judge, and persisting validated updates.
  */
 export class GlobalEvolutionEngine {
+  private readonly lookbackDays: number;
+  private readonly lengthGuideline?: string;
   private readonly logTag: string;
 
+  /**
+   * @param deps - Store, synthesizer, safety auditor, persona definition, and optional logger/tag.
+   * @param config - Evolution lookback configuration.
+   * @throws Error if `config.lookbackDays` is zero, negative, or non-finite.
+   */
   constructor(
     private readonly deps: GlobalEvolutionEngineDependencies,
-    private readonly config: GlobalEvolutionConfig,
+    config: GlobalEvolutionConfig,
   ) {
-    this.logTag = deps.logTag ?? '[GlobalEvolutionEngine]';
+    const logTag = deps.logTag ?? '[GlobalEvolutionEngine]';
+    const normalizedDays = Number.isFinite(config.lookbackDays) ? Math.trunc(config.lookbackDays) : 0;
+    if (normalizedDays <= 0) {
+      throw new Error(`${logTag} lookbackDays must be a positive integer.`);
+    }
+    this.lookbackDays = normalizedDays;
+    this.lengthGuideline = config.lengthGuideline;
+    this.logTag = logTag;
   }
 
   /**
@@ -150,7 +164,7 @@ export class GlobalEvolutionEngine {
   async execute(): Promise<GlobalEvolutionResult> {
     this.deps.logger?.info(`${this.logTag} Starting Global Evolution Batch`);
     try {
-      const logs = await this.deps.store.getRecentConversationLogs(this.config.lookbackDays);
+      const logs = await this.deps.store.getRecentConversationLogs(this.lookbackDays);
       if (logs.length === 0) {
         this.deps.logger?.info(`${this.logTag} No recent logs found. Skipping evolution`);
         return { status: 'skipped', reason: 'No logs found' };
@@ -164,7 +178,7 @@ export class GlobalEvolutionEngine {
       const evoPrompt = buildEvolutionSynthesisPrompt(
         this.deps.persona,
         logsText,
-        this.config.lengthGuideline,
+        this.lengthGuideline,
       );
       const rawCandidate = await this.deps.synthesizer.generateEvolutionPrompt(evoPrompt);
       const rawText = typeof rawCandidate === 'string' ? rawCandidate.trim() : '';

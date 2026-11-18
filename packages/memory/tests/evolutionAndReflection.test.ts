@@ -188,6 +188,22 @@ describe('Layer 1 GlobalEvolutionEngine & Layer 2 SelfReflectionEngine', () => {
         expect.any(Error),
       );
     });
+
+    it('rejects non-positive or non-finite lookbackDays at construction', () => {
+      const deps = createDeps();
+      expect(() => new GlobalEvolutionEngine(deps, { lookbackDays: 0 })).toThrow(
+        '[GlobalEvolutionEngine] lookbackDays must be a positive integer.',
+      );
+      expect(() => new GlobalEvolutionEngine(deps, { lookbackDays: -3 })).toThrow(
+        'lookbackDays must be a positive integer.',
+      );
+      expect(() => new GlobalEvolutionEngine(deps, { lookbackDays: Number.NaN })).toThrow(
+        'lookbackDays must be a positive integer.',
+      );
+      expect(() => new GlobalEvolutionEngine(deps, { lookbackDays: Number.POSITIVE_INFINITY })).toThrow(
+        'lookbackDays must be a positive integer.',
+      );
+    });
   });
 
   describe('SelfReflectionEngine (Layer 2)', () => {
