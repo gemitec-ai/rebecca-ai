@@ -76,10 +76,15 @@ export function getJstDateRangeInUtc(
   if (period === StandardTimePeriod.YEARLY) {
     const year = parseInt(isoDate, 10);
     if (isNaN(year)) return null;
-    const start = DateTime.fromObject({ year, month: 1, day: 1 }, { zone: timezone }).startOf('day').toUTC().toISO();
-    const end = DateTime.fromObject({ year, month: 12, day: 31 }, { zone: timezone }).endOf('day').toUTC().toISO();
+    const startDt = DateTime.fromObject({ year, month: 1, day: 1 }, { zone: timezone });
+    const endDt = DateTime.fromObject({ year, month: 12, day: 31 }, { zone: timezone });
+    if (!startDt.isValid || !endDt.isValid) return null;
 
-    return { start: start!, end: end! };
+    const start = startDt.startOf('day').toUTC().toISO();
+    const end = endDt.endOf('day').toUTC().toISO();
+    if (!start || !end) return null;
+
+    return { start, end };
   }
 
   if (period === StandardTimePeriod.MONTHLY) {
@@ -88,8 +93,9 @@ export function getJstDateRangeInUtc(
 
     const start = dt.startOf('month').toUTC().toISO();
     const end = dt.endOf('month').toUTC().toISO();
+    if (!start || !end) return null;
 
-    return { start: start!, end: end! };
+    return { start, end };
   }
 
   return null;
