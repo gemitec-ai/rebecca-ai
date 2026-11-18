@@ -65,7 +65,7 @@ export const createStructuredPersonaSchema = (
   }
 
   const additionalProperties = options.additionalProperties ?? {};
-  if ('thought' in additionalProperties || replyFieldName in additionalProperties) {
+  if (Object.hasOwn(additionalProperties, 'thought') || Object.hasOwn(additionalProperties, replyFieldName)) {
     throw new Error(
       `additionalProperties must not override mandatory Honne/Tatemae fields ("thought", "${replyFieldName}").`,
     );
