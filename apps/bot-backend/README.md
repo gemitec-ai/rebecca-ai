@@ -8,7 +8,7 @@ The `bot-backend` is the core execution engine of Rebecca AI, operating as a ser
 
 ### 1. Triple-Buffer Memory System
 Rebecca implements a multi-tiered memory architecture to keep prompts highly relevant while maintaining computational cost efficiency:
-- **Layer 0 (Core Persona Prompt)**: Immutable, hardcoded prompt defining Rebecca's core identity, gyaru slang, and social rules. Loaded directly from `@rebecca/persona`.
+- **Layer 0 (Core Persona Prompt)**: Immutable core identity synthesized dynamically from structured persona metadata (`IPersonaDefinition.getCoreIdentityPrompt()` in `@rebecca/persona`), anchored with vector-matched few-shot behavioral patterns (`@rebecca/persona`), and assembled with channel/context layers via `@rebecca/prompt` (`composeSystemPrompt`).
 - **Layer 1 (Extended Persona Tuning)**: Dynamic behavioral tunings. Updated automatically by the background "Evolution" batch (`/batch/evolution`) based on recent multi-user conversation trends.
 - **Layer 2 (Global Timeline Summary)**: Dynamic global summary of what Rebecca has posted, providing a shared context of her timeline. Updated automatically by the dedicated "Self-Reflection" batch (`/batch/self-reflection`) with fail-fast protections.
 - **User Core Profile (Long-Term Memory)**: Consolidated user preferences, relationship dynamics, and factual traits synthesized per-user by the "Dreaming" batch (`/batch/dreaming`) with 4.5s throttling.
