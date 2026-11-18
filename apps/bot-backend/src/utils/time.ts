@@ -14,6 +14,7 @@ export type { ZonedDateParts };
  * @param date - The Date instance to evaluate (defaults to current time).
  * @param timezone - Target IANA time zone identifier (defaults to config.appTimezone).
  * @returns Localized date parts with string (zero-padded) and numeric values.
+ * @throws RangeError if `timezone` is not a valid IANA time zone identifier or `date` is invalid.
  */
 export const getZonedDateParts = (
   date: Date = new Date(),
@@ -29,6 +30,7 @@ export const getZonedDateParts = (
  * @param timezone - Target IANA time zone identifier (defaults to config.appTimezone).
  * @returns Formatted date string with timezone abbreviation (e.g. "2026-09-13 07:30 JST"),
  *          or an empty string if input is falsy or invalid.
+ * @throws RangeError if `timezone` is not a valid IANA time zone identifier when formatting a valid date.
  */
 export const formatZonedDateTime = (
   isoOrDate?: string | Date | null,

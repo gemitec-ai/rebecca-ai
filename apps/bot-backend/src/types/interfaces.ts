@@ -60,7 +60,7 @@ export interface IFirestoreService {
   ): Promise<{ allowed: boolean; reason?: string }>;
   getAllUsers(): Promise<FirestoreUser[]>;
   saveRawConversationLog(userId: string, userText: string, aiText: string, thought?: string): Promise<void>;
-  getRecentConversationLogs(limit?: number, days?: number, somethingElse?: unknown): Promise<RawConversationLog[]>;
+  getRecentConversationLogs(days?: number): Promise<RawConversationLog[]>;
   getExtendedPrompt(): Promise<string>;
   saveExtendedPrompt(promptText: string): Promise<void>;
   getTimelineSummary(): Promise<string>;

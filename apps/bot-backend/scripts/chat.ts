@@ -41,7 +41,7 @@ const rl = readline.createInterface({
 });
 
 console.log("==================================================");
-console.log(" レベッカ ローカルチャット（新ペルソナシステム対応版）");
+console.log(` ${persona.metadata.displayName} ローカルチャット（新ペルソナシステム対応版）`);
 console.log(" 終了するには 'exit' または 'quit' と入力してください");
 console.log(" 120パターン動的Few-Shot＆構造化思考（thought + reply）に対応");
 console.log(" 会話履歴は local_db.json に保存されます");
@@ -55,9 +55,9 @@ if (!process.env.GEMINI_API_KEY) {
 }
 
 const chatLoop = async () => {
-    rl.question('マスター: ', async (input) => {
+    rl.question(`${persona.metadata.userCallsign.ja}: `, async (input) => {
         if (input.toLowerCase() === 'exit' || input.toLowerCase() === 'quit') {
-            console.log('\nレベッカ: 「じゃあね、マスター！またいつでも話しかけてよね。」');
+            console.log(`\n${persona.metadata.displayName}: 「じゃあね、${persona.metadata.userCallsign.ja}！またいつでも話しかけてよね。」`);
             rl.close();
             return;
         }

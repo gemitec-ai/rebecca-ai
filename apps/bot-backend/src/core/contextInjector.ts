@@ -86,6 +86,8 @@ export interface BuildBotSystemPromptOptions {
  *
  * @param options - Grounded bot prompt assembly parameters.
  * @returns Structured prompt bundle containing `baseSystemInstruction`, `personaFewShotPrompt`, and `systemInstruction`.
+ * @throws Error if situational pattern vectors are unavailable or channel context is malformed.
+ * @throws RangeError if `timezone` is not a valid IANA time zone identifier when `includeTemporalContext` is enabled.
  */
 const buildSystemPrompt = async (
   options: BuildBotSystemPromptOptions,
