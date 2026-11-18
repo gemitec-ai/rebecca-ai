@@ -62,3 +62,36 @@ export const resolveBoundedLimit = (rawLimit: unknown, max: number, defaultLimit
   }
   return defaultLimit;
 };
+
+/**
+ * Sanitizes untrusted Copilot text inputs (`currentContext`, `history[].text`, `history[].thought`)
+ * by collapsing control/newline characters and neutralizing prompt section delimiters (`[...]`, `【...】`).
+ *
+ * @param raw - Untrusted input text from HTTP payload or request DTO.
+ * @param maxLength - Maximum character count to retain after normalization.
+ * @returns Sanitized, length-bounded single-line string.
+ */
+export const sanitizeCopilotInputText = (raw: string, maxLength: number): string =>
+  raw
+    .replace(/\p{Cc}+/gu, ' ')
+    .replace(/\[/g, '(')
+    .replace(/\]/g, ')')
+    .replace(/【/g, '《')
+    .replace(/】/g, '》')
+    .replace(/\s{2,}/g, ' ')
+    .trim()
+    .slice(0, maxLength);
+
+/**
+ * Validates and normalizes an optional ISO-8601/parseable timestamp string bounded to 64 characters.
+ *
+ * @param raw - Untrusted timestamp value from HTTP payload or request DTO.
+ * @returns Trimmed valid timestamp string, or `undefined` when invalid, empty, or oversized.
+ */
+export const sanitizeBoundedTimestamp = (raw: unknown): string | undefined => {
+  const trimmed = typeof raw === 'string' ? raw.trim() : '';
+  if (trimmed.length === 0 || trimmed.length > 64 || Number.isNaN(Date.parse(trimmed))) {
+    return undefined;
+  }
+  return trimmed;
+};

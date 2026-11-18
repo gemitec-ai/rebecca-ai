@@ -19,7 +19,11 @@ import { AssetsRepository } from '../assets/repository';
 import { SystemMemoryRepository } from '../system-memory/repository';
 import { SupportersRepository } from '../supporters/repository';
 import { CopilotToolRegistry } from './toolRegistry';
-import { CopilotToolContext } from './types';
+import {
+  CopilotToolContext,
+  sanitizeBoundedTimestamp,
+  sanitizeCopilotInputText,
+} from './types';
 import { createCopilotEmbeddingProvider } from './embeddingAdapter';
 import { getCopilotChannelContext } from './prompts';
 import { createCopilotDialogueClient } from './geminiDialogueAdapter';
@@ -76,20 +80,32 @@ const buildInitialDialogueTurns = (
   targetTimezone: string,
   lang: 'ja' | 'en',
 ): DialogueTurn[] => {
-  const sanitizedHistory = rawHistory.filter((h, idx) => {
-    if (idx === rawHistory.length - 1 && h.text === userMessage) return false;
-    return typeof h.text === 'string' && h.text.trim().length > 0;
-  });
+  const sanitizedHistory = rawHistory
+    .map((h) => {
+      const cleanText = typeof h.text === 'string' ? sanitizeCopilotInputText(h.text, 2000) : '';
+      const cleanThought =
+        typeof h.thought === 'string' ? sanitizeCopilotInputText(h.thought, 500) : '';
+      const validTime = sanitizeBoundedTimestamp(h.time);
+      return {
+        role: h.role === 'model' ? ('model' as const) : ('user' as const),
+        text: cleanText,
+        ...(cleanThought ? { thought: cleanThought } : {}),
+        ...(validTime ? { time: validTime } : {}),
+      };
+    })
+    .filter((h, idx, arr) => {
+      if (idx === arr.length - 1 && h.text === userMessage) return false;
+      return h.text.length > 0;
+    });
 
   const mappedEntries: ConversationLogEntry[] = [];
   let expectedRole: 'user' | 'model' = 'user';
   for (const h of sanitizedHistory) {
-    const role = h.role === 'model' ? 'model' : 'user';
-    if (role === expectedRole) {
+    if (h.role === expectedRole) {
       mappedEntries.push({
-        role,
+        role: h.role,
         content: h.text,
-        ...(role === 'model' && h.thought ? { thought: h.thought } : {}),
+        ...(h.role === 'model' && h.thought ? { thought: h.thought } : {}),
         ...(h.time ? { timestamp: h.time } : {}),
       });
       expectedRole = expectedRole === 'user' ? 'model' : 'user';
@@ -150,16 +166,7 @@ export class CopilotUseCase {
     const activePersona = getActivePersona(config.persona.activeId);
     const targetTimezone = resolveTargetTimezone(request.timezone);
     const rawContext = typeof request.currentContext === 'string' ? request.currentContext : '';
-    const sanitizedContext = rawContext
-      .replace(/\p{Cc}+/gu, ' ')
-      .replace(/\[/g, '(')
-      .replace(/\]/g, ')')
-      .replace(/【/g, '《')
-      .replace(/】/g, '》')
-      .replace(/\s{2,}/g, ' ')
-      .trim()
-      .slice(0, 500);
-    const currentContext = sanitizedContext || 'Global Dashboard';
+    const currentContext = sanitizeCopilotInputText(rawContext, 500) || 'Global Dashboard';
     const rawHistory = request.history ?? [];
     const isEn = request.language === 'en';
     const targetLang = isEn ? 'en' : 'ja';

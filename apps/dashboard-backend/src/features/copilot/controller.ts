@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { isValidTimezone } from '../../config';
 import { CopilotUseCase } from './usecase';
+import { sanitizeBoundedTimestamp, sanitizeCopilotInputText } from './types';
 import { getTraceHeader, handleControllerError } from '../../utils/httpError';
 
 /**
@@ -59,32 +60,20 @@ export class CopilotController {
 
     const traceHeader = getTraceHeader(req);
     const boundedMessage = message.trim().slice(0, 2000);
-    const sanitizeContext = (raw: string): string =>
-      raw
-        .replace(/\p{Cc}+/gu, ' ')
-        .replace(/\[/g, '(')
-        .replace(/\]/g, ')')
-        .replace(/【/g, '《')
-        .replace(/】/g, '》')
-        .replace(/\s{2,}/g, ' ')
-        .trim()
-        .slice(0, 500);
     const sanitizedContext =
-      typeof currentContext === 'string' ? sanitizeContext(currentContext) : '';
+      typeof currentContext === 'string' ? sanitizeCopilotInputText(currentContext, 500) : '';
     const boundedContext = sanitizedContext.length > 0 ? sanitizedContext : undefined;
     const boundedHistory = Array.isArray(history)
       ? history.slice(-20).map((item: { role?: string; text?: string; thought?: string; time?: string }) => {
-          const rawTime = typeof item?.time === 'string' ? item.time.trim() : '';
-          const validTime =
-            rawTime.length > 0 && rawTime.length <= 64 && !Number.isNaN(Date.parse(rawTime))
-              ? rawTime
-              : undefined;
+          const validTime = sanitizeBoundedTimestamp(item?.time);
+          const cleanText =
+            typeof item?.text === 'string' ? sanitizeCopilotInputText(item.text, 2000) : '';
+          const cleanThought =
+            typeof item?.thought === 'string' ? sanitizeCopilotInputText(item.thought, 500) : '';
           return {
             role: item?.role === 'model' ? ('model' as const) : ('user' as const),
-            text: typeof item?.text === 'string' ? item.text.trim().slice(0, 2000) : '',
-            ...(typeof item?.thought === 'string' && item.thought.trim().length > 0
-              ? { thought: item.thought.trim().slice(0, 500) }
-              : {}),
+            text: cleanText,
+            ...(cleanThought.length > 0 ? { thought: cleanThought } : {}),
             ...(validTime !== undefined ? { time: validTime } : {}),
           };
         })
