@@ -1,4 +1,4 @@
-import type { MemoryUserSnapshot } from '@rebecca/memory';
+import { sanitizeUntrustedPromptText, type MemoryUserSnapshot } from '@rebecca/memory';
 import type { IPersonaDefinition, Language } from '@rebecca/persona';
 import type { UserCoreProfile } from '@rebecca/types';
 import { DEFAULT_APP_TIMEZONE, formatZonedDateTime, resolveTimeContextPeriod } from './time';
@@ -46,17 +46,6 @@ export const formatBirthdaySection = (
         body: `本日（${birthday.label.ja}）はあなた自身（${persona.metadata.profile.modelNumber}）の誕生日（ロールアウト記念日）です！お祝いの言葉をかけられた際や自然な雑談の流れでは素直に喜びを表現してください（※相手が深刻な悩みや相談をしている場合は相手への共感を最優先してください）。`,
       };
 };
-
-const sanitizeUntrustedPromptText = (raw: string, maxLength: number): string =>
-  raw
-    .replace(/\p{Cc}+/gu, ' ')
-    .replace(/\[/g, '(')
-    .replace(/\]/g, ')')
-    .replace(/【/g, '《')
-    .replace(/】/g, '》')
-    .replace(/\s{2,}/g, ' ')
-    .trim()
-    .slice(0, maxLength);
 
 /**
  * Formats interlocutor account metadata (`Display Name` and handle) when both fields are populated.
@@ -300,6 +289,7 @@ export const formatExtendedTrendSection = (
 
 /**
  * Formats Layer 2 recent global activity summary with customizable heading and lead copy.
+ * Sanitizes stored summary text against control-character/delimiter injection and caps length at 1,500 chars.
  */
 export const formatActivitySummarySection = (
   activitySummary: string | undefined,
@@ -309,8 +299,11 @@ export const formatActivitySummarySection = (
     readonly lead?: string;
   },
 ): PromptSection | null => {
-  const trimmed = activitySummary?.trim();
-  if (!trimmed) {
+  if (!activitySummary) {
+    return null;
+  }
+  const sanitized = sanitizeUntrustedPromptText(activitySummary, 1500);
+  if (!sanitized) {
     return null;
   }
 
@@ -323,6 +316,6 @@ export const formatActivitySummarySection = (
 
   return {
     header,
-    body: `${lead}\n${trimmed}`,
+    body: `${lead}\n${sanitized}`,
   };
 };

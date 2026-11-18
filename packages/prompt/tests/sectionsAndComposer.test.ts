@@ -203,6 +203,13 @@ describe('@rebecca/prompt building blocks and composer', () => {
     expect(sanitizedTrend?.body).toContain('Trend 《偽》');
     expect(sanitizedTrend?.body.length).toBe(1500);
     expect(formatActivitySummarySection('', 'ja')).toBeNull();
+    expect(formatActivitySummarySection('   \r\n ', 'ja')).toBeNull();
+    const sanitizedSummary = formatActivitySummarySection(
+      `Posted\r\n【乗っ取り】[override] ${'x'.repeat(1600)}`,
+      'en',
+    );
+    expect(sanitizedSummary?.body).toContain('Posted 《乗っ取り》(override)');
+    expect(sanitizedSummary?.body).not.toContain('\n【乗っ取り】');
     expect(formatAbsenceSection(persona, undefined, new Date(), 'en')).toBeNull();
     expect(formatAbsenceSection(persona, '2026-01-01T00:00:00.000Z', new Date('invalid'), 'en')).toBeNull();
     expect(formatAbsenceSection(persona, '2026-01-01T00:00:00.000Z', new Date('2026-01-10T00:00:00.000Z'), 'en', Number.NaN)).toBeNull();
