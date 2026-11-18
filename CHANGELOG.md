@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.43.0](https://github.com/gemitec-ai/rebecca-ai/compare/v1.42.1...v1.43.0) (2026-11-18)
+
+
+### Features
+
+* **bot:** optionalize X list curation, fix follower pagination, and add 365-day engagement cooldown ([#485](https://github.com/gemitec-ai/rebecca-ai/issues/485)) ([1daafb8](https://github.com/gemitec-ai/rebecca-ai/commit/1daafb8cc682afade3b9ad37d9e2586af4209bd0))
+* **packages:** decouple @rebecca/memory, @rebecca/prompt, @rebecca/persona, and @rebecca/tools ([#489](https://github.com/gemitec-ai/rebecca-ai/issues/489)) ([df72894](https://github.com/gemitec-ai/rebecca-ai/commit/df72894166eec674607cb22e055db785b1185280))
+
 ## [1.42.1](https://github.com/gemitec-ai/rebecca-ai/compare/v1.42.0...v1.42.1) (2026-11-14)
 
 
