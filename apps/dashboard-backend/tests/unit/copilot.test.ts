@@ -381,14 +381,26 @@ describe('Copilot Autonomous Agent Suite (Redesign v3)', () => {
         ]
       });
 
-      const res = await tool.execute({ sortBy: 'recent', sortOrder: 'asc', limit: 50 }, { timelineRepo, isEn: true });
+      const res = await tool.execute({ sortBy: 'createdAt', sortOrder: 'asc', limit: 50 }, { timelineRepo, isEn: true });
       expect(timelineRepo.getPosts).toHaveBeenCalledWith(expect.objectContaining({
-        sortBy: 'recent',
+        sortBy: 'createdAt',
         sortOrder: 'asc',
+        period: 'all-time',
         limit: 20
       }));
       expect(res.attachments?.[0].title.endsWith('...')).toBe(true);
       expect(res.attachments?.[0].imageUrl).toBeUndefined();
+
+      // Invalid sortBy and period clamp cleanly to defaults
+      (timelineRepo.getPosts as jest.Mock).mockResolvedValueOnce({ data: [] });
+      const clampedRes = await tool.execute(
+        { sortBy: 'constructor', period: 'invalid_period' },
+        { timelineRepo, isEn: true },
+      );
+      expect(timelineRepo.getPosts).toHaveBeenLastCalledWith(
+        expect.objectContaining({ sortBy: 'impressions', period: 'all-time' }),
+      );
+      expect((clampedRes.data as { period?: string }).period).toBe('all-time');
     });
 
     it('SearchUsersTool should handle missing repository, status filter, and users without name', async () => {
@@ -456,6 +468,10 @@ describe('Copilot Autonomous Agent Suite (Redesign v3)', () => {
 
       const kpiRes = await kpiTool.execute({}, { timelineRepo, isEn: false });
       expect((kpiRes.data as any).period).toBe('monthly');
+
+      const kpiInvalidRes = await kpiTool.execute({ period: 'invalid_kpi_period' }, { timelineRepo, isEn: false });
+      expect((kpiInvalidRes.data as any).period).toBe('monthly');
+      expect(timelineRepo.getMetrics).toHaveBeenLastCalledWith('monthly');
 
       const supTool = new SearchSupportersTool();
       const supNoRepo = await supTool.execute({}, { isEn: false });

@@ -59,10 +59,17 @@ export class CopilotController {
 
     const traceHeader = getTraceHeader(req);
     const boundedMessage = message.trim().slice(0, 2000);
-    const boundedContext =
-      typeof currentContext === 'string' && currentContext.trim().length > 0
-        ? currentContext.trim().slice(0, 500)
-        : undefined;
+    const sanitizeContext = (raw: string): string =>
+      raw
+        .replace(/\p{Cc}+/gu, ' ')
+        .replace(/\[/g, '(')
+        .replace(/\]/g, ')')
+        .replace(/\s{2,}/g, ' ')
+        .trim()
+        .slice(0, 500);
+    const sanitizedContext =
+      typeof currentContext === 'string' ? sanitizeContext(currentContext) : '';
+    const boundedContext = sanitizedContext.length > 0 ? sanitizedContext : undefined;
     const boundedHistory = Array.isArray(history)
       ? history.slice(-20).map((item: { role?: string; text?: string; thought?: string; time?: string }) => {
           const rawTime = typeof item?.time === 'string' ? item.time.trim() : '';

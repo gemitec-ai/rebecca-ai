@@ -7,6 +7,11 @@ const ALLOWED_TOOL_USER_SORT_FIELDS: ReadonlySet<string> = new Set([
   'followersCount',
   'createdAt',
 ]);
+const ALLOWED_TOOL_USER_STATUSES: ReadonlySet<string> = new Set([
+  'ACTIVE',
+  'BLOCKED',
+  'MUTED',
+]);
 
 /**
  * Tool for querying user profiles by handle, interaction rank, or moderation status.
@@ -65,7 +70,7 @@ export class SearchUsersTool implements CopilotTool {
     });
 
     let users = result.data ?? [];
-    if (typeof params.status === 'string' && params.status !== 'ALL') {
+    if (typeof params.status === 'string' && ALLOWED_TOOL_USER_STATUSES.has(params.status)) {
       const targetStatus = params.status;
       users = users.filter((u: UserDetail) => u.status === targetStatus);
     }

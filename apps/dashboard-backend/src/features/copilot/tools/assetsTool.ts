@@ -6,6 +6,13 @@ import { createCopilotEmbeddingProvider } from '../embeddingAdapter';
 import { logger } from '../../../utils/logger';
 import { config } from '../../../config';
 
+const ALLOWED_TOOL_ASSET_STATUSES: ReadonlySet<string> = new Set([
+  'PENDING',
+  'PROCESSING',
+  'SUCCESS',
+  'FAILED',
+]);
+
 /**
  * Tool for semantic vector search and status filtering of media image assets.
  */
@@ -65,17 +72,21 @@ export class SearchAssetsTool implements CopilotTool {
       }
     }
 
+    const statusFilter =
+      typeof params.status === 'string' && ALLOWED_TOOL_ASSET_STATUSES.has(params.status)
+        ? params.status
+        : undefined;
+
     if (matchedAssets.length === 0) {
       const paginated = await context.assetsRepo.getPaginated({
         search: semanticQuery.length > 0 ? semanticQuery : undefined,
-        status: typeof params.status === 'string' && params.status !== 'ALL' ? params.status : undefined,
+        status: statusFilter,
         limit,
         page: 1
       });
       matchedAssets = paginated.data ?? [];
-    } else if (typeof params.status === 'string' && params.status !== 'ALL') {
-      const targetStatus = params.status;
-      matchedAssets = matchedAssets.filter((a: Asset) => a.status === targetStatus);
+    } else if (statusFilter) {
+      matchedAssets = matchedAssets.filter((a: Asset) => a.status === statusFilter);
     }
 
     const finalAssets = matchedAssets.slice(0, limit);

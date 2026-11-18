@@ -2,6 +2,21 @@ import type { ToolDeclaration } from '@rebecca/tools';
 import { CopilotAttachment, PostLeaderboard } from '@rebecca/types';
 import { CopilotTool, CopilotToolContext, CopilotToolExecutionResult, resolveBoundedLimit } from '../types';
 
+const ALLOWED_POST_SORT_FIELDS: ReadonlySet<string> = new Set([
+  'impressions',
+  'likes',
+  'replies',
+  'createdAt',
+]);
+const ALLOWED_POST_PERIOD_PRESETS: ReadonlySet<string> = new Set([
+  'today',
+  'weekly',
+  'monthly',
+  'yearly',
+  'all-time',
+]);
+const RELATIVE_POST_PERIOD_REGEX = /^[1-9]\d*[dwmy]$/i;
+
 /**
  * Tool for querying and ranking timeline posts by metrics.
  */
@@ -44,9 +59,14 @@ export class SearchTimelinePostsTool implements CopilotTool {
     }
 
     const limit = resolveBoundedLimit(params.limit, 20);
-    const sortBy = typeof params.sortBy === 'string' ? params.sortBy : 'impressions';
+    const rawSortBy = typeof params.sortBy === 'string' ? params.sortBy.trim() : '';
+    const sortBy = ALLOWED_POST_SORT_FIELDS.has(rawSortBy) ? rawSortBy : 'impressions';
     const sortOrder = params.sortOrder === 'asc' ? 'asc' : 'desc';
-    const period = typeof params.period === 'string' ? params.period : 'all-time';
+    const rawPeriod = typeof params.period === 'string' ? params.period.trim().toLowerCase() : '';
+    const period =
+      ALLOWED_POST_PERIOD_PRESETS.has(rawPeriod) || RELATIVE_POST_PERIOD_REGEX.test(rawPeriod)
+        ? rawPeriod
+        : 'all-time';
 
     const result = await context.timelineRepo.getPosts({
       sortBy,

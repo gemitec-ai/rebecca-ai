@@ -37,6 +37,8 @@ describe('Dashboard Backend Core & Settings Unit Tests', () => {
 
       // Invalid year & invalid timezone
       expect(getJstDateRangeInUtc('yearly', 'INVALID_YEAR')).toBeNull();
+      expect(getJstDateRangeInUtc('yearly', '2026abc')).toBeNull();
+      expect(getJstDateRangeInUtc('yearly', '2026-07')).toBeNull();
       expect(getJstDateRangeInUtc('yearly', '2026', 'Invalid/Timezone')).toBeNull();
     });
 

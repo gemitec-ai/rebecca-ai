@@ -1,6 +1,8 @@
 import type { ToolDeclaration } from '@rebecca/tools';
 import { CopilotTool, CopilotToolContext, CopilotToolExecutionResult } from '../types';
 
+const ALLOWED_KPI_PERIODS: ReadonlySet<string> = new Set(['weekly', 'monthly', 'yearly']);
+
 /**
  * Tool for retrieving high-level KPI metrics and system growth trends.
  */
@@ -29,7 +31,8 @@ export class GetKpiSummaryTool implements CopilotTool {
       return { data: { error: 'TimelineRepository is not configured' } };
     }
 
-    const period = typeof params.period === 'string' ? params.period : 'monthly';
+    const rawPeriod = typeof params.period === 'string' ? params.period.trim().toLowerCase() : '';
+    const period = ALLOWED_KPI_PERIODS.has(rawPeriod) ? rawPeriod : 'monthly';
     const metrics = await context.timelineRepo.getMetrics(period);
 
     return {

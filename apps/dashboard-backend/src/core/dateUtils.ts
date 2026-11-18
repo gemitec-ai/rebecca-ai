@@ -75,8 +75,9 @@ export function getJstDateRangeInUtc(
   }
 
   if (period === StandardTimePeriod.YEARLY) {
-    const year = parseInt(isoDate, 10);
-    if (isNaN(year)) return null;
+    const trimmedIso = isoDate.trim();
+    if (!/^\d{4}$/.test(trimmedIso)) return null;
+    const year = parseInt(trimmedIso, 10);
     const startDt = DateTime.fromObject({ year, month: 1, day: 1 }, { zone: timezone });
     const endDt = DateTime.fromObject({ year, month: 12, day: 31 }, { zone: timezone });
     if (!startDt.isValid || !endDt.isValid) return null;
