@@ -35,7 +35,7 @@ Prompt contexts are dynamically modified before sending requests to the Gemini A
 
 ### 5. Proactive Image Attachment & Vision
 - Automatically analyzes uploaded graphics using `gemini-3.1-flash-lite` (Vision mode) and generates alt-text metadata.
-- Alt-text captions are vectorized using `text-embedding-004` and stored in Firestore.
+- Alt-text captions are vectorized using `gemini-embedding-2` and stored in Firestore.
 - Proactive timeline updates query these embeddings using Firestore Vector Search (KNN) to attach contextually relevant images to auto-generated posts.
 
 ### 6. Campaign Narrative Event Dispatcher
