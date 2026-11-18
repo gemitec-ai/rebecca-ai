@@ -113,7 +113,11 @@ export class GeminiService implements IGeminiService {
         },
       });
 
-      return JSON.parse(response.text || '{}');
+      const rawText = response.text?.trim();
+      if (!rawText) {
+        throw new Error('Gemini API returned empty Dreaming consolidation response');
+      }
+      return JSON.parse(rawText);
     } catch (error) {
       return rethrowUpstreamApiError(error, 'Error in Dreaming generation');
     }
@@ -191,7 +195,11 @@ export class GeminiService implements IGeminiService {
         contents: prompt,
         config: { responseMimeType: 'application/json' },
       });
-      return JSON.parse(response.text || '{}');
+      const rawText = response.text?.trim();
+      if (!rawText) {
+        throw new Error('Gemini API returned empty Dreaming consolidation response');
+      }
+      return JSON.parse(rawText);
     } catch (e) {
       logger.error('Error analyzing user profile', e);
       return {} as UserCoreProfile;

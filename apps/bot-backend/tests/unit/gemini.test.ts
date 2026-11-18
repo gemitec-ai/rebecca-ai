@@ -51,6 +51,14 @@ describe('GeminiService Unit Tests', () => {
             mockGenerateContent.mockResolvedValueOnce({ text: 'invalid json' });
             await expect(gemini.generateDreaming('sys', [], {})).rejects.toThrow(SyntaxError);
         });
+
+        it('should fail fast if response text is empty', async () => {
+            const gemini = getGeminiService();
+            mockGenerateContent.mockResolvedValueOnce({ text: '   ' });
+            await expect(gemini.generateDreaming('sys', [], {})).rejects.toThrow(
+                'Gemini API returned empty Dreaming consolidation response',
+            );
+        });
     });
 
     describe('generateStructuredNewsPost', () => {

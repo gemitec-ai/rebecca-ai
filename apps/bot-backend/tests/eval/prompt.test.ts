@@ -11,6 +11,7 @@ import { GeminiService } from '../../src/services/gemini';
 import { buildSystemPrompt } from '../../src/core/contextInjector';
 import { Language, getActivePersona } from '@rebecca/persona';
 import config from '../../src/config';
+import type { FirestoreUser } from '../../src/types';
 
 const hasApiKey = Boolean(process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY !== 'mock_api_key' && process.env.GEMINI_API_KEY !== 'test-key');
 const ai = hasApiKey ? new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! }) : null;
@@ -138,7 +139,7 @@ runEval('LLM as a Judge: Prompt Evaluation', () => {
 
     test.each(testCases)('should pass eval: $name', async (tc) => {
         // 1. Generate Rebecca's response with retry
-        const userData = { episodicBuffer: [] }; // Mock empty memory
+        const userData = { episodicBuffer: [] } as unknown as FirestoreUser; // Mock empty memory
         const lang: Language = (tc.lang as Language) || 'ja';
         const { systemInstruction: systemPrompt } = await buildSystemPrompt({
             persona,
@@ -147,7 +148,7 @@ runEval('LLM as a Judge: Prompt Evaluation', () => {
             gemini,
             anchoringContext: [tc.input],
             includeTemporalContext: true,
-            userData: userData as unknown as any,
+            userData,
         });
         const structured = await retryAsync(() => gemini.generateStructuredReply(systemPrompt, [], tc.input));
         const reply = structured.reply;

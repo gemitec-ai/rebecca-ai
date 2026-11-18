@@ -400,7 +400,7 @@ ${targetSlot.mediaUrl ? '- 本投稿にはイラスト写真が添付されま�
   private resolveImageMimeType(pathOrFilename: string): string {
     const clean = pathOrFilename.split('?')[0].split('#')[0].trim();
     const ext = clean.split('.').pop()?.toLowerCase();
-    if (!ext || !CampaignPostUseCase.ALLOWED_IMAGE_EXTENSIONS[ext]) {
+    if (!ext || !Object.hasOwn(CampaignPostUseCase.ALLOWED_IMAGE_EXTENSIONS, ext)) {
       throw new Error(
         `[CampaignPostUseCase] Unsupported media extension in "${pathOrFilename}". Allowed extensions: ${Object.keys(CampaignPostUseCase.ALLOWED_IMAGE_EXTENSIONS).join(', ')}`,
       );

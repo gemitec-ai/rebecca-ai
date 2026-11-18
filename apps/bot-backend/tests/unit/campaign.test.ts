@@ -666,6 +666,18 @@ describe('Campaign Narrative Event Engine Unit Tests', () => {
       const useCase = new CampaignPostUseCase(deps, defaultUseCaseConfig);
       await expect(useCase.execute()).rejects.toThrow('Unsupported media extension in');
     });
+
+    it('should reject Object.prototype property names such as .constructor as unsupported extensions', async () => {
+      const campaign = JSON.parse(JSON.stringify(mockActiveCampaign));
+      campaign.slots[0].isFixedText = true;
+      campaign.slots[0].fixedTextOverride = 'Fixed text with prototype key';
+      campaign.slots[0].mediaUrl = 'gs://rebecca-ai-gal-images/campaigns/c1/payload.constructor';
+
+      (deps.firestore.getActiveCampaign as jest.Mock).mockResolvedValue(campaign);
+
+      const useCase = new CampaignPostUseCase(deps, defaultUseCaseConfig);
+      await expect(useCase.execute()).rejects.toThrow('Unsupported media extension in');
+    });
   });
 
   describe('CampaignPostController', () => {

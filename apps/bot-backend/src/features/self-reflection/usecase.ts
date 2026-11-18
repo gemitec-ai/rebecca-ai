@@ -11,7 +11,7 @@ export interface SelfReflectionConfig {
 }
 
 /**
- * Orchestrates Rebecca's self-reflection batch process (Layer 2).
+ * Orchestrates the persona's self-reflection batch process (Layer 2).
  * Delegates activity summarization and fail-fast guards to `@rebecca/memory`'s
  * {@link SelfReflectionEngine} backed by X timeline Firestore and Gemini adapters.
  */
