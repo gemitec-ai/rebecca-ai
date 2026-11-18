@@ -2,16 +2,8 @@ import { Router } from 'express';
 import { Firestore } from '@google-cloud/firestore';
 import { SystemSettings } from '@rebecca/types';
 import { COLLECTIONS } from '@rebecca/db/schema';
+import { isValidTimezone } from '../../config';
 import { logger } from '../../utils/logger';
-
-function isValidTimezone(tz: string): boolean {
-  try {
-    Intl.DateTimeFormat(undefined, { timeZone: tz });
-    return true;
-  } catch {
-    return false;
-  }
-}
 
 /**
  * Initializes the Settings module with routes for managing global application preferences.
@@ -34,12 +26,12 @@ export function initializeSettingsModule(firestore: Firestore): Router {
         };
         return res.json({ data: defaultSettings });
       }
-      const data = snap.data() as SystemSettings;
+      const data = snap.data();
       res.json({
         data: {
-          language: data.language || 'ja',
-          timezone: data.timezone || 'Asia/Tokyo',
-          updatedAt: data.updatedAt || new Date().toISOString()
+          language: data?.language === 'en' ? 'en' : 'ja',
+          timezone: typeof data?.timezone === 'string' && isValidTimezone(data.timezone) ? data.timezone : 'Asia/Tokyo',
+          updatedAt: typeof data?.updatedAt === 'string' && data.updatedAt.trim() ? data.updatedAt : new Date().toISOString()
         }
       });
     } catch (error) {
@@ -51,6 +43,9 @@ export function initializeSettingsModule(firestore: Firestore): Router {
   // PATCH /api/v1/settings
   router.patch('/', async (req, res) => {
     try {
+      if (!req.body || typeof req.body !== 'object' || Array.isArray(req.body)) {
+        return res.status(400).json({ error: 'Invalid request body: expected JSON object' });
+      }
       const { language, timezone } = req.body;
 
       if (language !== undefined && language !== 'ja' && language !== 'en') {
@@ -67,19 +62,19 @@ export function initializeSettingsModule(firestore: Firestore): Router {
         updatedAt: new Date().toISOString()
       };
       if (language) updates.language = language;
-      if (timezone) updates.timezone = timezone;
+      if (typeof timezone === 'string') updates.timezone = timezone.trim();
 
       const docRef = firestore.collection(COLLECTIONS.SYSTEM).doc('preferences');
       await docRef.set(updates, { merge: true });
 
       const snap = await docRef.get();
-      const data = snap.data() as SystemSettings;
+      const data = snap.data();
 
       res.json({
         data: {
-          language: data.language || 'ja',
-          timezone: data.timezone || 'Asia/Tokyo',
-          updatedAt: data.updatedAt || updates.updatedAt
+          language: data?.language === 'en' ? 'en' : 'ja',
+          timezone: typeof data?.timezone === 'string' && isValidTimezone(data.timezone) ? data.timezone : 'Asia/Tokyo',
+          updatedAt: typeof data?.updatedAt === 'string' && data.updatedAt.trim() ? data.updatedAt : updates.updatedAt
         }
       });
     } catch (error) {

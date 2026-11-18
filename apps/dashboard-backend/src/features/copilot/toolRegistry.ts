@@ -1,4 +1,4 @@
-import { FunctionDeclaration } from '@google/genai';
+import { PersonaToolRegistry, type ToolDeclaration } from '@rebecca/tools';
 import { CopilotTool, CopilotToolContext, CopilotToolExecutionResult } from './types';
 import { SearchTimelinePostsTool } from './tools/postsTool';
 import { SearchUsersTool } from './tools/usersTool';
@@ -33,21 +33,51 @@ export class CopilotToolRegistry {
   }
 
   /**
-   * Retrieves all Gemini function declarations.
+   * Retrieves all provider-neutral JSON Schema tool declarations.
    */
-  getFunctionDeclarations(): FunctionDeclaration[] {
-    return Array.from(this.tools.values()).map(t => t.declaration);
+  getFunctionDeclarations(): ToolDeclaration[] {
+    return Array.from(this.tools.values()).map((t) => t.declaration);
+  }
+
+  /**
+   * Builds a `@rebecca/tools` {@link PersonaToolRegistry} bound to the request context
+   * and side-effect collector for rich attachments and HITL confirmation proposals.
+   */
+  toPersonaToolRegistry(
+    context: CopilotToolContext,
+    onToolResult: (result: CopilotToolExecutionResult) => void,
+  ): PersonaToolRegistry {
+    const registry = new PersonaToolRegistry();
+    for (const tool of this.tools.values()) {
+      registry.register({
+        declaration: tool.declaration,
+        execute: async (args) => {
+          const toolResult = await this.execute(tool.name, args ?? {}, context);
+          onToolResult(toolResult);
+          const rawData = toolResult.data;
+          if (rawData && typeof rawData === 'object' && !Array.isArray(rawData)) {
+            return rawData as Record<string, unknown>;
+          }
+          return { result: rawData };
+        },
+      });
+    }
+    return registry;
   }
 
   /**
    * Dispatches and executes a tool by name with safety boundary.
    */
-  async execute(name: string, args: Record<string, unknown>, context: CopilotToolContext): Promise<CopilotToolExecutionResult> {
+  async execute(
+    name: string,
+    args: Record<string, unknown>,
+    context: CopilotToolContext,
+  ): Promise<CopilotToolExecutionResult> {
     const tool = this.tools.get(name);
     if (!tool) {
       logger.warn(`Attempted execution of unknown tool: ${name}`);
       return {
-        data: { error: `Tool ${name} is not registered` }
+        data: { error: `Tool ${name} is not registered` },
       };
     }
 
@@ -56,7 +86,7 @@ export class CopilotToolRegistry {
     } catch (err) {
       logger.error(`Error executing copilot tool ${name}`, err);
       return {
-        data: { error: `Failed to execute ${name}: ${err instanceof Error ? err.message : String(err)}` }
+        data: { error: `Failed to execute ${name}: ${err instanceof Error ? err.message : String(err)}` },
       };
     }
   }

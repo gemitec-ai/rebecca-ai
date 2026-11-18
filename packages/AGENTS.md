@@ -8,7 +8,10 @@ Scoped architectural and contract rules for shared internal monorepo packages. I
 - **Internal Package Graph**:
   - `@rebecca/types` (`packages/types`): Zero-dependency domain interfaces, DTOs, and type guards. **Never** import `@google-cloud/firestore`, `firebase-admin`, `express`, or `@angular/*` into `@rebecca/types`. Represent all domain dates/timestamps as **ISO 8601 strings**.
   - `@rebecca/logger` (`packages/logger`): Structured JSON logging library compatible with Google Cloud Logging severity levels.
-  - `@rebecca/persona` (`packages/persona`): Persona abstractions (`basePersona.ts`), active Japanese persona prompt rules (`personas/`), situational exemplars (`data/personaPatterns.json`), and precomputed embedding vectors (`personaPatternVectors.ts`).
+  - `@rebecca/persona` (`packages/persona`): Pure character SSOT (`metadata`, Layer 0 `getCoreIdentityPrompt`, `composePrompt`, `getDreamingPrompt`, `formatAbsenceInstruction`, situational exemplars `data/personaPatterns.json`, and precomputed vectors). Free of host platform/channel constraints.
+  - `@rebecca/memory` (`packages/memory`): Depends strictly on `@rebecca/types`. Pure cognitive memory engine covering Tatemae/Honne working memory reconstruction, core vectorization/RAG primitives, Layer 1 Global Evolution (`GlobalEvolutionEngine`), Layer 2 Self-Reflection (`SelfReflectionEngine` + `DEFAULT_SELF_REFLECTION_SYSTEM_INSTRUCTION`), Layer 3 Dreaming consolidation (`DreamingConsolidationEngine`), and asymmetric one-way overlay.
+  - `@rebecca/prompt` (`packages/prompt`): Depends on `@rebecca/types`, `@rebecca/persona`, and `@rebecca/memory`. Channel-agnostic prompt building blocks (localized clock helpers, situational few-shot anchoring, granular memory/profile/anniversary section builders, and `assemblePromptSections` / `composeSystemPrompt`).
+  - `@rebecca/tools` (`packages/tools`): Zero-dependency shared package providing standard JSON Schema tool declarations (`ToolDeclaration`), web lookup port (`IWebSearchProvider`, `createSearchWebTool`), tool registry (`PersonaToolRegistry`), and multi-provider Function Calling loop (`runToolDialogueLoop`, `ILLMToolDialogueClient`).
   - `@rebecca/db` (`packages/db`): Depends on `@rebecca/types` and `@google-cloud/firestore`. Owns collection names, `FirestoreDataConverter<T>` boundary adapters (bridging Firestore `Timestamp`/`VectorValue` <-> domain models), `firestore.rules`, and `firestore.indexes.json`.
 - **Topological Compilation**: Downstream workspaces consume compiled `dist/` outputs and `.d.ts` declarations. After editing any file under `packages/*`, run `npm run build` from the repository root before running downstream builds or tests.
 
@@ -20,7 +23,7 @@ Scoped architectural and contract rules for shared internal monorepo packages. I
   - When authoring or modifying `packages/db/firestore.rules`, delegate to the dedicated `firestore-rules-author` subagent (or follow strict Firestore security rules auditing practices if subagents are unavailable) and highlight the rule diff for mandatory human review.
 - **Pluggable Persona Encapsulation (`@rebecca/persona`)**:
   - `src/basePersona.ts` (`BasePersona`) and `src/types.ts` (`IPersonaDefinition`) define the character-agnostic engine (Layer 0 prompt synthesis from structured `metadata`, cosine-similarity anchor selection, and few-shot formatting).
-  - `src/personas/rebecca.ts` (`RebeccaPersona` & `REBECCA_METADATA`) is the **Single Source of Truth (SSOT)** for all Rebecca-specific identity, profile specs, tone, `userCallsign`, `firstPerson`, `defaultHashtag`, UI branding (`brandName`, `adminTitle`, `avatarUrl`), `getBasePrompt`, `getDreamingPrompt`, and `formatAbsenceInstruction`, paired with the 120 situational patterns in `src/data/personaPatterns.json` (`personaPatternVectors.ts`).
+  - `src/personas/rebecca.ts` (`RebeccaPersona` & `REBECCA_METADATA`) is the **Single Source of Truth (SSOT)** for all Rebecca-specific identity, profile specs, tone, `userCallsign`, `firstPerson`, `defaultHashtag`, UI branding (`brandName`, `adminTitle`, `avatarUrl`), `getDreamingPrompt`, and `formatAbsenceInstruction`, paired with the 120 situational patterns in `src/data/personaPatterns.json` (`personaPatternVectors.ts`).
   - **Swappability Invariant**: Never scatter character-specific traits into `BasePersona` or `apps/*`. Switching or adding an AI persona must only require swapping/adding a `BasePersona` subclass + 120-pattern dataset, regenerating `personaPatternVectors.ts` via `npm run generate:persona-vectors --workspace=bot-backend`, and registering the ID in `getActivePersona()` (`src/index.ts`).
   - Keep code/TSDoc in **English** while preserving **Japanese** persona text in `@rebecca/persona`.
 
@@ -28,11 +31,14 @@ Scoped architectural and contract rules for shared internal monorepo packages. I
 
 | Script / Command | Classification | Purpose & Usage Notes |
 | :--- | :--- | :--- |
-| `npm run build` | Safe Local (Root) | Builds `@rebecca/types`, `@rebecca/logger`, `@rebecca/persona`, `@rebecca/db`, and all downstream workspaces in topological order |
+| `npm run build` | Safe Local (Root) | Builds `@rebecca/types`, `@rebecca/logger`, `@rebecca/persona`, `@rebecca/memory`, `@rebecca/prompt`, `@rebecca/tools`, `@rebecca/db`, and all downstream workspaces in topological order |
 | `npm test --workspace=@rebecca/db` | Safe Local | Runs `@rebecca/db` Jest unit tests (`>= 80.0%` C0/C1 coverage gate) |
 | `npm test --workspace=@rebecca/persona` | Safe Local | Runs `@rebecca/persona` Jest unit tests (`>= 80.0%` C0/C1 coverage gate) |
+| `npm test --workspace=@rebecca/memory` | Safe Local | Runs `@rebecca/memory` Jest unit tests (`>= 80.0%` C0/C1 coverage gate) |
+| `npm test --workspace=@rebecca/prompt` | Safe Local | Runs `@rebecca/prompt` Jest unit tests (`>= 80.0%` C0/C1 coverage gate) |
+| `npm test --workspace=@rebecca/tools` | Safe Local | Runs `@rebecca/tools` Jest unit tests (`>= 80.0%` C0/C1 coverage gate) |
 | `npm test --workspace=@rebecca/logger` | Safe Local | Runs `@rebecca/logger` Jest unit tests |
-| `npm run lint --workspace=@rebecca/<pkg>` | Safe Local | Runs ESLint for the specified shared package (`types`, `db`, `logger`, `persona`) |
+| `npm run lint --workspace=@rebecca/<pkg>` | Safe Local | Runs ESLint for the specified shared package (`types`, `db`, `logger`, `persona`, `memory`, `prompt`, `tools`) |
 | `npm run secret-check --workspace=@rebecca/<pkg>` | Safe Local | Runs Secretlint on the target package |
 | `npm run license-check --workspace=@rebecca/<pkg>` | Safe Local | Checks package dependency licenses against the OSI allowlist |
 | `npm run deploy:db` | **Cloud-Mutating** | Deploys Firestore rules and indexes via Firebase CLI — **requires explicit human approval** |

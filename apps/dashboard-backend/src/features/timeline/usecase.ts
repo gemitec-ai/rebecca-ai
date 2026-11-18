@@ -56,10 +56,19 @@ export class TimelineUseCase {
 
   /**
    * Retrieves top leaderboard posts.
-   * 
-   * @returns A promise that resolves to an array of leaderboard posts.
+   *
+   * @param params - Optional pagination, sorting, date-range period, and IANA timezone parameters.
+   * @returns A promise that resolves to a paginated response of leaderboard posts.
    */
-  async getPosts(params?: { page?: number; limit?: number; sortBy?: string; sortOrder?: 'asc' | 'desc'; period?: string; date?: string; }): Promise<{ data: PostLeaderboard[]; meta: PaginationMeta }> {
+  async getPosts(params?: {
+    page?: number;
+    limit?: number;
+    sortBy?: string;
+    sortOrder?: 'asc' | 'desc';
+    period?: string;
+    date?: string;
+    timezone?: string;
+  }): Promise<{ data: PostLeaderboard[]; meta: PaginationMeta }> {
     return this.repo.getPosts(params);
   }
 

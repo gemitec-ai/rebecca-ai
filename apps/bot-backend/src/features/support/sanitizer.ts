@@ -13,7 +13,7 @@ import { SupportConfig } from './types';
  * Result structure returned by {@link sanitizeSupporterName}.
  */
 export interface NameSanitizationResult {
-  /** The guaranteed safe name to be called by Rebecca in public tweets. */
+  /** The guaranteed safe name to be called by the active persona in public tweets. */
   safeName: string;
 
   /** Whether the original name was sanitized/modified from the raw input. */

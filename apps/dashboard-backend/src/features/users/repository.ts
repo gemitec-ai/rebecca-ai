@@ -10,6 +10,47 @@ const MAX_PERIOD_LOGS_SCAN_LIMIT = 2000;
 const MAX_USER_CHAT_LOGS_LIMIT = 500;
 
 /**
+ * Supported sort keys accepted by `UsersRepository.getAll`.
+ */
+export type UserSortField =
+  | 'interactions'
+  | 'daily_reply_count'
+  | 'username'
+  | 'id'
+  | 'lastSeen'
+  | 'last_reply_date'
+  | 'lastInteraction'
+  | 'createdAt'
+  | 'firstSeen'
+  | 'followersCount';
+
+const ALLOWED_USER_SORT_FIELDS: ReadonlySet<string> = new Set<UserSortField>([
+  'interactions',
+  'daily_reply_count',
+  'username',
+  'id',
+  'lastSeen',
+  'last_reply_date',
+  'lastInteraction',
+  'createdAt',
+  'firstSeen',
+  'followersCount',
+]);
+
+/**
+ * Validates a requested user sort key against the explicit repository allowlist.
+ *
+ * @param sortBy - Raw sort field requested by callers or tools.
+ * @returns Canonical allowlisted `UserSortField`, defaulting to `'interactions'`.
+ */
+export function resolveUserSortBy(sortBy?: string): UserSortField {
+  if (typeof sortBy === 'string' && ALLOWED_USER_SORT_FIELDS.has(sortBy)) {
+    return sortBy as UserSortField;
+  }
+  return 'interactions';
+}
+
+/**
  * Repository responsible for data access operations related to user profiles, interactions, and statuses in Firestore.
  */
 export class UsersRepository {
@@ -140,7 +181,7 @@ export class UsersRepository {
       });
     }
 
-    const sortBy = params?.sortBy || 'interactions';
+    const sortBy = resolveUserSortBy(params?.sortBy);
     const sortOrder = params?.sortOrder || 'desc';
 
     // When sorting by interactions in all-time mode and users lack pre-aggregated `interactions` fields,
@@ -155,34 +196,47 @@ export class UsersRepository {
     }
 
     usersData.sort((a, b) => {
-      let diff: number;
-      if (sortBy === 'interactions' || sortBy === 'daily_reply_count') {
-        const countA = Number(a.data._dynamicInteractions) || 0;
-        const countB = Number(b.data._dynamicInteractions) || 0;
-        diff = sortOrder === 'desc' ? countB - countA : countA - countB;
-
-        // Tie-breaker when interaction counts are identical: sort by most recently active
-        if (diff === 0) {
+      switch (sortBy) {
+        case 'username': {
+          const nameA = String(a.data.username || '');
+          const nameB = String(b.data.username || '');
+          return sortOrder === 'desc' ? nameB.localeCompare(nameA) : nameA.localeCompare(nameB);
+        }
+        case 'id':
+          return sortOrder === 'desc' ? b.id.localeCompare(a.id) : a.id.localeCompare(b.id);
+        case 'lastSeen':
+        case 'last_reply_date':
+        case 'lastInteraction': {
           const timeA = new Date(String(a.data.lastSeen || a.data.last_reply_date || 0)).getTime() || 0;
           const timeB = new Date(String(b.data.lastSeen || b.data.last_reply_date || 0)).getTime() || 0;
-          diff = timeB - timeA;
+          return sortOrder === 'desc' ? timeB - timeA : timeA - timeB;
         }
-      } else if (sortBy === 'username') {
-        const nameA = String(a.data.username || '');
-        const nameB = String(b.data.username || '');
-        diff = sortOrder === 'desc' ? nameB.localeCompare(nameA) : nameA.localeCompare(nameB);
-      } else if (sortBy === 'id') {
-        diff = sortOrder === 'desc' ? b.id.localeCompare(a.id) : a.id.localeCompare(b.id);
-      } else if (sortBy === 'lastSeen' || sortBy === 'last_reply_date' || sortBy === 'lastInteraction') {
-        const timeA = new Date(String(a.data.lastSeen || a.data.last_reply_date || 0)).getTime() || 0;
-        const timeB = new Date(String(b.data.lastSeen || b.data.last_reply_date || 0)).getTime() || 0;
-        diff = sortOrder === 'desc' ? timeB - timeA : timeA - timeB;
-      } else {
-        const valA = Number(a.data[sortBy]) || 0;
-        const valB = Number(b.data[sortBy]) || 0;
-        diff = sortOrder === 'desc' ? valB - valA : valA - valB;
+        case 'createdAt':
+        case 'firstSeen': {
+          const timeA = new Date(String(a.data.createdAt || a.data.firstSeen || a.data.first_seen || 0)).getTime() || 0;
+          const timeB = new Date(String(b.data.createdAt || b.data.firstSeen || b.data.first_seen || 0)).getTime() || 0;
+          return sortOrder === 'desc' ? timeB - timeA : timeA - timeB;
+        }
+        case 'followersCount': {
+          const valA = Number(a.data.followersCount) || 0;
+          const valB = Number(b.data.followersCount) || 0;
+          return sortOrder === 'desc' ? valB - valA : valA - valB;
+        }
+        case 'daily_reply_count':
+        case 'interactions':
+        default: {
+          const countA = Number(a.data._dynamicInteractions) || 0;
+          const countB = Number(b.data._dynamicInteractions) || 0;
+          const diff = sortOrder === 'desc' ? countB - countA : countA - countB;
+          if (diff !== 0) {
+            return diff;
+          }
+          // Tie-breaker when interaction counts are identical: sort by most recently active
+          const timeA = new Date(String(a.data.lastSeen || a.data.last_reply_date || 0)).getTime() || 0;
+          const timeB = new Date(String(b.data.lastSeen || b.data.last_reply_date || 0)).getTime() || 0;
+          return timeB - timeA;
+        }
       }
-      return diff;
     });
 
     const totalItems = usersData.length;

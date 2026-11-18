@@ -1,4 +1,5 @@
 import { GoogleGenAI } from '@google/genai';
+import { cleanJsonString } from '@rebecca/persona';
 import { INewsProvider, NewsItem, NewsCategory } from '../types';
 import { logger } from '../../../utils/logger';
 
@@ -99,13 +100,7 @@ export class GeminiSearchNewsProvider implements INewsProvider {
         return [];
       }
 
-      let cleanJson = rawText;
-      if (cleanJson.startsWith('```json')) {
-        cleanJson = cleanJson.replace(/^```json\s*/, '').replace(/\s*```$/, '');
-      } else if (cleanJson.startsWith('```')) {
-        cleanJson = cleanJson.replace(/^```\s*/, '').replace(/\s*```$/, '');
-      }
-
+      const cleanJson = cleanJsonString(rawText);
       const parsed = JSON.parse(cleanJson);
       if (!Array.isArray(parsed)) {
         logger.warn('[GeminiSearchNewsProvider] Response is not a JSON array', { cleanJson });

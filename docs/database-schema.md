@@ -26,7 +26,7 @@ Rebecca AI implements a hierarchical 3-tier memory model inspired by human cogni
 graph TD
     subgraph Tier1["1. Working Memory (Short-Term Grounding)"]
         WM["Gemini contents (Turns)<br/>+ users.working_memory"]
-        WM_FMT["Format: [YYYY-MM-DD HH:mm JST] Role: Text<br/>Scope: Immediate 0-10 min active turn dialogue"]
+        WM_FMT["Format: [YYYY-MM-DD HH:mm TZ] Role: Text<br/>Scope: Immediate 0-10 min active turn dialogue"]
         WM --- WM_FMT
     end
 
@@ -42,7 +42,7 @@ graph TD
 
     subgraph Tier3["3. Long-Term Memory (Consolidation & Retrieval)"]
         CP["Core Profile (users.coreProfile)<br/>Semantic profile (preferences, traits, facts)<br/>Injected into System Prompt as JSON schema"]
-        RAG["RAG Memories (rag_memories)<br/>Vector-indexed episodes (768-dim, Cosine)<br/>findNearest(userId, embedding)<br/>Timestamped: [YYYY-MM-DD HH:mm JST] in Prompt<br/>FIFO pruning: Max 20 memories per user"]
+        RAG["RAG Memories (rag_memories)<br/>Vector-indexed episodes (768-dim, Cosine)<br/>findNearest(userId, embedding)<br/>Timestamped: [YYYY-MM-DD HH:mm TZ] in Prompt<br/>FIFO pruning: Max 20 memories per user"]
     end
 
     WM -->|"Turn append"| EB
@@ -594,7 +594,7 @@ Individual scheduled narrative post slot within a campaign itinerary.
 | `timestamp` | `string \| undefined` (ISO 8601) | Datetime when the turn occurred. |
 
 #### `UserCoreProfile` (Used in `users.coreProfile`)
-Synthesized by the Dreaming batch engine (`apps/bot-backend/src/features/dreaming/usecase.ts`). Stored as a schema-flexible JSON object:
+Synthesized by `@rebecca/memory` (`DreamingConsolidationEngine`) and orchestrated by the Dreaming batch use case (`apps/bot-backend/src/features/dreaming/usecase.ts`). Stored as a schema-flexible JSON object:
 - `summary`: High-level narrative summary of who the user is and their relationship with Rebecca.
 - `facts`: Array of factual attributes learned about the user (e.g. occupation, hobbies, birthday).
 - `preferences`: User preferences, likes, and dislikes.

@@ -2,6 +2,7 @@ import { UsersRepository } from '../../src/features/users/repository';
 import { AssetsRepository } from '../../src/features/assets/repository';
 import { TimelineRepository } from '../../src/features/timeline/repository';
 import { SystemMemoryRepository } from '../../src/features/system-memory/repository';
+import { COLLECTIONS } from '@rebecca/db';
 import { UserStatus, AssetStatus } from '@rebecca/types';
 import { createMockFirestore } from './testUtils';
 
@@ -161,6 +162,59 @@ describe('Dashboard Backend Repositories Unit Tests', () => {
       expect(resCustomField.data).toHaveLength(2);
       const resCustomFieldAsc = await usersRepo.getAll({ sortBy: 'some_other_field', sortOrder: 'asc' });
       expect(resCustomFieldAsc.data).toHaveLength(2);
+    });
+
+    it('getAll should support createdAt and followersCount sorting and ignore unsafe prototype keys', async () => {
+      const mockDocs = [
+        {
+          id: 'user_old_popular',
+          data: () => ({
+            name: 'Popular Old',
+            username: 'old_pop',
+            firstSeen: '2026-01-01T00:00:00Z',
+            followersCount: 5000,
+            interactions: 10,
+          }),
+        },
+        {
+          id: 'user_new_quiet',
+          data: () => ({
+            name: 'Quiet New',
+            username: 'new_quiet',
+            createdAt: '2026-10-01T00:00:00Z',
+            followersCount: 120,
+            interactions: 1,
+          }),
+        },
+      ];
+      const typedMock = createMockFirestore();
+      const usersCollection = typedMock.firestore.collection(COLLECTIONS.USERS);
+      usersCollection.get.mockResolvedValue({ empty: false, docs: mockDocs });
+      const logsCollection = typedMock.firestore.collection(COLLECTIONS.CONVERSATION_LOGS);
+      logsCollection.where.mockReturnValue({
+        count: jest.fn().mockReturnValue({
+          get: jest.fn().mockResolvedValue({ data: () => ({ count: 0 }) }),
+        }),
+      });
+      const isolatedRepo = new UsersRepository(typedMock.firestore);
+
+      const byCreatedDesc = await isolatedRepo.getAll({ sortBy: 'createdAt', sortOrder: 'desc' });
+      expect(byCreatedDesc.data.map((u) => u.id)).toEqual(['user_new_quiet', 'user_old_popular']);
+
+      const byCreatedAsc = await isolatedRepo.getAll({ sortBy: 'createdAt', sortOrder: 'asc' });
+      expect(byCreatedAsc.data.map((u) => u.id)).toEqual(['user_old_popular', 'user_new_quiet']);
+
+      const byFollowersDesc = await isolatedRepo.getAll({ sortBy: 'followersCount', sortOrder: 'desc' });
+      expect(byFollowersDesc.data.map((u) => u.id)).toEqual(['user_old_popular', 'user_new_quiet']);
+
+      const byFollowersAsc = await isolatedRepo.getAll({ sortBy: 'followersCount', sortOrder: 'asc' });
+      expect(byFollowersAsc.data.map((u) => u.id)).toEqual(['user_new_quiet', 'user_old_popular']);
+
+      // Prototype / arbitrary keys must safely fall back to allowlisted interactions ordering
+      for (const unsafeKey of ['constructor', 'toString', '__proto__']) {
+        const resSafe = await isolatedRepo.getAll({ sortBy: unsafeKey, sortOrder: 'desc' });
+        expect(resSafe.data.map((u) => u.id)).toEqual(['user_old_popular', 'user_new_quiet']);
+      }
     });
 
     it('getById should return user details with chat history or null', async () => {
@@ -453,6 +507,15 @@ describe('Dashboard Backend Repositories Unit Tests', () => {
       expect(res.data).toHaveLength(1);
       expect(res.data[0].id).toBe('post_1');
       expect(res.data[0].impressions).toBe(300);
+
+      // Default timezone uses config.appTimezone (Asia/Tokyo), while explicit timezone overrides boundary calculation
+      const tzMock = createMockFirestore();
+      const historyCol = tzMock.firestore.collection(COLLECTIONS.TIMELINE_HISTORY);
+      const tzRepo = new TimelineRepository(tzMock.firestore);
+      await tzRepo.getPosts({ period: 'monthly', date: '2026-07' });
+      expect(historyCol.where).toHaveBeenCalledWith('timestamp', '>=', '2026-06-30T15:00:00.000Z');
+      await tzRepo.getPosts({ period: 'monthly', date: '2026-07', timezone: 'UTC' });
+      expect(historyCol.where).toHaveBeenCalledWith('timestamp', '>=', '2026-07-01T00:00:00.000Z');
     });
 
     it('getPosts should resolve canonical streaming API URLs for gs:// images and preserve campaign URLs as-is', async () => {

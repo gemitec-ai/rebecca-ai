@@ -1,3 +1,4 @@
+import { precomputedPersonaPatternEmbeddings } from '@rebecca/persona';
 import { RandomEngagementUseCase } from '../../../src/features/engagement/usecase';
 import { checkAndIncrementRateLimits } from '../../../src/core/rateLimiter';
 import { downloadImage } from '../../../src/utils/image';
@@ -261,5 +262,31 @@ describe('Random Engagement Batch', () => {
 
         expect(deps.gemini.analyzeImageCaption).toHaveBeenCalled();
         expect(deps.xApi.tweet).toHaveBeenCalledWith('@media_user cool photo!', { mediaIds: [] });
+    });
+
+    it('injects dynamic 120-pattern situational anchors into the engagement system prompt', async () => {
+        deps.firestore.getListMembersFromCache.mockResolvedValue([{ id: 'u_anchor' }]);
+        deps.firestore.getAllListInteractions.mockResolvedValue(new Map());
+        (checkAndIncrementRateLimits as jest.Mock).mockResolvedValue({ allowed: true });
+        deps.xApi.getUserProfile.mockResolvedValue({
+            data: { id: 'u_anchor', username: 'coffee_dev', name: 'Coffee Dev', description: 'Code and coffee.' }
+        });
+        deps.xApi.getUserTweets.mockResolvedValue({ data: [{ id: 't_anchor', text: 'Late night debugging!' }] });
+        deps.gemini.analyzeUserProfile.mockResolvedValue({ attributes: ['developer'], preferences: ['coffee'] });
+        deps.gemini.detectLanguage.mockResolvedValue('ja');
+
+        deps.gemini.generateEmbedding.mockResolvedValue([...precomputedPersonaPatternEmbeddings[0].vector]);
+        deps.gemini.generateStructuredReply.mockResolvedValue({
+            thought: '労いと親しみを込めて声をかける',
+            reply: '@coffee_dev デバッグお疲れ様！',
+        });
+
+        await new RandomEngagementUseCase(deps, testConfig).execute();
+
+        expect(deps.gemini.generateEmbedding).toHaveBeenCalledWith(
+            expect.stringContaining('【相手プロフィール】Code and coffee.'),
+        );
+        const passedSystemPrompt = deps.gemini.generateStructuredReply.mock.calls[0][0] as string;
+        expect(passedSystemPrompt).toContain('【動的Few-Shotペルソナアンカー');
     });
 });

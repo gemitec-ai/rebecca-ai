@@ -2,11 +2,12 @@
  * @fileoverview Domain use case for autonomous X poll creation and closed poll result quote-post reactions.
  */
 
+import { sanitizeUntrustedPromptText } from '@rebecca/memory';
+import { formatTimeContextPeriodLabel, resolveTimeContextPeriod } from '@rebecca/prompt';
 import { AppDependencies, PollData } from '../../types';
 import { executePostPipeline } from '../../core/postPipeline';
-import { resolveSituationalPersonaAnchors } from '../../core/personaAnchoring';
-import { getTimeOfDayGreetingContext } from '../soliloquy/usecase';
-import { formatZonedDateTime } from '../../utils/time';
+import { buildSystemPrompt } from '../../core/contextInjector';
+import { formatZonedDateTime, getZonedDateParts } from '../../utils/time';
 import { logger } from '../../utils/logger';
 import {
   PollUseCaseConfig,
@@ -39,7 +40,11 @@ export class PollUseCase {
     logger.info('[PollUseCase] Starting Poll Creation');
     try {
       const now = new Date();
-      const timeContext = getTimeOfDayGreetingContext(now, this.config.timezone);
+      const zonedParts = getZonedDateParts(now, this.config.timezone);
+      const timePeriodLabel = formatTimeContextPeriodLabel(
+        resolveTimeContextPeriod(zonedParts.numericHour),
+        'ja',
+      );
       const durationMinutes = Math.max(5, Math.min(10080, Math.round(this.config.durationMinutes)));
 
       const [timelineSummary, extendedPrompt, recentPolls] = await Promise.all([
@@ -47,61 +52,68 @@ export class PollUseCase {
         this.deps.firestore.getExtendedPrompt(),
         this.deps.firestore.getRecentTimelinePosts({ limit: 30, postType: 'poll' }),
       ]);
+      const safeTimelineSummary = timelineSummary
+        ? sanitizeUntrustedPromptText(timelineSummary, 2000, { collapseHorizontalRules: true })
+        : '';
+      const safeExtendedPrompt = extendedPrompt
+        ? sanitizeUntrustedPromptText(extendedPrompt, 2000, { collapseHorizontalRules: true })
+        : '';
 
       const formattedPastPolls = (recentPolls || []).map((p) => {
         const timeStr = formatZonedDateTime(p.timestamp, this.config.timezone);
         const prefix = timeStr ? `[${timeStr}] ` : '';
         const optionsStr =
           p.poll?.options && p.poll.options.length > 0
-            ? ` (選択肢: ${p.poll.options.map((o) => o.label).join(' / ')})`
+            ? ` (選択肢: ${p.poll.options.map((o) => sanitizeUntrustedPromptText(o.label, 64)).join(' / ')})`
             : '';
-        return `${prefix}${p.text.replace(/\s+/g, ' ').trim()}${optionsStr}`;
+        const safeText = sanitizeUntrustedPromptText(p.text, 500, { collapseHorizontalRules: true })
+          .replace(/\s+/g, ' ')
+          .trim();
+        return `${prefix}${safeText}${optionsStr}`;
       });
 
       const interestsStr = this.deps.persona.metadata.interests.join('・');
 
-      const personaFewShotPrompt = await resolveSituationalPersonaAnchors(this.deps.gemini, [
-        `【現在の時間帯】${timeContext.period}`,
-        `【シチュエーション】タイムラインのフォロワーに向けたアンケート出題（関心領域: ${interestsStr}）`,
-        extendedPrompt ? `【近況・気分】${extendedPrompt}` : '',
-        timelineSummary ? `【タイムラインの空気感】${timelineSummary}` : '',
-      ]);
-
-      const systemInstruction = this.deps.persona.getBasePrompt('timeline', 'ja');
+      const { systemInstruction } = await buildSystemPrompt({
+        persona: this.deps.persona,
+        promptContext: 'timeline',
+        lang: 'ja',
+        gemini: this.deps.gemini,
+        includeTemporalContext: true,
+        timezone: this.config.timezone,
+        anchoringContext: [
+          `【現在の時間帯】${timePeriodLabel}`,
+          `【シチュエーション】タイムラインのフォロワーに向けたアンケート出題（関心領域: ${interestsStr}）`,
+          safeExtendedPrompt ? `【近況・気分】${safeExtendedPrompt}` : '',
+          safeTimelineSummary ? `【タイムラインの空気感】${safeTimelineSummary}` : '',
+        ],
+      });
       const personaName = this.deps.persona.metadata.displayName;
       const defaultHashtag = this.deps.persona.metadata.defaultHashtag;
 
       const pollPrompt = `あなたはAIキャラクター「${personaName}」として、X（Twitter）のタイムラインのフォロワーと楽しくコミュニケーションするための「アンケート機能付きポスト」を1つ作成してください。
 
 【現在の時間帯】
-${timeContext.period}
+${timePeriodLabel}
 
 【あなたの関心領域・好む話題】
 ${interestsStr || '（日常・ライフスタイル全般）'}
 
 【直近のタイムライン要約】
-${timelineSummary || '（特記事項なし）'}
+${safeTimelineSummary || '（特記事項なし）'}
 
 【拡張ペルソナ・近況】
-${extendedPrompt || '（特記事項なし）'}
+${safeExtendedPrompt || '（特記事項なし）'}
 
 【過去に出題済みのアンケート履歴（直近最大30件）】
 ${formattedPastPolls.length > 0 ? formattedPastPolls.map((p, i) => `${i + 1}. ${p}`).join('\n') : '（過去のアンケート履歴なし）'}
-${personaFewShotPrompt ? `\n${personaFewShotPrompt}\n` : ''}
+
 【生成ルール】
 - 【過去問との重複厳禁】: 上記【過去に出題済みのアンケート履歴】にある質問や選択肢の切り口と被らない、新鮮な問いかけをあなた自身で考案すること。
 - 【思わず投票＆リプライしたくなる設計】: 専門知識がなくても直感で1タップ投票でき、「自分はこれ！なぜなら〜」とリプライ欄で理由やこだわりを語りたくなる身近で楽しいテーマにすること。
-- 【現在の時間帯・文脈への自然な調和】: 【現在の時間帯】（${timeContext.period}）の空気感や直近のタイムラインの流れに自然に調和させ、末尾に選んだ理由をリプライで尋ねる一言を添えること。
-- 【本文（reply）のルール】:
-  - 本文は【絶対に100文字以内の短文】に収めること。
-  - 出力に文字数カウント表記や解説、引用符は含めないこと。
-  ${defaultHashtag ? `- ハッシュタグ（${defaultHashtag} 等）はシステムが自動付与するため、本文中には含めないこと。` : ''}
-- 【選択肢（options）のルール】:
-  - 選択肢は **3個または4個** とすること。
-  - X APIの仕様上、各選択肢は **絶対に25文字以内（推奨15文字以内）** の簡潔で分かりやすい表現にすること。
-  - 選択肢の中に、${personaName}自身の個性や価値観が表れたユニークな選択肢を混ぜてもよい。
-- 【思考（thought）のルール】:
-  - なぜこのアンケートを聞いてみたいと思ったのか、${personaName}の内省思考を150文字以内で記述すること。`;
+- 【現在の時間帯・文脈への自然な調和】: 【現在の時間帯】（${timePeriodLabel}）の空気感や直近のタイムラインの流れに自然に調和させ、末尾に選んだ理由をリプライで尋ねる一言を添えること。
+${defaultHashtag ? `- ハッシュタグ（${defaultHashtag} 等）はシステムが自動付与するため、本文（reply）の中には含めないこと。` : ''}
+- 【選択肢（options）のルール】: 選択肢は3個または4個とし、各選択肢は25文字以内（推奨15文字以内）の簡潔で${personaName}らしい表現にすること。`;
 
       const structuredPoll = await this.deps.gemini.generateStructuredPollPost(
         systemInstruction,
@@ -211,11 +223,16 @@ ${personaFewShotPrompt ? `\n${personaFewShotPrompt}\n` : ''}
       }
 
       const now = new Date();
-      const timeContext = getTimeOfDayGreetingContext(now, this.config.timezone);
+      const zonedParts = getZonedDateParts(now, this.config.timezone);
+      const timePeriodLabel = formatTimeContextPeriodLabel(
+        resolveTimeContextPeriod(zonedParts.numericHour),
+        'ja',
+      );
       const formattedOptions = latestPoll.options
         .map((o) => {
           const pct = Math.round((o.votes / totalVotes) * 1000) / 10;
-          return `${o.position}. ${o.label}: ${o.votes}票 (${pct}%)`;
+          const safeLabel = sanitizeUntrustedPromptText(o.label, 64);
+          return `${o.position}. ${safeLabel}: ${o.votes}票 (${pct}%)`;
         })
         .join('\n');
 
@@ -223,41 +240,53 @@ ${personaFewShotPrompt ? `\n${personaFewShotPrompt}\n` : ''}
         this.deps.firestore.getTimelineSummary(),
         this.deps.firestore.getExtendedPrompt(),
       ]);
+      const safePendingPollText = sanitizeUntrustedPromptText(pendingPoll.text, 500, {
+        collapseHorizontalRules: true,
+      });
+      const safeTimelineSummary = timelineSummary
+        ? sanitizeUntrustedPromptText(timelineSummary, 2000, { collapseHorizontalRules: true })
+        : '';
+      const safeExtendedPrompt = extendedPrompt
+        ? sanitizeUntrustedPromptText(extendedPrompt, 2000, { collapseHorizontalRules: true })
+        : '';
 
-      const personaFewShotPrompt = await resolveSituationalPersonaAnchors(this.deps.gemini, [
-        `【現在の時間帯】${timeContext.period}`,
-        `【シチュエーション】アンケート結果発表と感想トーク`,
-        `【アンケート内容】${pendingPoll.text}`,
-        `【最終投票結果（合計 ${totalVotes}票）】\n${formattedOptions}`,
-      ]);
-
-      const systemInstruction = this.deps.persona.getBasePrompt('timeline', 'ja');
+      const { systemInstruction } = await buildSystemPrompt({
+        persona: this.deps.persona,
+        promptContext: 'timeline',
+        lang: 'ja',
+        gemini: this.deps.gemini,
+        includeTemporalContext: true,
+        timezone: this.config.timezone,
+        anchoringContext: [
+          `【現在の時間帯】${timePeriodLabel}`,
+          `【シチュエーション】アンケート結果発表と感想トーク`,
+          `【アンケート内容】${safePendingPollText}`,
+          `【最終投票結果（合計 ${totalVotes}票）】\n${formattedOptions}`,
+        ],
+      });
       const personaName = this.deps.persona.metadata.displayName;
       const defaultHashtag = this.deps.persona.metadata.defaultHashtag;
 
       const resultPrompt = `あなたはAIキャラクター「${personaName}」として、出題していたXアンケートの最終集計結果を見て、元のアンケートを引用リポスト（Quote Post）する形で結果発表＆感想ポストを1つ作成してください。
 
 【現在の時間帯】
-${timeContext.period}
+${timePeriodLabel}
 
 【元のアンケート投稿文】
-${pendingPoll.text}
+${safePendingPollText}
 
 【最終投票結果（合計 ${totalVotes}票）】
 ${formattedOptions}
 
 【直近のタイムライン要約】
-${timelineSummary || '（特記事項なし）'}
+${safeTimelineSummary || '（特記事項なし）'}
 
 【拡張ペルソナ・近況】
-${extendedPrompt || '（特記事項なし）'}
-${personaFewShotPrompt ? `\n${personaFewShotPrompt}\n` : ''}
+${safeExtendedPrompt || '（特記事項なし）'}
+
 【生成ルール】
 - 投票してくれたフォロワーへの感謝やリアクションを入れつつ、最終投票結果（各選択肢の得票数や票の割れ方、全体の傾向など）を踏まえて、${personaName}自身の視点・価値観で感想を語ること。
 - 元のアンケートツイートを引用リポスト（Quote Post）する形で投稿されるため、結果の数字を機械的に全部読み上げるのではなく、結果を見た素直なリアクションとフォロワーへの自然な語りかけにすること。
-- thought（内省思考）は150文字以内の自然な独白とすること。
-- reply（ツイート本文）は【絶対に100文字以内の短文】にすること。
-- 出力に文字数カウント表記や解説、引用符は絶対に含めないこと。
 ${defaultHashtag ? `- ハッシュタグ（${defaultHashtag} 等）はシステムが自動付与するため、本文中には絶対に含めないこと。` : ''}`;
 
       const structuredReaction = await this.deps.gemini.generateStructuredTimelinePost(

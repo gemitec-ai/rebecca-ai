@@ -28,6 +28,9 @@ const path = require('path');
  */
 const packages = [
   { name: '@rebecca/persona', path: 'packages/persona/coverage/coverage-summary.json', requiredGate: true },
+  { name: '@rebecca/memory', path: 'packages/memory/coverage/coverage-summary.json', requiredGate: true },
+  { name: '@rebecca/prompt', path: 'packages/prompt/coverage/coverage-summary.json', requiredGate: true },
+  { name: '@rebecca/tools', path: 'packages/tools/coverage/coverage-summary.json', requiredGate: true },
   { name: '@rebecca/db', path: 'packages/db/coverage/coverage-summary.json', requiredGate: true },
   { name: 'apps/bot-backend', path: 'apps/bot-backend/coverage/coverage-summary.json', requiredGate: true },
   { name: 'apps/dashboard-backend', path: 'apps/dashboard-backend/coverage/coverage-summary.json', requiredGate: true },

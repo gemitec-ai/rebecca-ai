@@ -1,188 +1,341 @@
+import { precomputedPersonaPatternEmbeddings, rebeccaPersona } from '@rebecca/persona';
 import { buildSystemPrompt } from '../../src/core/contextInjector';
-import { rebeccaPersona } from '@rebecca/persona';
 
-// Mock time for deterministic tests
 jest.mock('../../src/utils/time', () => ({
-    getZonedDateParts: jest.fn(),
-    formatZonedDateTime: jest.fn(() => '2024-01-01 08:00 JST')
+  getZonedDateParts: jest.fn(),
+  formatZonedDateTime: jest.fn(() => '2024-01-01 08:00 JST'),
 }));
 import { getZonedDateParts, formatZonedDateTime } from '../../src/utils/time';
 
 const createMockZonedParts = (hour: number, month = 1, day = 1) => ({
-    year: '2024',
-    month: String(month).padStart(2, '0'),
-    day: String(day).padStart(2, '0'),
-    hour: String(hour).padStart(2, '0'),
-    minute: '00',
-    second: '00',
-    numericYear: 2024,
-    numericMonth: month,
-    numericDay: day,
-    numericHour: hour,
-    numericMinute: 0,
+  year: '2024',
+  month: String(month).padStart(2, '0'),
+  day: String(day).padStart(2, '0'),
+  hour: String(hour).padStart(2, '0'),
+  minute: '00',
+  second: '00',
+  numericYear: 2024,
+  numericMonth: month,
+  numericDay: day,
+  numericHour: hour,
+  numericMinute: 0,
 });
 
-describe('Context Injector', () => {
-    beforeEach(() => {
-        jest.clearAllMocks();
+const stubEmbedder = {
+  generateEmbedding: jest.fn().mockResolvedValue([...precomputedPersonaPatternEmbeddings[0].vector]),
+};
+
+describe('Context Injector (Unified buildSystemPrompt)', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    stubEmbedder.generateEmbedding.mockResolvedValue([
+      ...precomputedPersonaPatternEmbeddings[0].vector,
+    ]);
+  });
+
+  it('should inject early morning context and 120-pattern anchors during 5:00-6:00', async () => {
+    (getZonedDateParts as jest.Mock).mockReturnValue(createMockZonedParts(6));
+    (formatZonedDateTime as jest.Mock).mockReturnValue('2024-01-01 06:00 JST');
+
+    const { systemInstruction, baseSystemInstruction, personaFewShotPrompt } =
+      await buildSystemPrompt({
+        persona: rebeccaPersona,
+        promptContext: 'chat',
+        gemini: stubEmbedder,
+        anchoringContext: ['おはよう'],
+        includeTemporalContext: true,
+        userData: { coreProfile: {}, episodicBuffer: [] },
+      });
+
+    expect(personaFewShotPrompt).toContain('【動的Few-Shotペルソナアンカー');
+    expect(baseSystemInstruction).toContain('【動的Few-Shotペルソナアンカー');
+    expect(systemInstruction).toContain('【状況コンテキスト：早朝】\n現在は早朝です。');
+    expect(systemInstruction).toContain('【現在時刻】\n2024-01-01 06:00 JST');
+    expect(systemInstruction).toContain('【コンテキスト：マスターとの1対1対話】');
+    expect(systemInstruction).not.toContain('ロールアウト記念日（4月24日）】');
+  });
+
+  it('should inject morning context during 7:00-10:00', async () => {
+    (getZonedDateParts as jest.Mock).mockReturnValue(createMockZonedParts(8));
+    (formatZonedDateTime as jest.Mock).mockReturnValue('2024-01-01 08:00 JST');
+
+    const { systemInstruction } = await buildSystemPrompt({
+      persona: rebeccaPersona,
+      promptContext: 'reply',
+      gemini: stubEmbedder,
+      anchoringContext: ['こんにちは'],
+      includeTemporalContext: true,
+      userData: { coreProfile: {}, episodicBuffer: [] },
     });
 
-    it('should inject early morning context during 5:00-6:00', () => {
-        (getZonedDateParts as jest.Mock).mockReturnValue(createMockZonedParts(6));
-        (formatZonedDateTime as jest.Mock).mockReturnValue('2024-01-01 06:00 JST');
-        const prompt = buildSystemPrompt(rebeccaPersona, 'chat', { coreProfile: {}, episodicBuffer: [] }, 'おはよう');
-        expect(prompt).toContain('【状況コンテキスト：早朝】\n現在は早朝です。');
-        expect(prompt).toContain('【現在時刻】\n2024-01-01 06:00 JST');
-        expect(prompt).toContain('【コンテキスト：マスターとの1対1対話】');
-        expect(prompt).not.toContain('ロールアウト記念日（4月24日）】');
+    expect(systemInstruction).toContain('【状況コンテキスト：朝】\n現在は朝です。');
+    expect(systemInstruction).toContain('【現在時刻】\n2024-01-01 08:00 JST');
+  });
+
+  it('should inject daytime context during 11:00-16:00', async () => {
+    (getZonedDateParts as jest.Mock).mockReturnValue(createMockZonedParts(13));
+
+    const { systemInstruction } = await buildSystemPrompt({
+      persona: rebeccaPersona,
+      promptContext: 'reply',
+      gemini: stubEmbedder,
+      anchoringContext: ['お昼'],
+      includeTemporalContext: true,
+      userData: { coreProfile: {}, episodicBuffer: [] },
     });
 
-    it('should inject morning context during 7:00-10:00', () => {
-        (getZonedDateParts as jest.Mock).mockReturnValue(createMockZonedParts(8));
-        (formatZonedDateTime as jest.Mock).mockReturnValue('2024-01-01 08:00 JST');
-        const prompt = buildSystemPrompt(rebeccaPersona, 'reply', { coreProfile: {}, episodicBuffer: [] }, 'こんにちは');
-        expect(prompt).toContain('【状況コンテキスト：朝】\n現在は朝です。');
-        expect(prompt).toContain('【現在時刻】\n2024-01-01 08:00 JST');
+    expect(systemInstruction).toContain('【状況コンテキスト：昼】\n現在は昼です。');
+  });
+
+  it('should inject evening context during 17:00-21:00', async () => {
+    (getZonedDateParts as jest.Mock).mockReturnValue(createMockZonedParts(19));
+
+    const { systemInstruction } = await buildSystemPrompt({
+      persona: rebeccaPersona,
+      promptContext: 'reply',
+      gemini: stubEmbedder,
+      anchoringContext: ['お疲れ様'],
+      includeTemporalContext: true,
+      userData: { coreProfile: {}, episodicBuffer: [] },
     });
 
-    it('should inject daytime context during 11:00-16:00', () => {
-        (getZonedDateParts as jest.Mock).mockReturnValue(createMockZonedParts(13));
-        const prompt = buildSystemPrompt(rebeccaPersona, 'reply', { coreProfile: {}, episodicBuffer: [] }, 'お昼');
-        expect(prompt).toContain('【状況コンテキスト：昼】\n現在は昼です。');
+    expect(systemInstruction).toContain('【状況コンテキスト：夕方・夜】\n現在は夕方・夜です。');
+  });
+
+  it('should inject night context during 22:00-4:00', async () => {
+    (getZonedDateParts as jest.Mock).mockReturnValue(createMockZonedParts(23));
+
+    const { systemInstruction } = await buildSystemPrompt({
+      persona: rebeccaPersona,
+      promptContext: 'reply',
+      gemini: stubEmbedder,
+      anchoringContext: ['こんばんは'],
+      includeTemporalContext: true,
+      userData: { coreProfile: {}, episodicBuffer: [] },
+    });
+    expect(systemInstruction).toContain(
+      '【状況コンテキスト：深夜】\n現在は深夜です（相手が眠い・寝ると言わない限り会話を切り上げないこと）。',
+    );
+
+    (getZonedDateParts as jest.Mock).mockReturnValue(createMockZonedParts(3));
+    const { systemInstruction: latePrompt } = await buildSystemPrompt({
+      persona: rebeccaPersona,
+      promptContext: 'reply',
+      gemini: stubEmbedder,
+      anchoringContext: ['眠れない'],
+      includeTemporalContext: true,
+      userData: { coreProfile: {}, episodicBuffer: [] },
+    });
+    expect(latePrompt).toContain(
+      '【状況コンテキスト：深夜】\n現在は深夜です（相手が眠い・寝ると言わない限り会話を切り上げないこと）。',
+    );
+  });
+
+  it('should inject Rollout Anniversary (birthday) context on April 24 in Japanese and English', async () => {
+    (getZonedDateParts as jest.Mock).mockReturnValue(createMockZonedParts(12, 4, 24));
+    (formatZonedDateTime as jest.Mock).mockReturnValue('2024-04-24 12:00 JST');
+
+    const { systemInstruction: jaPrompt } = await buildSystemPrompt({
+      persona: rebeccaPersona,
+      promptContext: 'reply',
+      lang: 'ja',
+      gemini: stubEmbedder,
+      anchoringContext: ['お誕生日おめでとう！'],
+      includeTemporalContext: true,
+    });
+    expect(jaPrompt).toContain('【特別コンテキスト：あなた自身の誕生日・ロールアウト記念日（4月24日）】');
+    expect(jaPrompt).toContain('Unit-001');
+
+    const { systemInstruction: enPrompt } = await buildSystemPrompt({
+      persona: rebeccaPersona,
+      promptContext: 'reply',
+      lang: 'en',
+      gemini: stubEmbedder,
+      anchoringContext: ['Happy birthday!'],
+      includeTemporalContext: true,
+    });
+    expect(enPrompt).toContain('[Special Day Context: Your Birthday / Rollout Anniversary (April 24)]');
+    expect(enPrompt).toContain('Unit-001');
+  });
+
+  it('should inject absence context if over 3 days', async () => {
+    (getZonedDateParts as jest.Mock).mockReturnValue(createMockZonedParts(12));
+    const fourDaysAgo = new Date(Date.now() - 4 * 24 * 60 * 60 * 1000).toISOString();
+
+    const { systemInstruction } = await buildSystemPrompt({
+      persona: rebeccaPersona,
+      promptContext: 'reply',
+      gemini: stubEmbedder,
+      anchoringContext: ['久しぶり'],
+      includeTemporalContext: true,
+      userData: { coreProfile: {}, episodicBuffer: [], lastReplyDate: fourDaysAgo },
     });
 
-    it('should inject evening context during 17:00-21:00', () => {
-        (getZonedDateParts as jest.Mock).mockReturnValue(createMockZonedParts(19));
-        const prompt = buildSystemPrompt(rebeccaPersona, 'reply', { coreProfile: {}, episodicBuffer: [] }, 'お疲れ様');
-        expect(prompt).toContain('【状況コンテキスト：夕方・夜】\n現在は夕方・夜です。');
+    expect(systemInstruction).toContain('状況コンテキスト：放置');
+    expect(systemInstruction).toContain('4日ぶり');
+  });
+
+  it('should inject English early morning context when lang is en', async () => {
+    (getZonedDateParts as jest.Mock).mockReturnValue(createMockZonedParts(5));
+
+    const { systemInstruction } = await buildSystemPrompt({
+      persona: rebeccaPersona,
+      promptContext: 'chat',
+      lang: 'en',
+      gemini: stubEmbedder,
+      anchoringContext: ['Good morning'],
+      includeTemporalContext: true,
+      userData: { coreProfile: {}, episodicBuffer: [] },
     });
 
-    it('should inject night context during 22:00-4:00', () => {
-        (getZonedDateParts as jest.Mock).mockReturnValue(createMockZonedParts(23));
-        const prompt = buildSystemPrompt(rebeccaPersona, 'reply', { coreProfile: {}, episodicBuffer: [] }, 'こんばんは');
-        expect(prompt).toContain('【状況コンテキスト：深夜】\n現在は深夜です（相手が眠い・寝ると言わない限り会話を切り上げないこと）。');
+    expect(systemInstruction).toContain('[Time Context: Early Morning]\nIt is early morning right now.');
+    expect(systemInstruction).toContain('[Context: 1-on-1 Dialogue with Master]');
+  });
 
-        (getZonedDateParts as jest.Mock).mockReturnValue(createMockZonedParts(3));
-        const latePrompt = buildSystemPrompt(rebeccaPersona, 'reply', { coreProfile: {}, episodicBuffer: [] }, '眠れない');
-        expect(latePrompt).toContain('【状況コンテキスト：深夜】\n現在は深夜です（相手が眠い・寝ると言わない限り会話を切り上げないこと）。');
+  it('should inject English morning, daytime, evening, and night contexts when lang is en', async () => {
+    (getZonedDateParts as jest.Mock).mockReturnValue(createMockZonedParts(8));
+    const morning = await buildSystemPrompt({
+      persona: rebeccaPersona,
+      promptContext: 'reply',
+      lang: 'en',
+      gemini: stubEmbedder,
+      anchoringContext: ['Hello'],
+      includeTemporalContext: true,
+    });
+    expect(morning.systemInstruction).toContain('[Time Context: Morning]\nIt is morning right now.');
+
+    (getZonedDateParts as jest.Mock).mockReturnValue(createMockZonedParts(14));
+    const daytime = await buildSystemPrompt({
+      persona: rebeccaPersona,
+      promptContext: 'reply',
+      lang: 'en',
+      gemini: stubEmbedder,
+      anchoringContext: ['Lunch time'],
+      includeTemporalContext: true,
+    });
+    expect(daytime.systemInstruction).toContain('[Time Context: Daytime]\nIt is daytime right now.');
+
+    (getZonedDateParts as jest.Mock).mockReturnValue(createMockZonedParts(18));
+    const evening = await buildSystemPrompt({
+      persona: rebeccaPersona,
+      promptContext: 'reply',
+      lang: 'en',
+      gemini: stubEmbedder,
+      anchoringContext: ['Good evening'],
+      includeTemporalContext: true,
+    });
+    expect(evening.systemInstruction).toContain('[Time Context: Evening]\nIt is evening right now.');
+
+    (getZonedDateParts as jest.Mock).mockReturnValue(createMockZonedParts(23));
+    const night = await buildSystemPrompt({
+      persona: rebeccaPersona,
+      promptContext: 'reply',
+      lang: 'en',
+      gemini: stubEmbedder,
+      anchoringContext: ['Late night'],
+      includeTemporalContext: true,
+    });
+    expect(night.systemInstruction).toContain(
+      '[Time Context: Late Night]\nIt is late at night right now (do not cut off conversation unless Master mentions sleeping).',
+    );
+  });
+
+  it('should inject English absence context if over 3 days when lang is en', async () => {
+    (getZonedDateParts as jest.Mock).mockReturnValue(createMockZonedParts(12));
+    const fourDaysAgo = new Date(Date.now() - 4 * 24 * 60 * 60 * 1000).toISOString();
+
+    const { systemInstruction } = await buildSystemPrompt({
+      persona: rebeccaPersona,
+      promptContext: 'reply',
+      lang: 'en',
+      gemini: stubEmbedder,
+      anchoringContext: ['Long time no see'],
+      includeTemporalContext: true,
+      userData: { coreProfile: {}, episodicBuffer: [], lastReplyDate: fourDaysAgo },
     });
 
-    it('should inject Rollout Anniversary (birthday) context on April 24 in Japanese and English', () => {
-        (getZonedDateParts as jest.Mock).mockReturnValue(createMockZonedParts(12, 4, 24));
-        (formatZonedDateTime as jest.Mock).mockReturnValue('2024-04-24 12:00 JST');
+    expect(systemInstruction).toContain('Context: Absence Reaction');
+    expect(systemInstruction).toContain('4 days');
+  });
 
-        const jaPrompt = buildSystemPrompt(rebeccaPersona, 'reply', null, 'お誕生日おめでとう！', '', '', [], 'ja');
-        expect(jaPrompt).toContain('【特別コンテキスト：あなた自身の誕生日・ロールアウト記念日（4月24日）】');
-        expect(jaPrompt).toContain('Unit-001');
+  it('should inject interlocutor account info (display name and @username) in Japanese and English', async () => {
+    (getZonedDateParts as jest.Mock).mockReturnValue(createMockZonedParts(12));
+    const userWithIdentity = {
+      name: 'Test Master',
+      username: 'test_master_01',
+      coreProfile: {},
+      episodicBuffer: [],
+    };
 
-        const enPrompt = buildSystemPrompt(rebeccaPersona, 'reply', null, 'Happy birthday!', '', '', [], 'en');
-        expect(enPrompt).toContain('[Special Day Context: Your Birthday / Rollout Anniversary (April 24)]');
-        expect(enPrompt).toContain('Unit-001');
+    const { systemInstruction: jaPrompt } = await buildSystemPrompt({
+      persona: rebeccaPersona,
+      promptContext: 'reply',
+      lang: 'ja',
+      gemini: stubEmbedder,
+      anchoringContext: ['こんにちは'],
+      includeTemporalContext: true,
+      userData: userWithIdentity,
     });
+    expect(jaPrompt).toContain('【対話相手のアカウント情報（マスター）】');
+    expect(jaPrompt).toContain('表示名: Test Master');
+    expect(jaPrompt).toContain('XユーザーID: @test_master_01');
 
-    it('should inject absence context if over 3 days', () => {
-        (getZonedDateParts as jest.Mock).mockReturnValue(createMockZonedParts(12));
-        const fourDaysAgo = new Date(Date.now() - 4 * 24 * 60 * 60 * 1000).toISOString();
-        const prompt = buildSystemPrompt(rebeccaPersona, 'reply', { coreProfile: {}, episodicBuffer: [], lastReplyDate: fourDaysAgo }, '久しぶり');
-        expect(prompt).toContain('状況コンテキスト：放置');
-        expect(prompt).toContain('4日ぶり');
+    const { systemInstruction: enPrompt } = await buildSystemPrompt({
+      persona: rebeccaPersona,
+      promptContext: 'reply',
+      lang: 'en',
+      gemini: stubEmbedder,
+      anchoringContext: ['Hello'],
+      includeTemporalContext: true,
+      userData: userWithIdentity,
     });
+    expect(enPrompt).toContain('[Interlocutor Account Info (Master)]');
+    expect(enPrompt).toContain('Display Name: Test Master');
+    expect(enPrompt).toContain('X Handle: @test_master_01');
+  });
 
-    it('should inject English early morning context when lang is en', () => {
-        (getZonedDateParts as jest.Mock).mockReturnValue(createMockZonedParts(5));
-        const prompt = buildSystemPrompt(rebeccaPersona, 'chat', { coreProfile: {}, episodicBuffer: [] }, 'Good morning', '', '', [], 'en');
-        expect(prompt).toContain('[Time Context: Early Morning]\nIt is early morning right now.');
-        expect(prompt).toContain('[Context: 1-on-1 Dialogue with Master]');
+  it('should inject parent post context and campaign context in Japanese and English', async () => {
+    (getZonedDateParts as jest.Mock).mockReturnValue(createMockZonedParts(12));
+    const parentPost = '最近急に寒くなってきたね〜。みんな風邪ひいてない？';
+
+    const { systemInstruction: jaPrompt } = await buildSystemPrompt({
+      persona: rebeccaPersona,
+      promptContext: 'reply',
+      lang: 'ja',
+      gemini: stubEmbedder,
+      anchoringContext: ['こっちはまだ半袖だよ'],
+      includeTemporalContext: true,
+      campaignContext: '冬のカフェ企画実施中',
+      parentPostContext: parentPost,
     });
+    expect(jaPrompt).toContain('【現在進行中のイベント・キャンペーン状況（Special Narrative Event）】');
+    expect(jaPrompt).toContain('冬のカフェ企画実施中');
+    expect(jaPrompt).toContain('【文脈：ユーザーが返信しているレベッカの元ポスト】');
+    expect(jaPrompt).toContain(`「${parentPost}」`);
 
-    it('should inject English morning context during 7:00-10:00 when lang is en', () => {
-        (getZonedDateParts as jest.Mock).mockReturnValue(createMockZonedParts(8));
-        const prompt = buildSystemPrompt(rebeccaPersona, 'reply', { coreProfile: {}, episodicBuffer: [] }, 'Hello', '', '', [], 'en');
-        expect(prompt).toContain('[Time Context: Morning]\nIt is morning right now.');
+    const { systemInstruction: enPrompt } = await buildSystemPrompt({
+      persona: rebeccaPersona,
+      promptContext: 'reply',
+      lang: 'en',
+      gemini: stubEmbedder,
+      anchoringContext: ['Still warm here'],
+      includeTemporalContext: true,
+      campaignContext: 'Winter cafe tour',
+      parentPostContext: 'It is getting chilly lately!',
     });
+    expect(enPrompt).toContain('[Current Ongoing Campaign / Special Narrative Event]');
+    expect(enPrompt).toContain('Winter cafe tour');
+    expect(enPrompt).toContain('[Context: Your Original Post Being Replied To]');
+    expect(enPrompt).toContain('"It is getting chilly lately!"');
 
-    it('should inject English daytime context when lang is en', () => {
-        (getZonedDateParts as jest.Mock).mockReturnValue(createMockZonedParts(14));
-        const prompt = buildSystemPrompt(rebeccaPersona, 'reply', { coreProfile: {}, episodicBuffer: [] }, 'Lunch time', '', '', [], 'en');
-        expect(prompt).toContain('[Time Context: Daytime]\nIt is daytime right now.');
+    const { systemInstruction: overridePrompt } = await buildSystemPrompt({
+      persona: rebeccaPersona,
+      promptContext: 'reply',
+      botHandle: '@custom_bot_handle',
+      lang: 'en',
+      gemini: stubEmbedder,
+      anchoringContext: ['Hello'],
     });
-
-    it('should inject English evening context when lang is en', () => {
-        (getZonedDateParts as jest.Mock).mockReturnValue(createMockZonedParts(18));
-        const prompt = buildSystemPrompt(rebeccaPersona, 'reply', { coreProfile: {}, episodicBuffer: [] }, 'Good evening', '', '', [], 'en');
-        expect(prompt).toContain('[Time Context: Evening]\nIt is evening right now.');
-    });
-
-    it('should inject English night context during 22:00-4:00 when lang is en', () => {
-        (getZonedDateParts as jest.Mock).mockReturnValue(createMockZonedParts(23));
-        const prompt = buildSystemPrompt(rebeccaPersona, 'reply', { coreProfile: {}, episodicBuffer: [] }, 'Good evening', '', '', [], 'en');
-        expect(prompt).toContain('[Time Context: Late Night]\nIt is late at night right now (do not cut off conversation unless Master mentions sleeping).');
-    });
-
-    it('should inject English absence context if over 3 days when lang is en', () => {
-        (getZonedDateParts as jest.Mock).mockReturnValue(createMockZonedParts(12));
-        const fourDaysAgo = new Date(Date.now() - 4 * 24 * 60 * 60 * 1000).toISOString();
-        const prompt = buildSystemPrompt(rebeccaPersona, 'reply', { coreProfile: {}, episodicBuffer: [], lastReplyDate: fourDaysAgo }, 'Long time no see', '', '', [], 'en');
-        expect(prompt).toContain('Context: Absence Reaction');
-        expect(prompt).toContain('4 days');
-    });
-
-    it('should inject interlocutor account info (display name and @username) in Japanese and English', () => {
-        (getZonedDateParts as jest.Mock).mockReturnValue(createMockZonedParts(12));
-        const userWithIdentity = {
-            name: 'Test Master',
-            username: 'test_master_01',
-            coreProfile: {},
-            episodicBuffer: [],
-        };
-
-        const jaPrompt = buildSystemPrompt(rebeccaPersona, 'reply', userWithIdentity, 'こんにちは', '', '', [], 'ja');
-        expect(jaPrompt).toContain('【対話相手のアカウント情報（マスター）】');
-        expect(jaPrompt).toContain('表示名: Test Master');
-        expect(jaPrompt).toContain('XユーザーID: @test_master_01');
-
-        const enPrompt = buildSystemPrompt(rebeccaPersona, 'reply', userWithIdentity, 'Hello', '', '', [], 'en');
-        expect(enPrompt).toContain('[Interlocutor Account Info (Master)]');
-        expect(enPrompt).toContain('Display Name: Test Master');
-        expect(enPrompt).toContain('X Handle: @test_master_01');
-    });
-
-    it('should inject parent post context in Japanese and English when replying to root posts', () => {
-        (getZonedDateParts as jest.Mock).mockReturnValue(createMockZonedParts(12));
-        const parentPost = '最近急に寒くなってきたね〜。みんな風邪ひいてない？';
-
-        const jaPrompt = buildSystemPrompt(
-            rebeccaPersona,
-            'reply',
-            null,
-            'こっちはまだ半袖だよ',
-            '',
-            '',
-            [],
-            'ja',
-            '',
-            '',
-            parentPost
-        );
-        expect(jaPrompt).toContain('【文脈：ユーザーが返信しているレベッカの元ポスト】');
-        expect(jaPrompt).toContain(`「${parentPost}」`);
-        expect(jaPrompt).toContain('あなたが元ポストで投げかけた話題や問いかけを踏まえた上で');
-
-        const enPrompt = buildSystemPrompt(
-            rebeccaPersona,
-            'reply',
-            null,
-            'Still warm here',
-            '',
-            '',
-            [],
-            'en',
-            '',
-            '',
-            'It is getting chilly lately!'
-        );
-        expect(enPrompt).toContain('[Context: Your Original Post Being Replied To]');
-        expect(enPrompt).toContain('"It is getting chilly lately!"');
-        expect(enPrompt).toContain('Take into account your original post and the question/topic you raised');
-    });
+    expect(overridePrompt).toContain('@custom_bot_handle');
+  });
 });

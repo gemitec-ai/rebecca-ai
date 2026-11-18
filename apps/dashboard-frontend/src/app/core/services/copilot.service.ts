@@ -120,22 +120,26 @@ export class CopilotService {
     const historyPayload = this.messages().slice(0, -1).map(m => ({
       role: m.role,
       text: m.text,
+      ...(m.thought ? { thought: m.thought } : {}),
       time: m.time
     }));
 
     const lang = (this.settingsService.selectedLang() === 'en' ? 'en' : 'ja') as 'ja' | 'en';
+    const timezone = this.settingsService.selectedTz();
 
     this.copilotRepo.chat({
       message: trimmed,
       currentContext: this.contextService.fullContextDescription(),
       history: historyPayload,
-      language: lang
+      language: lang,
+      timezone
     }).subscribe({
       next: (res) => {
         const modelMsg: CopilotChatMessage = {
           id: `msg-${Date.now()}-model`,
           role: 'model',
           text: res.reply,
+          ...(res.thought ? { thought: res.thought } : {}),
           time: new Date().toISOString(),
           actionRequired: res.actionRequired ?? undefined,
           suggestionChips: res.suggestionChips ?? [],
@@ -153,8 +157,8 @@ export class CopilotService {
           id: `msg-${Date.now()}-error`,
           role: 'model',
           text: isEn 
-            ? "Oops, looks like there was a connection glitch... So sorry, Master! Could you try again?♡"
-            : 'ちょっと通信エラー（例外）が発生しちゃったみたい……ごめんなさい、マスター。もう一度試してくれるかしら？',
+            ? 'A communication error occurred and no response was received from the server or AI model. Please try again.'
+            : '通信エラーが発生しました。サーバーまたはAIモデルから応答がありません。もう一度お試しください。',
           time: new Date().toISOString()
         };
         this.messages.update(prev => [...prev, errorMsg]);
@@ -201,7 +205,7 @@ export class CopilotService {
               }
               const label = displayLabel || `@${cleanId}`;
               this.toastService.show(isEn ? `Blocked user ${label}` : `ユーザー ${label} を正常にブロックしました`, 'success');
-              this.appendSystemAck(isEn ? `Following your approval, I've blocked user ${label}♡` : `マスターの承認に基づき、ユーザー ${label} をブロック（除外）したわよ♡`);
+              this.appendSystemAck(isEn ? `Blocked user ${label}.` : `ユーザー ${label} をブロックしました。`);
             },
             error: () => this.toastService.show(isEn ? `Failed to block user` : `ブロック操作に失敗しました`, 'error')
           });
@@ -233,7 +237,7 @@ export class CopilotService {
               }
               const label = displayLabel || `@${cleanId}`;
               this.toastService.show(isEn ? `Unblocked user ${label}` : `ユーザー ${label} のブロックを解除しました`, 'success');
-              this.appendSystemAck(isEn ? `Following your approval, I've unblocked user ${label}♡` : `マスターの承認に基づき、ユーザー ${label} のブロックを解除したわ♡`);
+              this.appendSystemAck(isEn ? `Unblocked user ${label}.` : `ユーザー ${label} のブロックを解除しました。`);
             },
             error: () => this.toastService.show(isEn ? `Failed to unblock user` : `ブロック解除に失敗しました`, 'error')
           });
@@ -254,7 +258,7 @@ export class CopilotService {
           this.dashboardRepo.deletePosts([cleanPostId]).subscribe({
             next: () => {
               this.toastService.show(isEn ? `Deleted post #${cleanPostId}` : `投稿 #${cleanPostId} を正常に削除しました`, 'success');
-              this.appendSystemAck(isEn ? `Deleted post #${cleanPostId} from the system and X!` : `指定された投稿 #${cleanPostId} をシステムとXから削除完了よ！`);
+              this.appendSystemAck(isEn ? `Deleted post #${cleanPostId} from the system and X.` : `投稿 #${cleanPostId} をシステムおよびXから削除しました。`);
             },
             error: () => this.toastService.show(isEn ? `Failed to delete post` : `投稿削除に失敗しました`, 'error')
           });
@@ -268,7 +272,7 @@ export class CopilotService {
         this.memoryRepo.triggerDreaming().subscribe({
             next: () => {
               this.toastService.show(isEn ? `Force Dreaming completed` : `システムドリーミングを開始しました`, 'success');
-              this.appendSystemAck(isEn ? `Memory integration (dreaming) completed successfully♡` : `記憶の統合（ドリーミング）が正常に完了したわ♡`);
+              this.appendSystemAck(isEn ? `Memory consolidation (Dreaming) triggered successfully.` : `記憶統合（ドリーミング）を実行しました。`);
             },
             error: () => this.toastService.show(isEn ? `Force Dreaming failed` : `ドリーミング実行に失敗しました`, 'error')
         });
@@ -279,7 +283,7 @@ export class CopilotService {
         this.assetsRepo.regenerateCaptions([]).subscribe({
           next: () => {
             this.toastService.show(isEn ? `Triggered caption regeneration` : `キャプション再生成ジョブを開始しました`, 'success');
-            this.appendSystemAck(isEn ? `Started the background job to regenerate failed captions!` : `失敗していたアセットのキャプション再生成ジョブをバックグラウンドで起動したわよ！`);
+            this.appendSystemAck(isEn ? `Started background job to regenerate failed captions.` : `失敗したアセットのキャプション再生成ジョブをバックグラウンドで開始しました。`);
           },
           error: () => this.toastService.show(isEn ? `Failed to regenerate captions` : `キャプション再生成に失敗しました`, 'error')
         });
@@ -290,7 +294,7 @@ export class CopilotService {
         this.dashboardRepo.syncPosts().subscribe({
           next: () => {
             this.toastService.show(isEn ? 'Timeline post synchronization completed' : 'タイムラインのポスト同期が完了しました。', 'success');
-            this.appendSystemAck(isEn ? 'Timeline post synchronization completed successfully♡' : 'タイムラインのポスト同期が正常に完了したわよ♡');
+            this.appendSystemAck(isEn ? 'Timeline post synchronization completed.' : 'タイムラインのポスト同期が完了しました。');
           },
           error: () => this.toastService.show(isEn ? 'Failed to synchronize timeline posts' : 'ポスト同期に失敗しました。', 'error')
         });
@@ -301,7 +305,7 @@ export class CopilotService {
         this.dashboardRepo.triggerReply().subscribe({
           next: () => {
             this.toastService.show(isEn ? 'Reply batch execution triggered' : 'リプライ処理の実行を開始しました。', 'success');
-            this.appendSystemAck(isEn ? 'Started the mentions polling and reply batch execution!' : 'メンション取得とリプライ処理バッチを起動したわよ！');
+            this.appendSystemAck(isEn ? 'Started mentions polling and reply batch execution.' : 'メンション取得とリプライ処理バッチを開始しました。');
           },
           error: () => this.toastService.show(isEn ? 'Failed to trigger reply execution' : 'リプライ実行に失敗しました。', 'error')
         });

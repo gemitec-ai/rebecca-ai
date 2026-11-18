@@ -6,6 +6,7 @@
  * Database persistence is deliberately decoupled from this service; callers (use cases)
  * retain responsibility for persisting timeline posts or conversation logs.
  */
+import { sanitizeUntrustedPromptText } from '@rebecca/memory';
 import { AppDependencies, ImageDocWithId } from '../types';
 import { logger } from '../utils/logger';
 
@@ -64,10 +65,13 @@ export const publishPost = async (
   if (attachImage) {
     try {
       const personaName = deps.persona.metadata.displayName;
+      const safeContext = context
+        ? sanitizeUntrustedPromptText(context, 3000, { collapseHorizontalRules: true })
+        : '';
       const searchPrompt = `あなたはAIキャラクター「${personaName}」の投稿に添えるイラスト画像を検索するAIです。
 画像データベースには、様々な衣装やシチュエーションで描かれた${personaName}のイラストと、その視覚的描写（キャプション）が登録されています。
 
-以下のツイート文${context ? 'と参考文脈' : ''}から、投稿のビジュアルとして最も調和するイラスト検索クエリ（20〜40文字程度の日本語）を1行で生成してください。
+以下のツイート文${safeContext ? 'と参考文脈' : ''}から、投稿のビジュアルとして最も調和するイラスト検索クエリ（20〜40文字程度の日本語）を1行で生成してください。
 
 【クエリ生成の指針】
 1. 視覚的アクション・シチュエーションの具体化:
@@ -78,7 +82,7 @@ export const publishPost = async (
 3. 画像不要の判定:
    純粋なシステム通知や事務連絡など、キャラクターイラストの添付が不自然な投稿の場合は "null" と出力してください。
 
-${context ? `【参考文脈】\n${context}\n` : ''}【ツイート内容】
+${safeContext ? `【参考文脈】\n${safeContext}\n` : ''}【ツイート内容】
 ${text}
 
 出力は検索クエリ（または null）のテキストのみとし、解説や装飾、引用符は含めないでください。`;

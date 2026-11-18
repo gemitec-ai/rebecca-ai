@@ -1,6 +1,6 @@
-import { FunctionDeclaration, Type } from '@google/genai';
+import type { ToolDeclaration } from '@rebecca/tools';
 import { SupportTransactionDoc } from '@rebecca/types';
-import { CopilotTool, CopilotToolContext, CopilotToolExecutionResult } from '../types';
+import { CopilotTool, CopilotToolContext, CopilotToolExecutionResult, resolveBoundedLimit } from '../types';
 
 /**
  * Tool for inspecting supporter transactions and fan club metrics.
@@ -9,17 +9,18 @@ export class SearchSupportersTool implements CopilotTool {
   readonly name = 'search_supporters';
   readonly description = 'Retrieves supporter ledger metrics, transaction counts, and digital reward catalog status.';
 
-  readonly declaration: FunctionDeclaration = {
+  readonly declaration: ToolDeclaration = {
     name: this.name,
     description: this.description,
     parameters: {
-      type: Type.OBJECT,
+      type: 'object',
       properties: {
         limit: {
-          type: Type.INTEGER,
+          type: 'integer',
           description: 'Number of recent supporter records to inspect (1 to 20, default is 5).'
         }
-      }
+      },
+      required: []
     }
   };
 
@@ -28,7 +29,7 @@ export class SearchSupportersTool implements CopilotTool {
       return { data: { error: 'SupportersRepository is not configured' } };
     }
 
-    const limit = Math.max(1, Math.min(Number(params.limit) || 5, 20));
+    const limit = resolveBoundedLimit(params.limit, 20);
     const ledger = await context.supportersRepo.getTransactions({ limit });
 
     return {

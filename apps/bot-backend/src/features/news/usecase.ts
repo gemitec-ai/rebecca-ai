@@ -1,6 +1,7 @@
+import { sanitizeUntrustedPromptText } from '@rebecca/memory';
 import { AppDependencies } from '../../types';
 import { executePostPipeline } from '../../core/postPipeline';
-import { resolveSituationalPersonaAnchors } from '../../core/personaAnchoring';
+import { buildSystemPrompt } from '../../core/contextInjector';
 import {
   INewsProvider,
   NewsResult,
@@ -83,25 +84,44 @@ export class ProactiveNewsUseCase {
         return { status: 'skipped', reason: 'all_duplicates' };
       }
 
-      const freshHeadlineTexts = candidateNews.map((c) => c.headline);
+      const freshHeadlineTexts = candidateNews.map((c) => sanitizeUntrustedPromptText(c.headline, 300));
       logger.info('[ProactiveNewsUseCase] Fresh non-duplicate headlines', {
         freshHeadlines: freshHeadlineTexts,
       });
 
       const formattedNewsContext = candidateNews
-        .map((c) => `・【${c.item.category}】${c.headline}\n  概要: ${c.item.summary}`)
+        .map((c) => {
+          const safeCat = sanitizeUntrustedPromptText(c.item.category, 64);
+          const safeTitle = sanitizeUntrustedPromptText(c.headline, 300, {
+            collapseHorizontalRules: true,
+          });
+          const safeSummary = sanitizeUntrustedPromptText(c.item.summary, 600, {
+            collapseHorizontalRules: true,
+          });
+          return `・【${safeCat}】${safeTitle}\n  概要: ${safeSummary}`;
+        })
         .join('\n\n');
 
       const timelineSummary = await this.deps.firestore.getTimelineSummary();
       const extendedPrompt = await this.deps.firestore.getExtendedPrompt();
+      const safeTimelineSummary = timelineSummary
+        ? sanitizeUntrustedPromptText(timelineSummary, 2000, { collapseHorizontalRules: true })
+        : '';
+      const safeExtendedPrompt = extendedPrompt
+        ? sanitizeUntrustedPromptText(extendedPrompt, 2000, { collapseHorizontalRules: true })
+        : '';
 
-      const personaFewShotPrompt = await resolveSituationalPersonaAnchors(this.deps.gemini, [
-        `【今日のニュース候補（${targetCategory}）】\n${freshHeadlineTexts.join('\n')}`,
-        extendedPrompt ? `【近況・気分】${extendedPrompt}` : '',
-        timelineSummary ? `【タイムラインの空気感】${timelineSummary}` : '',
-      ]);
-
-      const systemInstruction = this.deps.persona.getBasePrompt('timeline', 'ja');
+      const { systemInstruction } = await buildSystemPrompt({
+        persona: this.deps.persona,
+        promptContext: 'timeline',
+        lang: 'ja',
+        gemini: this.deps.gemini,
+        anchoringContext: [
+          `【今日のニュース候補（${targetCategory}）】\n${freshHeadlineTexts.join('\n')}`,
+          safeExtendedPrompt ? `【近況・気分】${safeExtendedPrompt}` : '',
+          safeTimelineSummary ? `【タイムラインの空気感】${safeTimelineSummary}` : '',
+        ],
+      });
       const personaName = this.deps.persona.metadata.displayName;
       const userCallsign = this.deps.persona.metadata.userCallsign.ja;
       const interestsStr = this.deps.persona.metadata.interests.join('・');
@@ -111,18 +131,15 @@ export class ProactiveNewsUseCase {
 
 【今日のニュース候補（${targetCategory}）】
 ${formattedNewsContext}
-${timelineSummary ? `\n【直近のタイムライン要約】\n${timelineSummary}\n` : ''}
-${extendedPrompt ? `\n【拡張ペルソナ・近況】\n${extendedPrompt}\n` : ''}
-${personaFewShotPrompt ? `\n${personaFewShotPrompt}\n` : ''}
+${safeTimelineSummary ? `\n【直近のタイムライン要約】\n${safeTimelineSummary}\n` : ''}
+${safeExtendedPrompt ? `\n【拡張ペルソナ・近況】\n${safeExtendedPrompt}\n` : ''}
+
 【トピック選定の重要ルール】
 - 殺人や痛ましい事故など、過度に暗いニュースや人が亡くなっているニュースは絶対に選ばないこと。必ず明るい話題を選んでください。
 - 選定したニュースの【具体的な対象・固有名詞】（商品名、技術名、サービス名、店名・施設名など）を、ツイート本文の冒頭または文中に必ず明記すること（何についての話題かフォロワーが一目で理解できるようにすること）。
 - ニュースの単なる要約や事実紹介だけで完結させないこと。話題に対する独自の着眼点や意見を簡潔に述べた上で、読み手が思わずリプライしたくなる具体的な問いかけ（2択の提示や具体的な選択への問いなど）を末尾に必ず含めること。
 - 曖昧な質問（例: 「どう思いますか？」）は避け、読み手が即座に答えやすい具体的な問いかけとすること。
 - selectedTitle には選定したニュースの【見出しタイトル】を出力すること。
-- thought（内省思考）は150文字以内の自然な独白とすること。
-- reply（ツイート本文）は【絶対に100文字以内の短文】にすること。
-- 出力に「(90文字)」などの文字数カウント表記や解説、引用符は絶対に含めないでください。
 ${defaultHashtag ? `- ハッシュタグ（${defaultHashtag} 等）はシステムが自動付与するため、本文中には絶対に含めないでください。` : ''}`;
 
       const candidateHeadlines = candidateNews.map((c) => c.headline);
@@ -168,11 +185,15 @@ ${defaultHashtag ? `- ハッシュタグ（${defaultHashtag} 等）はシステ�
         chosenEmbedding = await this.deps.gemini.generateEmbedding(matchedNews.headline);
       }
 
+      const matchedSafeTitle = sanitizeUntrustedPromptText(matchedNews.headline, 300, {
+        collapseHorizontalRules: true,
+      });
+
       const pipelineResult = await executePostPipeline(this.deps, {
         postType: 'news',
         text: postText,
         thought,
-        imageContext: `ニュース見出し: ${matchedNews.headline}\nタイムライン状況: ${timelineSummary ?? ''}`,
+        imageContext: `ニュース見出し: ${matchedSafeTitle}\nタイムライン状況: ${safeTimelineSummary}`,
         metadata: {
           newsTitle,
           newsEmbedding: chosenEmbedding,

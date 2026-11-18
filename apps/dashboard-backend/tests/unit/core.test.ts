@@ -35,8 +35,11 @@ describe('Dashboard Backend Core & Settings Unit Tests', () => {
       expect(res?.start).toContain('2025-12-31T15:00:00.000Z'); // 2026-01-01 00:00 JST is 2025-12-31 15:00 UTC
       expect(res?.end).toContain('2026-12-31T14:59:59.999Z'); // 2026-12-31 23:59:59.999 JST
 
-      // Invalid year
+      // Invalid year & invalid timezone
       expect(getJstDateRangeInUtc('yearly', 'INVALID_YEAR')).toBeNull();
+      expect(getJstDateRangeInUtc('yearly', '2026abc')).toBeNull();
+      expect(getJstDateRangeInUtc('yearly', '2026-07')).toBeNull();
+      expect(getJstDateRangeInUtc('yearly', '2026', 'Invalid/Timezone')).toBeNull();
     });
 
     it('should calculate valid UTC range for monthly period', () => {
@@ -44,8 +47,9 @@ describe('Dashboard Backend Core & Settings Unit Tests', () => {
       expect(res).not.toBeNull();
       expect(res?.start).toContain('2026-06-30T15:00:00.000Z'); // 2026-07-01 00:00 JST is 2026-06-30 15:00 UTC
 
-      // Invalid format
+      // Invalid format & invalid timezone
       expect(getJstDateRangeInUtc('monthly', 'invalid-month')).toBeNull();
+      expect(getJstDateRangeInUtc('monthly', '2026-07', 'Invalid/Timezone')).toBeNull();
     });
   });
 

@@ -15,7 +15,7 @@ Organize code strictly by responsibility:
   - `controller.ts`: Parse HTTP inputs, enforce boundary validation, invoke use cases, and map results/errors to HTTP responses.
   - `usecase.ts`: Pure domain orchestration injected with typed dependencies (`AppDependencies` / repository interfaces); no Express `Request`/`Response` coupling.
   - `repository.ts`: Feature-specific persistence queries via `@rebecca/db` converters.
-- **`src/core/`**: Cross-feature domain engines (`contextInjector.ts`, `memory.ts`, `personaAnchoring.ts`, `personaEmbeddingCache.ts`, `postPipeline.ts`, `postPublisher.ts`, `rateLimiter.ts`).
+- **`src/core/`**: Cross-feature domain engines (`channelPrompts.ts`, `contextInjector.ts`, `memory.ts`, `postPipeline.ts`, `postPublisher.ts`, `rateLimiter.ts`).
 - **`src/services/`**: External infrastructure adapters (`gemini.ts`, `xApi.ts`, `firestore.ts`, `storage.ts`, `tasks.ts`) plus `stripe` SDK injection inside `src/features/support/`.
 
 ## 2. External Integrations, Security & LLM Invariants

@@ -23,17 +23,10 @@ Houses Rebecca's structured official master specifications (`PersonaMetadata`), 
 
 ## Exported Structure
 The module exports the persona definition, structured metadata, and helper utilities:
-- **`REBECCA_METADATA` / `persona.metadata`**: Strongly typed `PersonaMetadata` object for direct programmatic access without string parsing.
-- **`getActivePersona(id?: string)`**: Resolves the active persona implementation (e.g. `rebeccaPersona`).
-- **`getCoreIdentityPrompt(lang?: Language)`**: Synthesizes the pure Layer 0 core identity prompt (`ja` or `en`) directly from structured `metadata`.
-- **`getBasePrompt(context: PromptContext, lang: Language)`**: Combines `getCoreIdentityPrompt(lang)` with channel-specific behavioral rules:
-  - `reply`: 1-to-1 conversation replies on X (Twitter), strictly under 130 characters.
-  - `timeline`: Proactive timeline postings.
-  - `random_engagement`: Mentions targeted at newly active list members.
-  - `copilot`: In-depth analytical copilot assistant for the Admin Dashboard.
-  - `chat`: Unconstrained 1-on-1 private dialogue with Master, optimized for conversation turn-pairs and RAG memory.
-- **`findTopPersonaPatterns` / `buildPersonaFewShotPrompt`**: Dynamic few-shot anchoring via cosine similarity over 120 situation patterns.
-- **`PERSONA_RESPONSE_SCHEMA` / `parsePersonaResponse`**: Gemini Structured Outputs schema (`{ thought, reply }`) and resilient JSON parsing.
+- **`REBECCA_METADATA` / `rebeccaPersona`**: Strongly typed `PersonaMetadata` object and canonical Rebecca persona definition for direct programmatic access without string parsing.
+- **`getActivePersona(id?: string)`**: Resolves the active `IPersonaDefinition` implementation (e.g. `rebeccaPersona`), exposing `getCoreIdentityPrompt`, `composePrompt`, `getDreamingPrompt`, `formatAbsenceInstruction`, `findTopPatterns`, and `buildFewShotPrompt`.
+- **`findTopPersonaPatterns` / `buildPersonaFewShotPrompt`**: Dynamic few-shot anchoring utilities consumed by `@rebecca/prompt`.
+- **`createStructuredPersonaSchema` / `PERSONA_RESPONSE_SCHEMA` / `parsePersonaJsonObject` / `parsePersonaResponse`**: Unified Honne & Tatemae Structured Outputs schema builder (`{ thought, reply }`) and resilient JSON parsing.
 
 ---
 

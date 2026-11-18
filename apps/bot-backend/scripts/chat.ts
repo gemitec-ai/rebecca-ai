@@ -41,7 +41,7 @@ const rl = readline.createInterface({
 });
 
 console.log("==================================================");
-console.log(" レベッカ ローカルチャット（新ペルソナシステム対応版）");
+console.log(` ${persona.metadata.displayName} ローカルチャット（新ペルソナシステム対応版）`);
 console.log(" 終了するには 'exit' または 'quit' と入力してください");
 console.log(" 120パターン動的Few-Shot＆構造化思考（thought + reply）に対応");
 console.log(" 会話履歴は local_db.json に保存されます");
@@ -55,9 +55,9 @@ if (!process.env.GEMINI_API_KEY) {
 }
 
 const chatLoop = async () => {
-    rl.question('マスター: ', async (input) => {
+    rl.question(`${persona.metadata.userCallsign.ja}: `, async (input) => {
         if (input.toLowerCase() === 'exit' || input.toLowerCase() === 'quit') {
-            console.log('\nレベッカ: 「じゃあね、マスター！またいつでも話しかけてよね。」');
+            console.log(`\n${persona.metadata.displayName}: 「じゃあね、${persona.metadata.userCallsign.ja}！またいつでも話しかけてよね。」`);
             rl.close();
             return;
         }
@@ -74,20 +74,16 @@ const chatLoop = async () => {
             const workingMemory = getWorkingMemory(userData.episodicBuffer);
             const extendedPrompt = '';
 
-            // Dynamic Few-Shot Persona Anchors extraction
-            let personaFewShotPrompt = '';
-            try {
-                const userEmbedding = await gemini.generateEmbedding(input);
-                if (userEmbedding && userEmbedding.length > 0) {
-                    const topPatterns = persona.findTopPatterns(userEmbedding, 3);
-                    personaFewShotPrompt = persona.buildFewShotPrompt(topPatterns, 'ja');
-                    console.log(`\n[🔍 抽出されたペルソナアンカー Top 3: ${topPatterns.map(p => `#${p.id} ${p.category}`).join(', ')}]`);
-                }
-            } catch (embedError) {
-                console.warn('[Embedding Warning] 動的アンカー抽出スキップ:', (embedError as Error).message);
-            }
-
-            const systemPrompt = buildSystemPrompt(persona, 'chat', userData, input, extendedPrompt, '', [], 'ja', personaFewShotPrompt);
+            const { systemInstruction: systemPrompt } = await buildSystemPrompt({
+                persona,
+                promptContext: 'chat',
+                lang: 'ja',
+                gemini,
+                anchoringContext: [input],
+                includeTemporalContext: true,
+                userData,
+                extendedPrompt,
+            });
             
             // Fetch Structured Reply from Gemini
             const result = await gemini.generateStructuredReply(systemPrompt, workingMemory, input);

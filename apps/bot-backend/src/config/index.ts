@@ -175,7 +175,7 @@ export default {
    * Configuration for memory evolution.
    */
   evolution: {
-    lookbackDays: parseInt(process.env.EVOLUTION_LOOKBACK_DAYS || '7', 10),
+    lookbackDays: parseBoundedInt(process.env.EVOLUTION_LOOKBACK_DAYS, 7, 1, 365),
   },
 
   /**

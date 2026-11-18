@@ -1,4 +1,5 @@
 import { DateTime } from 'luxon';
+import { config } from '../config';
 
 /**
  * Standard preset periods for query filtering.
@@ -57,71 +58,79 @@ export function parseRelativeDuration(input: string): RelativeDuration | null {
 }
 
 /**
- * Calculates the start and end date-times in UTC based on Japan Standard Time (JST) boundaries.
- * This is primarily used for aggregating data across specific time periods aligned with JST.
- * 
+ * Calculates the start and end UTC ISO timestamps for a calendar period aligned with the specified IANA timezone.
+ *
  * @param period - The aggregation period. Accepted values are 'monthly', 'yearly', or 'all-time'.
  * @param isoDate - The ISO-8601 formatted date string representing the target period (e.g., '2026-07' or '2026').
+ * @param timezone - Target IANA timezone identifier (defaults to `config.appTimezone`).
  * @returns An object containing the start and end ISO strings in UTC, or null if the period is 'all-time', invalid, or not provided.
  */
-export function getJstDateRangeInUtc(period: string, isoDate?: string): { start: string; end: string } | null {
+export function getJstDateRangeInUtc(
+  period: string,
+  isoDate?: string,
+  timezone: string = config.appTimezone,
+): { start: string; end: string } | null {
   if (period === StandardTimePeriod.ALL_TIME || !isoDate) {
     return null;
   }
-  
-  const ZONE_JST = 'Asia/Tokyo';
-  
+
   if (period === StandardTimePeriod.YEARLY) {
-    const year = parseInt(isoDate, 10);
-    if (isNaN(year)) return null;
-    // January 1st 00:00 JST -> UTC
-    const start = DateTime.fromObject({ year, month: 1, day: 1 }, { zone: ZONE_JST }).startOf('day').toUTC().toISO();
-    // December 31st 23:59:59.999 JST -> UTC
-    const end = DateTime.fromObject({ year, month: 12, day: 31 }, { zone: ZONE_JST }).endOf('day').toUTC().toISO();
-    
-    return { start: start!, end: end! };
+    const trimmedIso = isoDate.trim();
+    if (!/^\d{4}$/.test(trimmedIso)) return null;
+    const year = parseInt(trimmedIso, 10);
+    const startDt = DateTime.fromObject({ year, month: 1, day: 1 }, { zone: timezone });
+    const endDt = DateTime.fromObject({ year, month: 12, day: 31 }, { zone: timezone });
+    if (!startDt.isValid || !endDt.isValid) return null;
+
+    const start = startDt.startOf('day').toUTC().toISO();
+    const end = endDt.endOf('day').toUTC().toISO();
+    if (!start || !end) return null;
+
+    return { start, end };
   }
-  
+
   if (period === StandardTimePeriod.MONTHLY) {
-    // Parse yyyy-MM (e.g., 2026-07)
-    const dt = DateTime.fromFormat(isoDate, 'yyyy-MM', { zone: ZONE_JST });
+    const dt = DateTime.fromFormat(isoDate, 'yyyy-MM', { zone: timezone });
     if (!dt.isValid) return null;
-    
-    // Start of month JST -> UTC
+
     const start = dt.startOf('month').toUTC().toISO();
-    // End of month JST -> UTC
     const end = dt.endOf('month').toUTC().toISO();
-    
-    return { start: start!, end: end! };
+    if (!start || !end) return null;
+
+    return { start, end };
   }
-  
+
   return null;
 }
 
 /**
  * Calculates start and end UTC timestamps for relative duration windows ('7d', '14d', '2w', '3m'),
  * standard named presets ('today', 'weekly', 'monthly', 'yearly'),
- * or JST calendar periods ('monthly', 'yearly' with isoDate) aligned with JST boundaries.
+ * or calendar periods ('monthly', 'yearly' with isoDate) aligned with the requested timezone boundaries.
  * Returns null if the period is 'all-time', undefined, or unsupported.
  *
  * @param period - The period window ('today', 'weekly', 'monthly', 'yearly', 'all-time', or duration '7d', '14d', '2w', etc.).
  * @param isoDate - Optional specific calendar date ('yyyy-MM' or 'yyyy').
+ * @param timezone - Target IANA timezone identifier (defaults to `config.appTimezone`).
  * @returns Object with start and end ISO strings in UTC, or null.
  */
-export function getTimelinePeriodRangeInUtc(period?: string, isoDate?: string): { start: string; end: string } | null {
+export function getTimelinePeriodRangeInUtc(
+  period?: string,
+  isoDate?: string,
+  timezone: string = config.appTimezone,
+): { start: string; end: string } | null {
   if (!period || period === StandardTimePeriod.ALL_TIME) {
     return null;
   }
 
   const normalized = period.trim().toLowerCase();
-  const ZONE_JST = 'Asia/Tokyo';
-  const nowJst = DateTime.now().setZone(ZONE_JST);
+  const nowZoned = DateTime.now().setZone(timezone);
 
   // 1. Strict relative duration parsing (e.g. '7d', '14d', '2w', '3m', '1y')
   const relative = parseRelativeDuration(normalized);
   if (relative) {
-    const start = nowJst.minus({ [relative.unit]: relative.count }).startOf('day').toUTC().toISO();
-    const end = nowJst.endOf('day').toUTC().toISO();
+    const start = nowZoned.minus({ [relative.unit]: relative.count }).startOf('day').toUTC().toISO();
+    const end = nowZoned.endOf('day').toUTC().toISO();
     if (start && end) {
       return { start, end };
     }
@@ -129,32 +138,32 @@ export function getTimelinePeriodRangeInUtc(period?: string, isoDate?: string): 
 
   // 2. Standard named presets
   if (normalized === StandardTimePeriod.TODAY) {
-    const start = nowJst.startOf('day').toUTC().toISO();
-    const end = nowJst.endOf('day').toUTC().toISO();
+    const start = nowZoned.startOf('day').toUTC().toISO();
+    const end = nowZoned.endOf('day').toUTC().toISO();
     if (start && end) return { start, end };
   }
 
   if (normalized === StandardTimePeriod.WEEKLY) {
-    const start = nowJst.minus({ days: 7 }).startOf('day').toUTC().toISO();
-    const end = nowJst.endOf('day').toUTC().toISO();
+    const start = nowZoned.minus({ days: 7 }).startOf('day').toUTC().toISO();
+    const end = nowZoned.endOf('day').toUTC().toISO();
     if (start && end) return { start, end };
   }
 
   // 3. Calendar isoDate specification
   if (isoDate) {
-    const jstRange = getJstDateRangeInUtc(normalized, isoDate);
-    if (jstRange) return jstRange;
+    const calendarRange = getJstDateRangeInUtc(normalized, isoDate, timezone);
+    if (calendarRange) return calendarRange;
   }
 
   if (normalized === StandardTimePeriod.MONTHLY) {
-    const start = nowJst.startOf('month').toUTC().toISO();
-    const end = nowJst.endOf('month').toUTC().toISO();
+    const start = nowZoned.startOf('month').toUTC().toISO();
+    const end = nowZoned.endOf('month').toUTC().toISO();
     if (start && end) return { start, end };
   }
 
   if (normalized === StandardTimePeriod.YEARLY) {
-    const start = nowJst.startOf('year').toUTC().toISO();
-    const end = nowJst.endOf('year').toUTC().toISO();
+    const start = nowZoned.startOf('year').toUTC().toISO();
+    const end = nowZoned.endOf('year').toUTC().toISO();
     if (start && end) return { start, end };
   }
 

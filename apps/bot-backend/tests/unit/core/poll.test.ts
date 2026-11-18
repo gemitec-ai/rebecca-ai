@@ -1,5 +1,6 @@
 import { PollUseCase } from '../../../src/features/poll/usecase';
 import { PollController } from '../../../src/features/poll/controller';
+import { getBotChannelGuidelines } from '../../../src/core/channelPrompts';
 import { createMockDeps } from './testUtils';
 import { Request, Response } from 'express';
 
@@ -62,11 +63,11 @@ describe('X Poll & Result Reaction Unit Tests', () => {
       });
 
       expect(deps.gemini.generateStructuredPollPost).toHaveBeenCalledWith(
-        expect.stringContaining(deps.persona.getBasePrompt('timeline', 'ja')),
+        expect.stringContaining(getBotChannelGuidelines('timeline', deps.persona, 'ja')),
         expect.stringContaining('過去のアンケート質問 (選択肢: 選択肢A / 選択肢B)'),
       );
       expect(deps.gemini.generateStructuredPollPost).toHaveBeenCalledWith(
-        expect.any(String),
+        expect.stringContaining('【動的Few-Shotペルソナアンカー'),
         expect.stringContaining('【あなたの関心領域・好む話題】'),
       );
 
@@ -211,8 +212,12 @@ describe('X Poll & Result Reaction Unit Tests', () => {
       expect(result.tweetId).toBe('result_tweet_999');
 
       expect(deps.gemini.generateStructuredTimelinePost).toHaveBeenCalledWith(
-        expect.stringContaining(deps.persona.getBasePrompt('timeline', 'ja')),
+        expect.stringContaining(getBotChannelGuidelines('timeline', deps.persona, 'ja')),
         expect.stringContaining('1. 🎮 ゲーム・アニメ: 15票 (75%)\n2. 🍺 お酒・晩酌: 5票 (25%)'),
+      );
+      expect(deps.gemini.generateStructuredTimelinePost).toHaveBeenCalledWith(
+        expect.stringContaining('【動的Few-Shotペルソナアンカー'),
+        expect.any(String),
       );
 
       expect(deps.xApi.tweet).toHaveBeenCalledWith(

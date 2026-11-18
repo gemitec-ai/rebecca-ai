@@ -393,7 +393,7 @@ describe('Integration Tests', () => {
             require('../../src/config').default.batchSecret = 'test_secret';
         });
         it('should process self-reflection successfully', async () => {
-            (firestore.getRecentTimelinePosts as jest.Mock).mockResolvedValueOnce(['post 1', 'post 2']);
+            (firestore.getRecentTimelinePosts as jest.Mock).mockResolvedValueOnce([{ text: 'post 1' }, { text: 'post 2' }]);
             (gemini.generateTimelineSummary as jest.Mock).mockResolvedValueOnce('New Timeline Summary');
 
             const response = await request(app).get('/batch/self-reflection').set('x-batch-secret', 'test_secret');

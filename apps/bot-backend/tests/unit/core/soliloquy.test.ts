@@ -1,4 +1,6 @@
-import { SoliloquyUseCase, getTimeOfDayGreetingContext } from '../../../src/features/soliloquy/usecase';
+import { formatTimeContextPeriodLabel, resolveTimeContextPeriod } from '@rebecca/prompt';
+import { getZonedDateParts } from '../../../src/utils/time';
+import { SoliloquyUseCase } from '../../../src/features/soliloquy/usecase';
 import { SoliloquyController } from '../../../src/features/soliloquy/controller';
 import { getValidatedTimezone } from '../../../src/config';
 import { createMockDeps } from './testUtils';
@@ -21,42 +23,18 @@ describe('Soliloquy Unit Tests', () => {
     (deps.xApi.tweet as jest.Mock).mockResolvedValue({ data: { id: 'soliloquy_tweet_1' } });
   });
 
-  describe('getTimeOfDayGreetingContext', () => {
-    it('should return morning context for 8:00', () => {
-      const morningDate = new Date('2026-09-03T08:00:00+09:00');
-      const res = getTimeOfDayGreetingContext(morningDate);
-      expect(res.period).toBe('朝');
-    });
+  describe('Shared @rebecca/prompt Timezone Period Resolution', () => {
+    it('should resolve unified localized time brackets across dayhours and custom timezones', () => {
+      const resolveLabel = (iso: string, tz = 'Asia/Tokyo') =>
+        formatTimeContextPeriodLabel(resolveTimeContextPeriod(getZonedDateParts(new Date(iso), tz).numericHour), 'ja');
 
-    it('should return noon context for 12:00', () => {
-      const noonDate = new Date('2026-09-03T12:00:00+09:00');
-      const res = getTimeOfDayGreetingContext(noonDate);
-      expect(res.period).toBe('昼');
-    });
-
-    it('should return evening context for 17:00', () => {
-      const eveningDate = new Date('2026-09-03T17:00:00+09:00');
-      const res = getTimeOfDayGreetingContext(eveningDate);
-      expect(res.period).toBe('夕方');
-    });
-
-    it('should return night context for 21:00', () => {
-      const nightDate = new Date('2026-09-03T21:00:00+09:00');
-      const res = getTimeOfDayGreetingContext(nightDate);
-      expect(res.period).toBe('夜');
-    });
-
-    it('should return midnight context for 2:00', () => {
-      const midnightDate = new Date('2026-09-03T02:00:00+09:00');
-      const res = getTimeOfDayGreetingContext(midnightDate);
-      expect(res.period).toBe('深夜');
-    });
-
-    it('should support custom timezone (e.g., America/New_York)', () => {
+      expect(resolveLabel('2026-09-03T06:00:00+09:00')).toBe('早朝');
+      expect(resolveLabel('2026-09-03T08:00:00+09:00')).toBe('朝');
+      expect(resolveLabel('2026-09-03T12:00:00+09:00')).toBe('昼');
+      expect(resolveLabel('2026-09-03T18:00:00+09:00')).toBe('夕方・夜');
+      expect(resolveLabel('2026-09-03T23:00:00+09:00')).toBe('深夜');
       // 12:00 UTC corresponds to 08:00 in America/New_York (EDT) -> 朝
-      const utcDate = new Date('2026-09-03T12:00:00Z');
-      const res = getTimeOfDayGreetingContext(utcDate, 'America/New_York');
-      expect(res.period).toBe('朝');
+      expect(resolveLabel('2026-09-03T12:00:00Z', 'America/New_York')).toBe('朝');
     });
   });
 

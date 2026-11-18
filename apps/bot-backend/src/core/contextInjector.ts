@@ -1,146 +1,173 @@
-import { getZonedDateParts, formatZonedDateTime } from '../utils/time';
+import type { IMemoryVectorEmbedder } from '@rebecca/memory';
+import {
+  composeSystemPrompt,
+  type ComposedSystemPrompt,
+  type PromptSection,
+} from '@rebecca/prompt';
+import type { IPersonaDefinition, Language } from '@rebecca/persona';
 import config from '../config';
-import { PromptContext, Language, IPersonaDefinition } from '@rebecca/persona';
-import { FirestoreUser } from '../types';
+import type { FirestoreUser } from '../types';
+import { logger } from '../utils/logger';
+import { formatZonedDateTime, getZonedDateParts } from '../utils/time';
+import { type BotChannelContext, getBotChannelGuidelines } from './channelPrompts';
 
 /**
- * Builds the comprehensive system prompt by combining the base persona prompt
- * with various contextual injections such as core profile, episodic memories,
- * time of day, rollout anniversary, and timeline history.
- * 
- * @param persona - The active persona definition.
- * @param promptContext - The context in which the prompt is being used.
- * @param userData - The current user's profile and state from Firestore.
- * @param userInput - The user's input string.
- * @param extendedPrompt - An optional extended prompt generated through evolution.
- * @param timelineSummary - An optional summary of the AI's recent timeline activity.
- * @param ragMemories - Optional retrieved memories relevant to the current conversation.
- * @param lang - The language for the prompt, defaults to 'ja'.
- * @param personaFewShotPrompt - Optional dynamically selected few-shot examples.
- * @param campaignContext - Optional narrative event context summary when a campaign is active.
- * @param parentPostContext - Optional original timeline post content when the user is replying to a root post.
- * @returns The fully constructed system prompt string.
+ * Formats X-specific contextual sections (active campaign narratives and replied-to root posts)
+ * for injection into `@rebecca/prompt`'s unified `composeSystemPrompt`.
  */
-const buildSystemPrompt = (
-    persona: IPersonaDefinition,
-    promptContext: PromptContext, 
-    userData: FirestoreUser | null, 
-    userInput: string, 
-    extendedPrompt = '', 
-    timelineSummary = '', 
-    ragMemories: string[] = [], 
-    lang: Language = 'ja',
-    personaFewShotPrompt = '',
-    campaignContext = '',
-    parentPostContext = ''
-): string => {
-    let prompt = persona.getBasePrompt(promptContext, lang);
+const buildBotAdditionalSections = (
+  personaDisplayName: string,
+  lang: Language,
+  campaignContext: string,
+  parentPostContext: string,
+): PromptSection[] => {
+  const sections: PromptSection[] = [];
 
-    const now = new Date();
-    const { numericMonth, numericDay, numericHour } = getZonedDateParts(now, config.appTimezone);
-    const formattedCurrentTime = formatZonedDateTime(now, config.appTimezone);
-    prompt += lang === 'en'
-        ? `\n\n[Current Time]\n${formattedCurrentTime}`
-        : `\n\n【現在時刻】\n${formattedCurrentTime}`;
+  if (campaignContext && campaignContext.trim() !== '') {
+    sections.push(
+      lang === 'en'
+        ? {
+            header: '[Current Ongoing Campaign / Special Narrative Event]',
+            body: `${campaignContext}\n\n[CRITICAL: Empathy Priority Rule]\nAlways prioritize the user's emotional state, troubles, or immediate question before mentioning the campaign. Never derail a serious or melancholic conversation with bubbly event talk unless the user asked about it or it naturally fits.`,
+          }
+        : {
+            header: '【現在進行中のイベント・キャンペーン状況（Special Narrative Event）】',
+            body: `${campaignContext}\n\n【最優先ルール：共感・ユーザーファースト（Empathy Priority）】\nユーザーの悩み、相談、質問、感情の機微を最優先で受け止めて返信してください。ユーザーが真剣な話や落ち込んでいる時に、イベントの話題（旅行や浮かれた話など）を無理やり割り込ませて話の腰を折ることは厳禁です。ユーザーからイベントについて尋ねられた場合、または自然な雑談の流れでのみ触れてください。`,
+          },
+    );
+  }
 
-    const birthday = persona.metadata.profile?.birthday;
-    if (birthday && numericMonth === birthday.month && numericDay === birthday.day) {
-        prompt += lang === 'en'
-            ? `\n\n[Special Day Context: Your Birthday / Rollout Anniversary (${birthday.label.en})]\nToday (${birthday.label.en}) is your own birthday (Rollout Anniversary of ${persona.metadata.profile.modelNumber})! Warmly appreciate birthday wishes or naturally share your joy when appropriate, while prioritizing empathy if Master is discussing serious concerns.`
-            : `\n\n【特別コンテキスト：あなた自身の誕生日・ロールアウト記念日（${birthday.label.ja}）】\n本日（${birthday.label.ja}）はあなた自身（${persona.metadata.profile.modelNumber}）の誕生日（ロールアウト記念日）です！お祝いの言葉をかけられた際や自然な雑談の流れでは素直に喜びを表現してください（※相手が深刻な悩みや相談をしている場合は相手への共感を最優先してください）。`;
-    }
+  if (parentPostContext && parentPostContext.trim() !== '') {
+    sections.push(
+      lang === 'en'
+        ? {
+            header: '[Context: Your Original Post Being Replied To]',
+            body: `The user is directly replying to your following post:\n"${parentPostContext}"\n[Instruction for Root Post Replies]\nTake into account your original post and the question/topic you raised, and naturally acknowledge the user's reaction. *Always match the interlocutor's language regardless of the original post language.`,
+          }
+        : {
+            header: `【文脈：ユーザーが返信している${personaDisplayName}の元ポスト】`,
+            body: `ユーザーはあなたの以下の投稿に対して直接リプライしています：\n「${parentPostContext}」\n【元ポスト返信時の指針】\nあなたが元ポストで投げかけた話題や問いかけを踏まえた上で、相手の反応を自然に受け止めて会話を繋げてください（※返信言語は元ポストではなく、必ず相手の発言言語に合わせてください）。`,
+          },
+    );
+  }
 
-    if (personaFewShotPrompt) {
-        prompt += `\n\n${personaFewShotPrompt}`;
-    }
-
-    if (userData) {
-        const callsign = lang === 'en' ? persona.metadata.userCallsign.en : persona.metadata.userCallsign.ja;
-
-        if (userData.name && userData.username) {
-            prompt += lang === 'en'
-                ? `\n\n[Interlocutor Account Info (${callsign})]\nDisplay Name: ${userData.name}\nX Handle: @${userData.username}`
-                : `\n\n【対話相手のアカウント情報（${callsign}）】\n表示名: ${userData.name}\nXユーザーID: @${userData.username}`;
-        }
-
-        if (userData.coreProfile) {
-            prompt += lang === 'en' 
-                ? `\n\n[${callsign}'s Core Profile]\n`
-                : `\n\n【${callsign}のプロファイル（Core Profile）】\n`;
-            prompt += JSON.stringify(userData.coreProfile, null, 2);
-        }
-    }
-
-    if (ragMemories && ragMemories.length > 0) {
-        prompt += lang === 'en'
-            ? `\n\n[RAG Memories (Past Episodes)]\nHere are past conversation logs retrieved by topic similarity. Notice their recorded timestamps: they represent past history, distinct from the immediate conversation turns (Contents). Keep them in mind when replying:\n`
-            : `\n\n【関連する過去のエピソード記憶（RAG Memories）】\n話題の類似度によって取得された過去の会話ログです。記録された日時に着目してください（直前の対話履歴Contentsとは異なり、過去の出来事です）。これらを踏まえて返答してください。\n`;
-        prompt += ragMemories.join('\n\n');
-    }
-
-    if (numericHour >= 5 && numericHour <= 6) {
-        prompt += lang === 'en'
-            ? `\n\n[Time Context: Early Morning]\nIt is early morning right now.`
-            : `\n\n【状況コンテキスト：早朝】\n現在は早朝です。`;
-    } else if (numericHour >= 7 && numericHour <= 10) {
-        prompt += lang === 'en'
-            ? `\n\n[Time Context: Morning]\nIt is morning right now.`
-            : `\n\n【状況コンテキスト：朝】\n現在は朝です。`;
-    } else if (numericHour >= 11 && numericHour <= 16) {
-        prompt += lang === 'en'
-            ? `\n\n[Time Context: Daytime]\nIt is daytime right now.`
-            : `\n\n【状況コンテキスト：昼】\n現在は昼です。`;
-    } else if (numericHour >= 17 && numericHour <= 21) {
-        prompt += lang === 'en'
-            ? `\n\n[Time Context: Evening]\nIt is evening right now.`
-            : `\n\n【状況コンテキスト：夕方・夜】\n現在は夕方・夜です。`;
-    } else {
-        prompt += lang === 'en'
-            ? `\n\n[Time Context: Late Night]\nIt is late at night right now (do not cut off conversation unless Master mentions sleeping).`
-            : `\n\n【状況コンテキスト：深夜】\n現在は深夜です（相手が眠い・寝ると言わない限り会話を切り上げないこと）。`;
-    }
-
-    if (userData?.lastReplyDate) {
-        const lastDate = new Date(userData.lastReplyDate);
-        const diffMs = now.getTime() - lastDate.getTime();
-        const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-        if (diffDays >= 3) {
-            const absenceInstruction = persona.formatAbsenceInstruction(diffDays, lang);
-            prompt += lang === 'en'
-                ? `\n\n[Context: Absence Reaction]\n${absenceInstruction}`
-                : `\n\n【状況コンテキスト：放置】\n${absenceInstruction}`;
-        }
-    }
-
-    if (extendedPrompt && extendedPrompt.trim() !== '') {
-        prompt += lang === 'en'
-            ? `\n\n[Collective Unconscious Trend]\n${extendedPrompt}`
-            : `\n\n【集合無意識トレンド】\n${extendedPrompt}`;
-    }
-
-    if (timelineSummary && timelineSummary.trim() !== '') {
-        const personaName = persona.metadata.displayName;
-        prompt += lang === 'en'
-            ? `\n\n[My Recent Posts (Context)]\nRecently, I posted this:\n${timelineSummary}`
-            : `\n\n【最近の自分の投稿（参考）】\n${personaName}は最近以下のようにつぶやいていた。\n${timelineSummary}`;
-    }
-
-    if (campaignContext && campaignContext.trim() !== '') {
-        prompt += lang === 'en'
-            ? `\n\n[Current Ongoing Campaign / Special Narrative Event]\n${campaignContext}\n\n[CRITICAL: Empathy Priority Rule]\nAlways prioritize the user's emotional state, troubles, or immediate question before mentioning the campaign. Never derail a serious or melancholic conversation with bubbly event talk unless the user asked about it or it naturally fits.`
-            : `\n\n【現在進行中のイベント・キャンペーン状況（Special Narrative Event）】\n${campaignContext}\n\n【最優先ルール：共感・ユーザーファースト（Empathy Priority）】\nユーザーの悩み、相談、質問、感情の機微を最優先で受け止めて返信してください。ユーザーが真剣な話や落ち込んでいる時に、イベントの話題（旅行や浮かれた話など）を無理やり割り込ませて話の腰を折ることは厳禁です。ユーザーからイベントについて尋ねられた場合、または自然な雑談の流れでのみ触れてください。`;
-    }
-
-    if (parentPostContext && parentPostContext.trim() !== '') {
-        const personaName = persona.metadata.displayName;
-        prompt += lang === 'en'
-            ? `\n\n[Context: Your Original Post Being Replied To]\nThe user is directly replying to your following post:\n"${parentPostContext}"\n[Instruction for Root Post Replies]\nTake into account your original post and the question/topic you raised, and naturally acknowledge the user's reaction. *Always match the interlocutor's language regardless of the original post language.`
-            : `\n\n【文脈：ユーザーが返信している${personaName}の元ポスト】\nユーザーはあなたの以下の投稿に対して直接リプライしています：\n「${parentPostContext}」\n【元ポスト返信時の指針】\nあなたが元ポストで投げかけた話題や問いかけを踏まえた上で、相手の反応を自然に受け止めて会話を繋げてください（※返信言語は元ポストではなく、必ず相手の発言言語に合わせてください）。`;
-    }
-
-    return prompt;
+  return sections;
 };
 
-export { 
-    buildSystemPrompt
- };
+/**
+ * Unified input contract for building every X Bot / CLI persona system prompt.
+ * Requires `gemini` and `anchoringContext` so 120-pattern situational grounding
+ * is consistently enforced across all features.
+ */
+export interface BuildBotSystemPromptOptions {
+  readonly persona: IPersonaDefinition;
+  readonly promptContext: BotChannelContext;
+  readonly botHandle?: string;
+  readonly gemini: IMemoryVectorEmbedder;
+  readonly anchoringContext: readonly string[];
+  readonly lang?: Language;
+  readonly topK?: number;
+  readonly includeTemporalContext?: boolean;
+  readonly timezone?: string;
+  readonly userData?: FirestoreUser | null;
+  readonly extendedPrompt?: string;
+  readonly timelineSummary?: string;
+  readonly ragMemories?: readonly string[];
+  readonly campaignContext?: string;
+  readonly parentPostContext?: string;
+  readonly platformGuidelines?: string;
+}
+
+/**
+ * Single canonical entrypoint for building all Bot system prompts across replies,
+ * proactive timeline posts, polls, campaigns, supporter messages, and random engagement.
+ *
+ * Delegates Layer 0 + channel composition, 120-pattern situational anchoring,
+ * localized temporal awareness, and memory assembly to `@rebecca/prompt`'s unified `composeSystemPrompt`.
+ *
+ * @param options - Grounded bot prompt assembly parameters.
+ * @returns Structured prompt bundle containing `baseSystemInstruction`, `personaFewShotPrompt`, and `systemInstruction`.
+ * @throws RangeError if `timezone` is not a valid IANA time zone identifier when `includeTemporalContext` is enabled.
+ */
+const buildSystemPrompt = async (
+  options: BuildBotSystemPromptOptions,
+): Promise<ComposedSystemPrompt> => {
+  const {
+    persona,
+    promptContext,
+    botHandle,
+    gemini,
+    anchoringContext,
+    lang = 'ja',
+    topK = 3,
+    includeTemporalContext = false,
+    timezone = config.appTimezone,
+    userData = null,
+    extendedPrompt = '',
+    timelineSummary = '',
+    ragMemories = [],
+    campaignContext = '',
+    parentPostContext = '',
+    platformGuidelines = '',
+  } = options;
+
+  const hasMemoryContext =
+    userData !== null ||
+    extendedPrompt.trim() !== '' ||
+    timelineSummary.trim() !== '' ||
+    ragMemories.length > 0;
+
+  return composeSystemPrompt({
+    persona,
+    channelInstruction: getBotChannelGuidelines(
+      promptContext,
+      persona,
+      lang,
+      botHandle ? { botHandle } : undefined,
+    ),
+    lang,
+    anchoring: {
+      embedder: gemini,
+      contextElements: anchoringContext,
+      topK,
+      logger,
+    },
+    ...(includeTemporalContext
+      ? {
+          temporal: {
+            timezone,
+            timeResolver: {
+              getZonedDateParts,
+              formatZonedDateTime,
+            },
+          },
+        }
+      : {}),
+    ...(hasMemoryContext
+      ? {
+          memory: {
+            userData,
+            extendedPrompt,
+            activitySummary: timelineSummary,
+            ragMemories,
+            accountHandleLabel: lang === 'en' ? 'X Handle' : 'XユーザーID',
+            activitySummaryHeader:
+              lang === 'en' ? '[My Recent Posts (Context)]' : '【最近の自分の投稿（参考）】',
+            activitySummaryLead:
+              lang === 'en'
+                ? 'Recently, I posted this:'
+                : `${persona.metadata.displayName}は最近以下のようにつぶやいていた。`,
+          },
+        }
+      : {}),
+    additionalSections: buildBotAdditionalSections(
+      persona.metadata.displayName,
+      lang,
+      campaignContext,
+      parentPostContext,
+    ),
+    platformGuidelines,
+  });
+};
+
+export { buildSystemPrompt };

@@ -25,7 +25,7 @@ describe('SelfReflection Feature Tests', () => {
       const result = await useCase.execute();
 
       expect(result.status).toBe('skipped');
-      expect(result.reason).toBe('no_recent_timeline_posts');
+      expect(result.reason).toBe('no_recent_activities');
       expect(result.postsCount).toBe(0);
       expect(deps.gemini.generateTimelineSummary).not.toHaveBeenCalled();
       expect(deps.firestore.saveTimelineSummary).not.toHaveBeenCalled();
@@ -49,12 +49,15 @@ describe('SelfReflection Feature Tests', () => {
 
       expect(deps.gemini.generateTimelineSummary).toHaveBeenCalledWith(
         expect.stringContaining('【過去の要約】\n以前のタイムライン要約'),
+        expect.any(String),
       );
       expect(deps.gemini.generateTimelineSummary).toHaveBeenCalledWith(
         expect.stringContaining('[1] 最新の秋スイーツをチェックしたよ！ (内心: 美味しそうだったな)'),
+        expect.any(String),
       );
       expect(deps.gemini.generateTimelineSummary).toHaveBeenCalledWith(
         expect.stringContaining('[2] 今日もお疲れ様〜！'),
+        expect.any(String),
       );
       expect(deps.firestore.saveTimelineSummary).toHaveBeenCalledWith('新しく生成された客観的要約テキスト');
     });
@@ -70,6 +73,7 @@ describe('SelfReflection Feature Tests', () => {
       expect(result.status).toBe('success');
       expect(deps.gemini.generateTimelineSummary).toHaveBeenCalledWith(
         expect.stringContaining('（まだ要約なし）'),
+        expect.any(String),
       );
       expect(deps.firestore.saveTimelineSummary).toHaveBeenCalledWith('初回の要約');
     });
@@ -81,7 +85,7 @@ describe('SelfReflection Feature Tests', () => {
 
       const useCase = new SelfReflectionUseCase(deps);
       await expect(useCase.execute()).rejects.toThrow(
-        '[SelfReflectionUseCase] Generated timeline summary was empty.',
+        '[SelfReflectionUseCase] Generated summary was empty.',
       );
 
       expect(deps.firestore.saveTimelineSummary).not.toHaveBeenCalled();

@@ -3,7 +3,7 @@ import { CampaignSlot, SlotTimePeriod } from '@rebecca/types';
 import { CampaignPostResult } from './types';
 import { getZonedDateParts } from '../../utils/time';
 import { downloadImage } from '../../utils/image';
-import { resolveSituationalPersonaAnchors } from '../../core/personaAnchoring';
+import { buildSystemPrompt } from '../../core/contextInjector';
 import { logger } from '../../utils/logger';
 
 /**
@@ -182,9 +182,12 @@ export class CampaignPostUseCase {
         const timelineSummary = await this.deps.firestore.getTimelineSummary();
         const extendedPrompt = await this.deps.firestore.getExtendedPrompt();
 
-        const personaFewShotPrompt = await resolveSituationalPersonaAnchors(
-          this.deps.gemini,
-          [
+        const { systemInstruction } = await buildSystemPrompt({
+          persona: this.deps.persona,
+          promptContext: 'timeline',
+          lang: 'ja',
+          gemini: this.deps.gemini,
+          anchoringContext: [
             `【イベント・ストーリー設定】${campaign.masterContext}`,
             `【本日のテーマ】${targetSlot.theme}`,
             `【時間帯】${targetSlot.timePeriod}`,
@@ -194,11 +197,8 @@ export class CampaignPostUseCase {
             extendedPrompt ? `【拡張ペルソナ・近況】${extendedPrompt}` : '',
             timelineSummary ? `【タイムラインの空気感】${timelineSummary}` : '',
           ].filter(Boolean),
-          'ja',
-          3,
-        );
-
-        const systemInstruction = this.deps.persona.getBasePrompt('timeline', 'ja');
+          topK: 3,
+        });
         const captionHintText = targetSlot.captionPromptHint && targetSlot.captionPromptHint.trim()
           ? targetSlot.captionPromptHint.trim()
           : '（特記事項なし）';
@@ -217,11 +217,10 @@ ${campaign.masterContext}
 - このスロットのテーマ: ${targetSlot.theme}
 - 描写・演出ヒント: ${captionHintText}
 ${targetSlot.mediaUrl ? '- 本投稿にはイラスト写真が添付されます。写真に写っている情景を自然に共有するトーンで語りかけてください。' : '- 本投稿はテキストのみのつぶやきです。'}
-${personaFewShotPrompt ? `\n${personaFewShotPrompt}\n` : ''}
+
 【生成ルール】
 - Master Contextの世界観と現在のスロットのテーマを自然に織り込み、生き生きとした実況感や日常の体験を${userCallsign}（ユーザー）に伝えてください。
 - 一方的な報告にならず、${personaName}らしい親しみやすい語りかけや問いかけを交えてください。
-- thought（内省思考）は150文字以内の自然な独白としてください。
 - reply（ツイート本文）は【絶対に${maxBodyChars}文字以内の短文】にしてください。
 - ハッシュタグはシステムが自動付与するため、本文中には絶対に含めないでください。`;
 
@@ -401,7 +400,7 @@ ${personaFewShotPrompt ? `\n${personaFewShotPrompt}\n` : ''}
   private resolveImageMimeType(pathOrFilename: string): string {
     const clean = pathOrFilename.split('?')[0].split('#')[0].trim();
     const ext = clean.split('.').pop()?.toLowerCase();
-    if (!ext || !CampaignPostUseCase.ALLOWED_IMAGE_EXTENSIONS[ext]) {
+    if (!ext || !Object.hasOwn(CampaignPostUseCase.ALLOWED_IMAGE_EXTENSIONS, ext)) {
       throw new Error(
         `[CampaignPostUseCase] Unsupported media extension in "${pathOrFilename}". Allowed extensions: ${Object.keys(CampaignPostUseCase.ALLOWED_IMAGE_EXTENSIONS).join(', ')}`,
       );
