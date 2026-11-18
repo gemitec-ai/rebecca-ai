@@ -112,13 +112,20 @@ ${defaultHashtag ? `- ハッシュタグ（${defaultHashtag} 等）はシステ�
       const matchedItem = anniversaries.find((a) => postText.includes(a.name));
       const anniversaryTitle = matchedItem ? matchedItem.name : undefined;
 
+      const matchedSafeName = matchedItem
+        ? sanitizeUntrustedPromptText(matchedItem.name, 120, { collapseHorizontalRules: true })
+        : '';
+      const matchedSafeDesc = matchedItem?.description
+        ? sanitizeUntrustedPromptText(matchedItem.description, 400, { collapseHorizontalRules: true })
+        : '';
+
       const pipelineResult = await executePostPipeline(this.deps, {
         postType: 'anniversary',
         text: postText,
         thought,
         imageContext: matchedItem
-          ? `記念日: ${matchedItem.name}\n内容: ${matchedItem.description}\nタイムライン状況: ${timelineSummary}`
-          : `タイムライン状況: ${timelineSummary}`,
+          ? `記念日: ${matchedSafeName}\n内容: ${matchedSafeDesc}\nタイムライン状況: ${safeTimelineSummary}`
+          : `タイムライン状況: ${safeTimelineSummary}`,
         metadata: {
           anniversaryTitle,
         },

@@ -185,11 +185,15 @@ ${defaultHashtag ? `- ハッシュタグ（${defaultHashtag} 等）はシステ�
         chosenEmbedding = await this.deps.gemini.generateEmbedding(matchedNews.headline);
       }
 
+      const matchedSafeTitle = sanitizeUntrustedPromptText(matchedNews.headline, 300, {
+        collapseHorizontalRules: true,
+      });
+
       const pipelineResult = await executePostPipeline(this.deps, {
         postType: 'news',
         text: postText,
         thought,
-        imageContext: `ニュース見出し: ${matchedNews.headline}\nタイムライン状況: ${timelineSummary ?? ''}`,
+        imageContext: `ニュース見出し: ${matchedSafeTitle}\nタイムライン状況: ${safeTimelineSummary}`,
         metadata: {
           newsTitle,
           newsEmbedding: chosenEmbedding,

@@ -199,7 +199,7 @@ ${safeDescription}
         postType: 'random_engagement',
         text: finalText,
         thought,
-        imageContext: `相手ユーザー: @${username}\nプロフィール: ${description}\n投稿コンテキスト: ${tweetContext}`,
+        imageContext: `相手ユーザー: @${safeUsername}\nプロフィール: ${safeDescription}\n投稿コンテキスト: ${tweetContext}`,
       });
 
       await this.deps.firestore.updateLastListInteraction(targetUser.id);

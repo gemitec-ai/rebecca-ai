@@ -120,7 +120,7 @@ ${defaultHashtag ? `- ハッシュタグ（${defaultHashtag} 等）はシステ�
         postType: 'soliloquy',
         text: postText,
         thought,
-        imageContext: timelineSummary,
+        imageContext: safeTimelineSummary,
       });
 
       return {
