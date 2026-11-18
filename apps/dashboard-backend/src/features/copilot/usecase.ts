@@ -10,7 +10,11 @@ import {
 import { GoogleGenAI } from '@google/genai';
 import { config, isValidTimezone } from '../../config';
 import { getActivePersona } from '@rebecca/persona';
-import { formatTurnWithInnerThought, getWorkingMemory } from '@rebecca/memory';
+import {
+  formatTurnWithInnerThought,
+  getWorkingMemory,
+  sanitizeUntrustedPromptText,
+} from '@rebecca/memory';
 import { composeSystemPrompt, formatZonedDateTime } from '@rebecca/prompt';
 import { type DialogueTurn, runToolDialogueLoop } from '@rebecca/tools';
 import { TimelineRepository } from '../timeline/repository';
@@ -19,11 +23,7 @@ import { AssetsRepository } from '../assets/repository';
 import { SystemMemoryRepository } from '../system-memory/repository';
 import { SupportersRepository } from '../supporters/repository';
 import { CopilotToolRegistry } from './toolRegistry';
-import {
-  CopilotToolContext,
-  sanitizeBoundedTimestamp,
-  sanitizeCopilotInputText,
-} from './types';
+import { CopilotToolContext, sanitizeBoundedTimestamp } from './types';
 import { createCopilotEmbeddingProvider } from './embeddingAdapter';
 import { getCopilotChannelContext } from './prompts';
 import { createCopilotDialogueClient } from './geminiDialogueAdapter';
@@ -82,9 +82,9 @@ const buildInitialDialogueTurns = (
 ): DialogueTurn[] => {
   const sanitizedHistory = rawHistory
     .map((h) => {
-      const cleanText = typeof h.text === 'string' ? sanitizeCopilotInputText(h.text, 2000) : '';
+      const cleanText = typeof h.text === 'string' ? sanitizeUntrustedPromptText(h.text, 2000) : '';
       const cleanThought =
-        typeof h.thought === 'string' ? sanitizeCopilotInputText(h.thought, 500) : '';
+        typeof h.thought === 'string' ? sanitizeUntrustedPromptText(h.thought, 500) : '';
       const validTime = sanitizeBoundedTimestamp(h.time);
       return {
         role: h.role === 'model' ? ('model' as const) : ('user' as const),
@@ -166,7 +166,7 @@ export class CopilotUseCase {
     const activePersona = getActivePersona(config.persona.activeId);
     const targetTimezone = resolveTargetTimezone(request.timezone);
     const rawContext = typeof request.currentContext === 'string' ? request.currentContext : '';
-    const currentContext = sanitizeCopilotInputText(rawContext, 500) || 'Global Dashboard';
+    const currentContext = sanitizeUntrustedPromptText(rawContext, 500) || 'Global Dashboard';
     const rawHistory = request.history ?? [];
     const isEn = request.language === 'en';
     const targetLang = isEn ? 'en' : 'ja';

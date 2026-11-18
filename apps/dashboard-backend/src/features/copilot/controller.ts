@@ -1,7 +1,8 @@
+import { sanitizeUntrustedPromptText } from '@rebecca/memory';
 import { Request, Response } from 'express';
 import { isValidTimezone } from '../../config';
 import { CopilotUseCase } from './usecase';
-import { sanitizeBoundedTimestamp, sanitizeCopilotInputText } from './types';
+import { sanitizeBoundedTimestamp } from './types';
 import { getTraceHeader, handleControllerError } from '../../utils/httpError';
 
 /**
@@ -61,15 +62,15 @@ export class CopilotController {
     const traceHeader = getTraceHeader(req);
     const boundedMessage = message.trim().slice(0, 2000);
     const sanitizedContext =
-      typeof currentContext === 'string' ? sanitizeCopilotInputText(currentContext, 500) : '';
+      typeof currentContext === 'string' ? sanitizeUntrustedPromptText(currentContext, 500) : '';
     const boundedContext = sanitizedContext.length > 0 ? sanitizedContext : undefined;
     const boundedHistory = Array.isArray(history)
       ? history.slice(-20).map((item: { role?: string; text?: string; thought?: string; time?: string }) => {
           const validTime = sanitizeBoundedTimestamp(item?.time);
           const cleanText =
-            typeof item?.text === 'string' ? sanitizeCopilotInputText(item.text, 2000) : '';
+            typeof item?.text === 'string' ? sanitizeUntrustedPromptText(item.text, 2000) : '';
           const cleanThought =
-            typeof item?.thought === 'string' ? sanitizeCopilotInputText(item.thought, 500) : '';
+            typeof item?.thought === 'string' ? sanitizeUntrustedPromptText(item.thought, 500) : '';
           return {
             role: item?.role === 'model' ? ('model' as const) : ('user' as const),
             text: cleanText,
