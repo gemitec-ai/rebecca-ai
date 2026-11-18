@@ -1,7 +1,7 @@
 import { Request, Response } from 'express';
 import { isValidTimezone } from '../../config';
 import { CopilotUseCase } from './usecase';
-import { handleControllerError } from '../../utils/httpError';
+import { getTraceHeader, handleControllerError } from '../../utils/httpError';
 
 /**
  * Controller for handling Copilot-related requests.
@@ -57,31 +57,41 @@ export class CopilotController {
       validatedTimezone = timezone.trim();
     }
 
+    const traceHeader = getTraceHeader(req);
     const boundedMessage = message.trim().slice(0, 2000);
+    const boundedContext =
+      typeof currentContext === 'string' && currentContext.trim().length > 0
+        ? currentContext.trim().slice(0, 500)
+        : undefined;
     const boundedHistory = Array.isArray(history)
-      ? history.slice(-20).map((item: { role?: string; text?: string; thought?: string; time?: string }) => ({
-          role: item?.role === 'model' ? ('model' as const) : ('user' as const),
-          text: typeof item?.text === 'string' ? item.text.trim().slice(0, 2000) : '',
-          ...(typeof item?.thought === 'string' && item.thought.trim().length > 0
-            ? { thought: item.thought.trim().slice(0, 500) }
-            : {}),
-          ...(typeof item?.time === 'string' && item.time.trim().length > 0
-            ? { time: item.time.trim() }
-            : {}),
-        }))
+      ? history.slice(-20).map((item: { role?: string; text?: string; thought?: string; time?: string }) => {
+          const rawTime = typeof item?.time === 'string' ? item.time.trim() : '';
+          const validTime =
+            rawTime.length > 0 && rawTime.length <= 64 && !Number.isNaN(Date.parse(rawTime))
+              ? rawTime
+              : undefined;
+          return {
+            role: item?.role === 'model' ? ('model' as const) : ('user' as const),
+            text: typeof item?.text === 'string' ? item.text.trim().slice(0, 2000) : '',
+            ...(typeof item?.thought === 'string' && item.thought.trim().length > 0
+              ? { thought: item.thought.trim().slice(0, 500) }
+              : {}),
+            ...(validTime !== undefined ? { time: validTime } : {}),
+          };
+        })
       : undefined;
 
     try {
       const response = await this.useCase.processChat({
         message: boundedMessage,
-        ...(currentContext !== undefined ? { currentContext } : {}),
+        ...(boundedContext !== undefined ? { currentContext: boundedContext } : {}),
         ...(boundedHistory !== undefined ? { history: boundedHistory } : {}),
         ...(language !== undefined ? { language } : {}),
         ...(validatedTimezone !== undefined ? { timezone: validatedTimezone } : {}),
       });
       res.json(response);
     } catch (err) {
-      handleControllerError(res, err, 'Failed to process chat');
+      handleControllerError(res, err, 'Failed to process chat', undefined, traceHeader);
     }
   }
 }

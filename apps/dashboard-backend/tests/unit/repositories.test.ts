@@ -163,6 +163,58 @@ describe('Dashboard Backend Repositories Unit Tests', () => {
       expect(resCustomFieldAsc.data).toHaveLength(2);
     });
 
+    it('getAll should support createdAt and followersCount sorting and ignore unsafe prototype keys', async () => {
+      const mockDocs = [
+        {
+          id: 'user_old_popular',
+          data: () => ({
+            name: 'Popular Old',
+            username: 'old_pop',
+            firstSeen: '2026-01-01T00:00:00Z',
+            followersCount: 5000,
+            interactions: 10,
+          }),
+        },
+        {
+          id: 'user_new_quiet',
+          data: () => ({
+            name: 'Quiet New',
+            username: 'new_quiet',
+            createdAt: '2026-10-01T00:00:00Z',
+            followersCount: 120,
+            interactions: 1,
+          }),
+        },
+      ];
+      (usersRepo as any).collections.users.get = jest.fn().mockResolvedValue({
+        empty: false,
+        docs: mockDocs,
+      });
+      (usersRepo as any).collections.conversationLogs.where = jest.fn().mockReturnValue({
+        count: jest.fn().mockReturnValue({
+          get: jest.fn().mockResolvedValue({ data: () => ({ count: 0 }) }),
+        }),
+      });
+
+      const byCreatedDesc = await usersRepo.getAll({ sortBy: 'createdAt', sortOrder: 'desc' });
+      expect(byCreatedDesc.data.map((u) => u.id)).toEqual(['user_new_quiet', 'user_old_popular']);
+
+      const byCreatedAsc = await usersRepo.getAll({ sortBy: 'createdAt', sortOrder: 'asc' });
+      expect(byCreatedAsc.data.map((u) => u.id)).toEqual(['user_old_popular', 'user_new_quiet']);
+
+      const byFollowersDesc = await usersRepo.getAll({ sortBy: 'followersCount', sortOrder: 'desc' });
+      expect(byFollowersDesc.data.map((u) => u.id)).toEqual(['user_old_popular', 'user_new_quiet']);
+
+      const byFollowersAsc = await usersRepo.getAll({ sortBy: 'followersCount', sortOrder: 'asc' });
+      expect(byFollowersAsc.data.map((u) => u.id)).toEqual(['user_new_quiet', 'user_old_popular']);
+
+      // Prototype / arbitrary keys must safely fall back to allowlisted interactions ordering
+      for (const unsafeKey of ['constructor', 'toString', '__proto__']) {
+        const resSafe = await usersRepo.getAll({ sortBy: unsafeKey, sortOrder: 'desc' });
+        expect(resSafe.data.map((u) => u.id)).toEqual(['user_old_popular', 'user_new_quiet']);
+      }
+    });
+
     it('getById should return user details with chat history or null', async () => {
       (usersRepo as any).collections.users.doc = jest.fn().mockReturnValue({
         get: jest.fn().mockResolvedValueOnce({

@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { UsersUseCase } from './usecase';
+import { resolveUserSortBy } from './repository';
 import { UserStatus } from '@rebecca/types';
 import { handleControllerError } from '../../utils/httpError';
 
@@ -26,7 +27,8 @@ export class UsersController {
     const page = req.query.page ? parseInt(req.query.page as string, 10) : 1;
     const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : 30;
     const search = req.query.search as string | undefined;
-    const sortBy = req.query.sortBy as string | undefined;
+    const rawSortBy = typeof req.query.sortBy === 'string' ? req.query.sortBy.trim() : undefined;
+    const sortBy = rawSortBy ? resolveUserSortBy(rawSortBy) : undefined;
     const sortOrder = req.query.sortOrder as 'asc' | 'desc' | undefined;
     const period = req.query.period as 'monthly' | 'yearly' | 'all-time' | undefined;
     const date = req.query.date as string | undefined;

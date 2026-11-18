@@ -65,7 +65,7 @@ const resolveTargetTimezone = (requestedTimezone?: string): string => {
   }
   const trimmed = requestedTimezone.trim();
   if (!isValidTimezone(trimmed)) {
-    throw new Error(`Invalid IANA timezone "${requestedTimezone}".`);
+    throw new UpstreamApiError(`Invalid IANA timezone "${requestedTimezone}".`, 400);
   }
   return trimmed;
 };
@@ -138,6 +138,8 @@ export class CopilotUseCase {
    *
    * @param request - Chat request containing message, UI context, conversation history, language, and timezone.
    * @returns Structured CopilotResponse with private `thought` (Honne), spoken `reply` (Tatemae), attachments, and chips.
+   * @throws UpstreamApiError with status `400` when `message` is empty or `timezone` is not a valid IANA time zone identifier.
+   * @throws Error if structured synthesis returns an incomplete Honne/Tatemae payload.
    */
   async processChat(request: CopilotRequest): Promise<CopilotResponse> {
     const userMessage = (request.message ?? '').trim();

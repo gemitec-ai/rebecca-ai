@@ -63,6 +63,25 @@ describe('Dashboard Backend Controllers Unit Tests', () => {
         date: '2026-08'
       });
       expect(res.json).toHaveBeenCalled();
+
+      // Normalize unknown/prototype sortBy keys while forwarding allowlisted keys
+      const { req: reqUnsafe, res: resUnsafe } = createMockReqRes({
+        query: { sortBy: 'constructor' },
+      });
+      useCase.getAllUsers.mockResolvedValueOnce({ data: [], meta: { totalItems: 0, totalPages: 0, currentPage: 1, limit: 30 } });
+      await controller.getAll(reqUnsafe, resUnsafe);
+      expect(useCase.getAllUsers).toHaveBeenLastCalledWith(
+        expect.objectContaining({ sortBy: 'interactions' })
+      );
+
+      const { req: reqCreatedAt, res: resCreatedAt } = createMockReqRes({
+        query: { sortBy: 'createdAt' },
+      });
+      useCase.getAllUsers.mockResolvedValueOnce({ data: [], meta: { totalItems: 0, totalPages: 0, currentPage: 1, limit: 30 } });
+      await controller.getAll(reqCreatedAt, resCreatedAt);
+      expect(useCase.getAllUsers).toHaveBeenLastCalledWith(
+        expect.objectContaining({ sortBy: 'createdAt' })
+      );
     });
 
     it('getAll should handle errors and respond with 500', async () => {
@@ -605,6 +624,51 @@ describe('Dashboard Backend Controllers Unit Tests', () => {
         await controller.chat(reqInvalid, resInvalid);
         expect(resInvalid.status).toHaveBeenCalledWith(400);
       }
+    });
+
+    it('chat should trim/bound currentContext, filter invalid history[].time, and map 400 UpstreamApiError with trace header', async () => {
+      const { UpstreamApiError } = await import('@rebecca/types');
+      const longContext = `  ${'A'.repeat(600)}  `;
+      const { req, res } = createMockReqRes({
+        body: {
+          message: 'Check context',
+          currentContext: longContext,
+          history: [
+            { role: 'user', text: 'turn 1', time: 'not-a-valid-date' },
+            { role: 'model', text: 'turn 2', time: `${'2026-11-18T00:00:00Z'.padEnd(70, ' ')}` },
+            { role: 'user', text: 'turn 3', time: ' 2026-11-18T01:00:00Z ' },
+          ],
+        },
+      });
+      useCase.processChat.mockResolvedValueOnce({ reply: 'Checked', actionRequired: null, suggestionChips: [] });
+      await controller.chat(req, res);
+      expect(useCase.processChat).toHaveBeenCalledWith({
+        message: 'Check context',
+        currentContext: 'A'.repeat(500),
+        history: [
+          { role: 'user', text: 'turn 1' },
+          { role: 'model', text: 'turn 2', time: '2026-11-18T00:00:00Z' },
+          { role: 'user', text: 'turn 3', time: '2026-11-18T01:00:00Z' },
+        ],
+      });
+
+      // Whitespace-only currentContext is omitted cleanly
+      const { req: reqBlankCtx, res: resBlankCtx } = createMockReqRes({
+        body: { message: 'Ping', currentContext: '   ' },
+      });
+      useCase.processChat.mockResolvedValueOnce({ reply: 'Pong', actionRequired: null, suggestionChips: [] });
+      await controller.chat(reqBlankCtx, resBlankCtx);
+      expect(useCase.processChat).toHaveBeenLastCalledWith({ message: 'Ping' });
+
+      // Propagates 400 UpstreamApiError from useCase and respects trace header
+      const { req: reqErr, res: resErr } = createMockReqRes({
+        body: { message: 'Ping' },
+        headers: { 'x-cloud-trace-context': 'trace-copilot-001' },
+      });
+      useCase.processChat.mockRejectedValueOnce(new UpstreamApiError('Bad timezone', 400));
+      await controller.chat(reqErr, resErr);
+      expect(resErr.status).toHaveBeenCalledWith(400);
+      expect(resErr.json).toHaveBeenCalledWith({ error: 'Bad timezone' });
     });
   });
 

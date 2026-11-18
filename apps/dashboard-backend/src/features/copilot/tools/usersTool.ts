@@ -2,6 +2,12 @@ import type { ToolDeclaration } from '@rebecca/tools';
 import { CopilotAttachment, UserDetail } from '@rebecca/types';
 import { CopilotTool, CopilotToolContext, CopilotToolExecutionResult, resolveBoundedLimit } from '../types';
 
+const ALLOWED_TOOL_USER_SORT_FIELDS: ReadonlySet<string> = new Set([
+  'interactions',
+  'followersCount',
+  'createdAt',
+]);
+
 /**
  * Tool for querying user profiles by handle, interaction rank, or moderation status.
  */
@@ -46,10 +52,15 @@ export class SearchUsersTool implements CopilotTool {
     const limit = resolveBoundedLimit(params.limit, 20);
     const cleanQuery = typeof params.query === 'string' ? params.query.replace(/^@/, '').trim() : '';
 
+    const sortBy =
+      typeof params.sortBy === 'string' && ALLOWED_TOOL_USER_SORT_FIELDS.has(params.sortBy)
+        ? params.sortBy
+        : 'interactions';
+
     const result = await context.usersRepo.getAll({
       search: cleanQuery.length > 0 ? cleanQuery : undefined,
       limit,
-      sortBy: typeof params.sortBy === 'string' ? params.sortBy : 'interactions',
+      sortBy,
       sortOrder: 'desc'
     });
 

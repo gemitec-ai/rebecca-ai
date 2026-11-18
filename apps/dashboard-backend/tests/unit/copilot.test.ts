@@ -19,7 +19,7 @@ import { UsersRepository } from '../../src/features/users/repository';
 import { AssetsRepository } from '../../src/features/assets/repository';
 import { SystemMemoryRepository } from '../../src/features/system-memory/repository';
 import { SupportersRepository } from '../../src/features/supporters/repository';
-import { AssetStatus, UserStatus } from '@rebecca/types';
+import { AssetStatus, UpstreamApiError, UserStatus } from '@rebecca/types';
 
 const mockGenerateContent = jest.fn();
 const mockEmbedContent = jest.fn();
@@ -211,9 +211,18 @@ describe('Copilot Autonomous Agent Suite (Redesign v3)', () => {
       const tool = new SearchUsersTool();
       const res = await tool.execute({ query: '@cyber', status: 'ACTIVE' }, { usersRepo, isEn: false });
 
-      expect(usersRepo.getAll).toHaveBeenCalledWith(expect.objectContaining({ search: 'cyber' }));
+      expect(usersRepo.getAll).toHaveBeenCalledWith(expect.objectContaining({ search: 'cyber', sortBy: 'interactions' }));
       expect(res.attachments?.[0].type).toBe('user');
       expect(res.attachments?.[0].title).toContain('Cyber Master');
+
+      await tool.execute({ sortBy: 'createdAt', limit: 5 }, { usersRepo, isEn: true });
+      expect(usersRepo.getAll).toHaveBeenLastCalledWith(expect.objectContaining({ sortBy: 'createdAt' }));
+
+      await tool.execute({ sortBy: 'followersCount', limit: 5 }, { usersRepo, isEn: true });
+      expect(usersRepo.getAll).toHaveBeenLastCalledWith(expect.objectContaining({ sortBy: 'followersCount' }));
+
+      await tool.execute({ sortBy: 'constructor', limit: 5 }, { usersRepo, isEn: true });
+      expect(usersRepo.getAll).toHaveBeenLastCalledWith(expect.objectContaining({ sortBy: 'interactions' }));
     });
 
     it('SearchAssetsTool should use vector search when semanticQuery is given and api key is present', async () => {
@@ -910,6 +919,22 @@ describe('Copilot Autonomous Agent Suite (Redesign v3)', () => {
       expect(res.actionRequired).toBeDefined();
       expect(res.actionRequired?.payload['userId']).toBe('user_999');
       expect(res.actionRequired?.payload['handle']).toBe('@vip_user');
+
+      // When name equals username and lookup used numeric ID, label falls back to @handle rather than raw numeric ID
+      const numericUsersRepo = {
+        getById: jest.fn().mockResolvedValue({
+          id: '987654321',
+          username: 'vip_handle',
+          name: 'vip_handle',
+          status: UserStatus.ACTIVE,
+        }),
+      } as unknown as UsersRepository;
+      const numericRes = await tool.execute(
+        { actionType: 'BLOCK_USER', targetId: '987654321' },
+        { usersRepo: numericUsersRepo, isEn: true },
+      );
+      expect(numericRes.actionRequired?.title).toBe('Block User @vip_handle');
+      expect(numericRes.actionRequired?.description).toContain('@vip_handle');
     });
 
     it('should return error when DELETE_POST target is empty or not found in timelineRepo', async () => {
@@ -1216,14 +1241,24 @@ describe('Copilot Autonomous Agent Suite (Redesign v3)', () => {
       }
     });
 
-    it('should fail fast on invalid timezone passed directly to CopilotUseCase.processChat', async () => {
+    it('should fail fast with HTTP 400 UpstreamApiError on invalid timezone passed directly to CopilotUseCase.processChat', async () => {
       const copilot = new CopilotUseCase();
       await expect(
         copilot.processChat({
           message: 'Hello',
           timezone: 'Invalid/Timezone',
         }),
-      ).rejects.toThrow(/Invalid IANA timezone/);
+      ).rejects.toMatchObject({
+        name: 'UpstreamApiError',
+        statusCode: 400,
+        message: expect.stringMatching(/Invalid IANA timezone/),
+      });
+      await expect(
+        copilot.processChat({
+          message: 'Hello',
+          timezone: 'Invalid/Timezone',
+        }),
+      ).rejects.toBeInstanceOf(UpstreamApiError);
     });
 
     it('should complete final constrained synthesis without unmatched functionCall when tools run through max rounds', async () => {

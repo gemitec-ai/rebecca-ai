@@ -196,7 +196,12 @@ export const tryAcceptDirectCopilotStep = (
 
 /**
  * Pure final parser invoked after `runToolDialogueLoop` completes constrained synthesis (`declarations: []`).
- * Throws fail-fast if `thought` or `reply` is missing/empty.
+ *
+ * @param rawText - Raw synthesized response string from Gemini.
+ * @param accumulatedAttachments - Tool-emitted entity attachments collected across turns.
+ * @param proposedAction - Pending HITL action returned by `propose_destructive_action`, if any.
+ * @returns Validated `CopilotResponse` with `thought`, `reply`, attachments, action, and chips.
+ * @throws Error if `thought` or `reply` is missing or whitespace-only.
  */
 export const parseFinalCopilotResponse = (
   rawText: string,

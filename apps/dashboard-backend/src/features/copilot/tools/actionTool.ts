@@ -75,6 +75,7 @@ export class ProposeDestructiveActionTool implements CopilotTool {
           };
         }
         let resolvedId = resolvedIdCandidate;
+        let resolvedUserHandle = '';
         let resolvedHandle = cleanTarget
           ? (cleanTarget.startsWith('@') ? cleanTarget : `@${cleanTarget}`)
           : '';
@@ -96,7 +97,8 @@ export class ProposeDestructiveActionTool implements CopilotTool {
 
           if (directUser) {
             resolvedId = directUser.id;
-            resolvedHandle = directUser.username ? `@${directUser.username}` : `@${directUser.id}`;
+            resolvedUserHandle = directUser.username ? `@${directUser.username}` : '';
+            resolvedHandle = resolvedUserHandle || `@${directUser.id}`;
             resolvedName = directUser.name && directUser.name.length > 0 ? directUser.name : resolvedHandle;
           } else if (typeof context.usersRepo.getAll === 'function') {
             const searchRes = await context.usersRepo.getAll({ search: resolvedId, limit: 5 });
@@ -118,7 +120,8 @@ export class ProposeDestructiveActionTool implements CopilotTool {
 
             if (exactMatch) {
               resolvedId = exactMatch.id;
-              resolvedHandle = exactMatch.username ? `@${exactMatch.username}` : `@${exactMatch.id}`;
+              resolvedUserHandle = exactMatch.username ? `@${exactMatch.username}` : '';
+              resolvedHandle = resolvedUserHandle || `@${exactMatch.id}`;
               resolvedName = exactMatch.name && exactMatch.name.length > 0 ? exactMatch.name : resolvedHandle;
             } else {
               const candidateSummary = candidates
@@ -144,7 +147,7 @@ export class ProposeDestructiveActionTool implements CopilotTool {
 
         const userLabel = hasDistinctName
           ? `${resolvedName} (${resolvedHandle})`
-          : cleanTarget;
+          : (resolvedUserHandle || cleanTarget);
 
         if (actionType === 'BLOCK_USER') {
           impactLevel = 'danger';
