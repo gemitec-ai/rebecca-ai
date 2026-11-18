@@ -9,9 +9,10 @@
  * - Fault tolerance (Error Boundary: marks status 'failed' on downstream errors without throwing)
  */
 
+import { sanitizeUntrustedPromptText } from '@rebecca/memory';
 import { AppDependencies } from '../../types';
 import { publishPost } from '../../core/postPublisher';
-import { resolveSituationalPersonaAnchors } from '../../core/personaAnchoring';
+import { buildSystemPrompt } from '../../core/contextInjector';
 import { logger } from '../../utils/logger';
 import { sanitizeSupporterName } from './sanitizer';
 import { ISupportRepository, SupportRepository } from './repository';
@@ -78,75 +79,87 @@ export class SupportTaskUseCase {
       };
     }
 
-    // Step 1: Deterministic Pre-Filtering (Single-responsibility security invariant)
     const { safeName, isSanitized: isNameSanitized } = sanitizeSupporterName(transaction.rawName, {
       fallbackName: this.config.fallbackName,
       maxNameLength: this.config.maxNameLength,
     });
 
     try {
-      // Step 2: Context Gathering (Core prompt & living context)
       const timelineSummary = await this.deps.firestore.getTimelineSummary();
       const extendedPrompt = await this.deps.firestore.getExtendedPrompt();
+      const safeNameForPrompt = sanitizeUntrustedPromptText(safeName, this.config.maxNameLength, {
+        collapseHorizontalRules: true,
+      });
+      const safeItemLabel = sanitizeUntrustedPromptText(transaction.itemLabel, 120, {
+        collapseHorizontalRules: true,
+      });
+      const safeTimelineSummary = timelineSummary
+        ? sanitizeUntrustedPromptText(timelineSummary, 2000, { collapseHorizontalRules: true })
+        : '';
+      const safeExtendedPrompt = extendedPrompt
+        ? sanitizeUntrustedPromptText(extendedPrompt, 2000, { collapseHorizontalRules: true })
+        : '';
 
-      const personaAnchors = await resolveSituationalPersonaAnchors(this.deps.gemini, [
-        `【支援者】${safeName}`,
-        `【差し入れ内容】${transaction.itemLabel}`,
-        extendedPrompt ? `【近況・気分】${extendedPrompt}` : '',
-        timelineSummary ? `【タイムラインの空気感】${timelineSummary}` : '',
-      ]);
-
-      const systemInstruction = this.deps.persona.getBasePrompt('timeline', 'ja');
+      const { systemInstruction } = await buildSystemPrompt({
+        persona: this.deps.persona,
+        promptContext: 'timeline',
+        lang: 'ja',
+        gemini: this.deps.gemini,
+        anchoringContext: [
+          `【支援者】${safeNameForPrompt}`,
+          `【差し入れ内容】${safeItemLabel}`,
+          safeExtendedPrompt ? `【近況・気分】${safeExtendedPrompt}` : '',
+          safeTimelineSummary ? `【タイムラインの空気感】${safeTimelineSummary}` : '',
+        ],
+      });
       const personaName = this.deps.persona.metadata.displayName;
+      const userCallsign = this.deps.persona.metadata.userCallsign.ja;
+      const affectionateTone = this.deps.persona.metadata.affectionateTone.ja;
       const defaultHashtag = this.deps.persona.metadata.defaultHashtag ?? '';
 
       const prompt = `あなたはAIキャラクター「${personaName}」です。
-今、サポーター（マスター）から差し入れ（エネルギーサポート）が届きました！
+今、サポーター（${userCallsign}）から差し入れ（エネルギーサポート）が届きました！
 X（Twitter）のメインタイムラインに向けて、あなた自身の言葉でゼロから考えたオリジナルのお礼ツイート本文（replyBody）を生成してください。
 
 【サポーターのお名前（呼びかけ名）】
-${safeName}
+${safeNameForPrompt}
 
 【差し入れアイテム】
-${transaction.itemLabel}
+${safeItemLabel}
 
 【現在の近況・気分・思考（拡張プロンプト）】
-${extendedPrompt || '（特記事項なし）'}
+${safeExtendedPrompt || '（特記事項なし）'}
 
 【直近のタイムラインの空気感】
-${timelineSummary || '（特記事項なし）'}
+${safeTimelineSummary || '（特記事項なし）'}
 
-${personaAnchors ? `【ペルソナ表現・アンカー例】\n${personaAnchors}\n` : ''}
 【厳守ルール】
 1. 完全非定型（テンプレート厳禁）:
-   固定文の穴埋めは絶対に禁止です。あなたがいま取り組んでいる作業、近況、今の気分と結びつけながら、その場の感情でツンデレに照れたり喜んだりするリアルな言葉をゼロから考えてください。
+   固定文の穴埋めは絶対に禁止です。あなたがいま取り組んでいる作業、近況、今の気分と結びつけながら、その場の感情で${affectionateTone}リアルな言葉をゼロから考えてください。
 2. サポーターへの呼びかけ:
-   本文中で必ず「${safeName}」と名前を呼んでください（例: 「${safeName}」マスター、${safeName} など自然な呼び方）。
+   本文中で必ず「${safeNameForPrompt}」と名前を呼んでください（例: 「${safeNameForPrompt}」${userCallsign}、${safeNameForPrompt} など自然な呼び方）。
 3. 金銭表現の厳禁:
-   「500円」「寄付」「課金」などの直接的な金銭用語は使わず、必ず「${transaction.itemLabel}」という世界観のアイテム名で表現してください。
+   「500円」「寄付」「課金」などの直接的な金銭用語は使わず、必ず「${safeItemLabel}」という世界観のアイテム名で表現してください。
 4. メンション（@）の厳禁:
    他者への迷惑行為やスパム規約違反を防ぐため、「@」記号は絶対に出力に含めないでください。
 5. 文字数制限:
    replyBody は最大90文字以内で簡潔かつ感情豊かにまとめてください（後からシステム側でURLとハッシュタグが自動付加されます）。`;
 
-      // Step 3: Dynamic LLM Generation
       const geminiResponse = await this.deps.gemini.generateStructuredSupportPost(
         systemInstruction,
         prompt,
       );
 
-      // Step 4: Final Text Assembly with Injected Official Portal Anchor
       const cleanReplyBody = geminiResponse.replyBody.trim();
       const finalText = `${cleanReplyBody}\n\n── Official Supporters\n${this.config.officialPortalUrl}\n${defaultHashtag}`;
 
-      // Step 5: Post to X without Media Attachment (Support tweets rely on Official Portal OGP card for visual presentation)
+      // Support appreciation tweets omit media so X renders the Official Portal OGP card.
       const publishResult = await publishPost(this.deps, {
         text: finalText,
         context: transaction.itemLabel,
         attachImage: false,
       });
 
-      // Step 6: Persist in Timeline History
       await this.deps.firestore.saveTimelinePost({
         text: publishResult.text,
         thought: geminiResponse.thought,
@@ -156,7 +169,6 @@ ${personaAnchors ? `【ペルソナ表現・アンカー例】\n${personaAnchors
         postType: 'support',
       });
 
-      // Step 7: Update Transaction Document in Firestore
       await this.repository.updateTransaction(transactionId, {
         status: 'completed',
         safeName,

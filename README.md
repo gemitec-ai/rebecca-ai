@@ -69,6 +69,9 @@ graph TD
         Types[packages/types]
         DB[packages/db]
         Persona[packages/persona]
+        Memory[packages/memory]
+        Prompt[packages/prompt]
+        Tools[packages/tools]
 
     end
     
@@ -178,7 +181,10 @@ POLL_DURATION_MINUTES=1380
 
 - **`packages/types`**: Shared TypeScript definitions, interaction schemas, and global configurations.
 - **`packages/db`**: Shared database repository classes and connection pool managers.
-- **`packages/persona`**: The core repository for Rebecca's persona definition prompts and JST-focused system rules.
+- **`packages/persona`**: Pure character identity master specs, Layer 0 synthesis, and situational few-shot patterns.
+- **`packages/memory`**: Pure cognitive memory engine (`@rebecca/memory`) providing Tatemae/Honne working memory, Layer 1 Global Evolution, Layer 2 Self-Reflection, Layer 3 Dreaming consolidation, vector/RAG primitives, and asymmetric memory overlay.
+- **`packages/prompt`**: Channel-agnostic prompt building blocks (`@rebecca/prompt`) providing localized clock helpers, situational few-shot anchoring, granular memory/profile section formatters, and declarative prompt assembly (`assemblePromptSections`, `composeSystemPrompt`).
+- **`packages/tools`**: Zero-dependency, multi-provider tool contract and dialogue orchestration package (`@rebecca/tools`) providing JSON Schema declarations, `IWebSearchProvider`, `PersonaToolRegistry`, and `runToolDialogueLoop` (`ILLMToolDialogueClient`).
 
 
 ## Global Monorepo Operations

@@ -8,7 +8,7 @@ The `bot-backend` is the core execution engine of Rebecca AI, operating as a ser
 
 ### 1. Triple-Buffer Memory System
 Rebecca implements a multi-tiered memory architecture to keep prompts highly relevant while maintaining computational cost efficiency:
-- **Layer 0 (Core Persona Prompt)**: Immutable, hardcoded prompt defining Rebecca's core identity, gyaru slang, and social rules. Loaded directly from `@rebecca/persona`.
+- **Layer 0 (Core Persona Prompt)**: Immutable core identity synthesized dynamically from structured persona metadata (`IPersonaDefinition.getCoreIdentityPrompt()` in `@rebecca/persona`), anchored with vector-matched few-shot behavioral patterns (`@rebecca/persona`), and assembled with channel/context layers via `@rebecca/prompt` (`composeSystemPrompt`).
 - **Layer 1 (Extended Persona Tuning)**: Dynamic behavioral tunings. Updated automatically by the background "Evolution" batch (`/batch/evolution`) based on recent multi-user conversation trends.
 - **Layer 2 (Global Timeline Summary)**: Dynamic global summary of what Rebecca has posted, providing a shared context of her timeline. Updated automatically by the dedicated "Self-Reflection" batch (`/batch/self-reflection`) with fail-fast protections.
 - **User Core Profile (Long-Term Memory)**: Consolidated user preferences, relationship dynamics, and factual traits synthesized per-user by the "Dreaming" batch (`/batch/dreaming`) with 4.5s throttling.
@@ -35,7 +35,7 @@ Prompt contexts are dynamically modified before sending requests to the Gemini A
 
 ### 5. Proactive Image Attachment & Vision
 - Automatically analyzes uploaded graphics using `gemini-3.1-flash-lite` (Vision mode) and generates alt-text metadata.
-- Alt-text captions are vectorized using `text-embedding-004` and stored in Firestore.
+- Alt-text captions are vectorized using `gemini-embedding-2` and stored in Firestore.
 - Proactive timeline updates query these embeddings using Firestore Vector Search (KNN) to attach contextually relevant images to auto-generated posts.
 
 ### 6. Campaign Narrative Event Dispatcher
@@ -45,7 +45,7 @@ Prompt contexts are dynamically modified before sending requests to the Gemini A
 - Integrates with `CampaignGuard` to automatically suppress routine soliloquy, anniversary, and poll posts while a campaign is running to avoid timeline spam.
 
 ### 7. Interactive X Poll & Result Reaction Engine
-- **Persona-Grounded Poll Creation (`/batch/poll/create`)**: Fetches up to 30 past polls from Firestore for direct prompt deduplication and uses Gemini Structured Outputs (`{ thought, reply, options }`) grounded in the active persona's core prompt (`getBasePrompt`), `metadata.interests`, `timelineSummary`, and `extendedPrompt` to publish a 3-to-4 choice X poll (without media attachment due to X API v2 mutual exclusion between `poll` and `media`).
+- **Persona-Grounded Poll Creation (`/batch/poll/create`)**: Fetches up to 30 past polls from Firestore for direct prompt deduplication and uses Gemini Structured Outputs (`{ thought, reply, options }`) grounded in the active persona's unified anchored system prompt (`buildSystemPrompt`), `metadata.interests`, `timelineSummary`, and `extendedPrompt` to publish a 3-to-4 choice X poll (without media attachment due to X API v2 mutual exclusion between `poll` and `media`).
 - **Configurable Poll Duration**: Controlled via `POLL_DURATION_MINUTES` (default `1380` minutes / 23 hours, clamped to X API bounds `5..10080`).
 - **Idempotent Result Quote Post (`/batch/poll/result`)**: Queries the latest pending poll (`pollResultStatus === 'pending'`), inspects live `voting_status` and vote tallies from X API v2 (`expansions=attachments.poll_ids`), and when `votingStatus === 'closed'` with $\ge 1$ total votes, publishes a Quote Post (`quote_tweet_id`) reacting to the final tally and marks `pollResultStatus = 'posted'`.
 

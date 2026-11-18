@@ -7,7 +7,7 @@ info:
     
     ### Timezones
     All datetimes are returned in ISO-8601 UTC format (with `Z` suffix).
-    Aggregation endpoints (like `/posts`) handle JST (Japan Standard Time, UTC+09:00) conversions internally when using the `period` and `isoDate` query parameters to prevent date boundary alignment bugs.
+    Aggregation endpoints (like `/posts`) align `period` and `isoDate` boundary calculations to the configured application IANA timezone (`APP_TIMEZONE`, defaulting to `Asia/Tokyo` / JST) to prevent date boundary alignment bugs.
   version: 1.0.0
 servers:
   - url: http://localhost:8081/api/v1
@@ -87,7 +87,18 @@ paths:
           required: false
           schema:
             type: string
-            enum: [interactions, username, id, lastSeen]
+            enum:
+              - interactions
+              - daily_reply_count
+              - username
+              - id
+              - lastSeen
+              - last_reply_date
+              - lastInteraction
+              - createdAt
+              - firstSeen
+              - followersCount
+            default: interactions
         - name: sortOrder
           in: query
           required: false
@@ -214,7 +225,7 @@ paths:
   /posts:
     get:
       summary: Retrieve timeline posts history
-      description: Retrieves paginated timeline posts, filtered by period and JST-aligned range.
+      description: Retrieves paginated timeline posts, filtered by period and configured application timezone range.
       parameters:
         - name: limit
           in: query
@@ -243,7 +254,7 @@ paths:
         - name: isoDate
           in: query
           required: false
-          description: JST-aligned date boundary parameter (e.g. "2026-07" for monthly, "2026" for yearly)
+          description: Application-timezone-aligned date boundary parameter (e.g. "2026-07" for monthly, "2026" for yearly)
           schema:
             type: string
         - name: sortBy
@@ -583,9 +594,13 @@ paths:
               schema:
                 $ref: '#/components/schemas/CopilotResponse'
         '400':
-          description: Missing or invalid message
+          description: Missing/invalid message or invalid timezone
+        '404':
+          description: Propagated upstream 4xx client error
         '500':
           description: Internal processing error
+        '502':
+          description: Upstream AI provider authentication/authorization failure (401/403)
 
   /settings:
     get:
@@ -1062,13 +1077,13 @@ components:
       properties:
         id:
           type: string
-          example: "1934600616791482369"
+          example: "user_001"
         username:
           type: string
-          example: "se_akina"
+          example: "taro_example"
         name:
           type: string
-          example: "AKINA"
+          example: "Taro Example"
         interactions:
           type: integer
           example: 2
@@ -1090,13 +1105,13 @@ components:
       properties:
         id:
           type: string
-          example: "1934600616791482369"
+          example: "user_001"
         username:
           type: string
-          example: "se_akina"
+          example: "taro_example"
         name:
           type: string
-          example: "AKINA"
+          example: "Taro Example"
         interactions:
           type: integer
           example: 2
@@ -1164,7 +1179,7 @@ components:
           example: p1
         tweetId:
           type: string
-          example: "1934600616791482369"
+          example: "tweet_001"
         time:
           type: string
           format: date-time
@@ -1224,7 +1239,7 @@ components:
       properties:
         id:
           type: string
-          example: "1934600616791482000"
+          example: "poll_001"
         options:
           type: array
           items:
@@ -1249,7 +1264,7 @@ components:
           example: p1
         tweetId:
           type: string
-          example: "1934600616791482369"
+          example: "tweet_001"
         time:
           type: string
           format: date-time
@@ -1295,13 +1310,13 @@ components:
       properties:
         id:
           type: string
-          example: "1934600616791482369"
+          example: "user_001"
         username:
           type: string
-          example: "se_akina"
+          example: "taro_example"
         name:
           type: string
-          example: "AKINA"
+          example: "Taro Example"
         interactions:
           type: integer
           example: 25
@@ -1410,12 +1425,19 @@ components:
                 enum: [user, model]
               text:
                 type: string
+              thought:
+                type: string
+                description: Internal persona monologue (Honne) persisted across turns for working memory continuity.
               time:
                 type: string
         language:
           type: string
           enum: [ja, en]
           example: "ja"
+        timezone:
+          type: string
+          description: Optional IANA time zone identifier configured in the frontend UI (defaults to server `APP_TIMEZONE` when omitted).
+          example: "America/New_York"
 
     CopilotResponse:
       type: object
@@ -1423,6 +1445,10 @@ components:
         - reply
         - suggestionChips
       properties:
+        thought:
+          type: string
+          description: Internal persona monologue (Honne) generated alongside the spoken reply.
+          example: "マスターがアクティブユーザーの動向を気にしているわね。データをもとに的確に支えてあげなきゃ。"
         reply:
           type: string
           example: "マスター、最近のアクティブユーザーの傾向を分析したわよ♡"
@@ -1544,6 +1570,10 @@ components:
         useEmulators:
           type: boolean
           example: true
+        appTimezone:
+          type: string
+          description: Default backend IANA time zone identifier.
+          example: "Asia/Tokyo"
         persona:
           type: object
           properties:

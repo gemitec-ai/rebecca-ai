@@ -33,7 +33,22 @@
         },
         {
           "type": "json",
+          "path": "packages/memory/package.json",
+          "jsonpath": "$.version"
+        },
+        {
+          "type": "json",
           "path": "packages/persona/package.json",
+          "jsonpath": "$.version"
+        },
+        {
+          "type": "json",
+          "path": "packages/prompt/package.json",
+          "jsonpath": "$.version"
+        },
+        {
+          "type": "json",
+          "path": "packages/tools/package.json",
           "jsonpath": "$.version"
         },
         {

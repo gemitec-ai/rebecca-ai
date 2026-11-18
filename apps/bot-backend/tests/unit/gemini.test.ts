@@ -51,6 +51,26 @@ describe('GeminiService Unit Tests', () => {
             mockGenerateContent.mockResolvedValueOnce({ text: 'invalid json' });
             await expect(gemini.generateDreaming('sys', [], {})).rejects.toThrow(SyntaxError);
         });
+
+        it('should fail fast if response text is empty', async () => {
+            const gemini = getGeminiService();
+            mockGenerateContent.mockResolvedValueOnce({ text: '   ' });
+            await expect(gemini.generateDreaming('sys', [], {})).rejects.toThrow(
+                'Gemini API returned empty Dreaming consolidation response',
+            );
+        });
+
+        it('should fail fast if parsed response is null or array', async () => {
+            const gemini = getGeminiService();
+            mockGenerateContent.mockResolvedValueOnce({ text: 'null' });
+            await expect(gemini.generateDreaming('sys', [], {})).rejects.toThrow(
+                'Gemini API returned non-object Dreaming consolidation response',
+            );
+            mockGenerateContent.mockResolvedValueOnce({ text: '[]' });
+            await expect(gemini.generateDreaming('sys', [], {})).rejects.toThrow(
+                'Gemini API returned non-object Dreaming consolidation response',
+            );
+        });
     });
 
     describe('generateStructuredNewsPost', () => {
@@ -537,6 +557,15 @@ describe('GeminiService Unit Tests', () => {
             expect(calledContents[0].parts[0].text).toContain('User message');
             expect(calledContents[1].parts[0].text).toContain('【思考・本音】AI thought');
             expect(calledContents[2].parts[0].text).toBe('AI reply no thought');
+
+            mockGenerateContent.mockResolvedValueOnce({
+                text: JSON.stringify({ thought: 'English note', reply: 'English reply' })
+            });
+            const resEn = await gemini.generateStructuredReply('System', history, 'Hello', 'en');
+            expect(resEn.reply).toBe('English reply');
+            const enContents = mockGenerateContent.mock.calls[1][0].contents;
+            expect(enContents[1].parts[0].text).toContain('[Inner Thought]AI thought');
+            expect(enContents[1].parts[0].text).toContain('[Spoken Reply]AI reply');
         });
 
         it('should throw error when rawText is empty or reply is empty', async () => {
@@ -606,6 +635,17 @@ describe('GeminiService Unit Tests', () => {
                 Object.assign(new Error('Resource exhausted'), { status: 429 }),
             );
             await expect(gemini.generateTimelineSummary(['post'])).rejects.toBeInstanceOf(UpstreamApiError);
+
+            mockGenerateContent.mockResolvedValueOnce({ text: '{}' });
+            expect(await gemini.auditEvolutionPrompt('cand', 'audit')).toEqual({
+                pass: false,
+                reason: 'Invalid audit JSON response',
+            });
+
+            mockGenerateContent.mockResolvedValueOnce({
+                text: JSON.stringify({ relevant: 'false', reason: 'Stringified' }),
+            });
+            expect(await gemini.verifyImageRelevance('caption', 'post')).toBe(false);
         });
     });
 
@@ -620,6 +660,8 @@ describe('GeminiService Unit Tests', () => {
             expect(await gemini.auditEvolutionPrompt('cand', 'audit')).toEqual({ pass: true });
             expect(await gemini.analyzeUserProfile('desc')).toEqual({});
             await expect(gemini.generateStructuredNewsPost('sys', 'prompt', ['news'])).rejects.toThrow('Gemini API client not initialized');
+            await expect(gemini.generateStructuredPollPost('sys', 'poll')).rejects.toThrow('Gemini API client not initialized');
+            await expect(gemini.generateStructuredSupportPost('sys', 'support')).rejects.toThrow('Gemini API client not initialized');
             await expect(gemini.generateStructuredTimelinePost('sys', 'soliloquy')).rejects.toThrow('Gemini API client not initialized');
             await expect(gemini.generateTimelineSummary(['post'])).rejects.toThrow('Gemini API client not initialized');
             expect(await gemini.detectLanguage('test')).toBe('ja');

@@ -1,4 +1,4 @@
-import { FunctionDeclaration, Type } from '@google/genai';
+import type { ToolDeclaration } from '@rebecca/tools';
 import { CopilotTool, CopilotToolContext, CopilotToolExecutionResult } from '../types';
 
 export type FeatureTopic = 'dreaming' | 'assets' | 'supporters' | 'campaigns' | 'users' | 'timeline';
@@ -31,14 +31,14 @@ export class GetFeatureGuideTool implements CopilotTool {
   readonly name = 'get_feature_guide';
   readonly description = 'Returns official system documentation and usage guides for dashboard features (dreaming, assets, supporters, campaigns, users, timeline).';
 
-  readonly declaration: FunctionDeclaration = {
+  readonly declaration: ToolDeclaration = {
     name: this.name,
     description: this.description,
     parameters: {
-      type: Type.OBJECT,
+      type: 'object',
       properties: {
         topic: {
-          type: Type.STRING,
+          type: 'string',
           description: 'Dashboard feature to query documentation for.',
           enum: ['dreaming', 'assets', 'supporters', 'campaigns', 'users', 'timeline']
         }
@@ -49,7 +49,7 @@ export class GetFeatureGuideTool implements CopilotTool {
 
   async execute(params: Record<string, unknown>, context: CopilotToolContext): Promise<CopilotToolExecutionResult> {
     const rawTopic = typeof params.topic === 'string' ? params.topic.toLowerCase() : '';
-    const topic: FeatureTopic = (rawTopic in GUIDES_JA) ? (rawTopic as FeatureTopic) : 'dreaming';
+    const topic: FeatureTopic = Object.hasOwn(GUIDES_JA, rawTopic) ? (rawTopic as FeatureTopic) : 'dreaming';
     const guideMap = context.isEn ? GUIDES_EN : GUIDES_JA;
     const content = guideMap[topic] ?? (context.isEn ? 'Feature documentation not found.' : '指定された機能のガイドが見つかりませんでした。');
 

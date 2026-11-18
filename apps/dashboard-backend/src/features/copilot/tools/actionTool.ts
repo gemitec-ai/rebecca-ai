@@ -1,5 +1,6 @@
-import { FunctionDeclaration, Type } from '@google/genai';
+import type { ToolDeclaration } from '@rebecca/tools';
 import { CopilotAction, CopilotActionType, UserDetail } from '@rebecca/types';
+import { logger } from '../../../utils/logger';
 import { CopilotTool, CopilotToolContext, CopilotToolExecutionResult } from '../types';
 
 const VALID_ACTIONS = new Set<CopilotActionType>([
@@ -19,23 +20,23 @@ export class ProposeDestructiveActionTool implements CopilotTool {
   readonly name = 'propose_destructive_action';
   readonly description = 'Proposes a safety-gated administrative operation (BLOCK_USER, UNBLOCK_USER, DELETE_POST, FORCE_DREAMING, REGENERATE_CAPTIONS, SYNC_POSTS, TRIGGER_REPLY) requiring explicit confirmation from the operator. For BLOCK_USER and UNBLOCK_USER, you MUST FIRST investigate the account using search_users to obtain the exact username/ID before calling this function. If the target account does not exist in the database, this function returns an error.';
 
-  readonly declaration: FunctionDeclaration = {
+  readonly declaration: ToolDeclaration = {
     name: this.name,
     description: this.description,
     parameters: {
-      type: Type.OBJECT,
+      type: 'object',
       properties: {
         actionType: {
-          type: Type.STRING,
+          type: 'string',
           description: 'Type of administrative operation: BLOCK_USER, UNBLOCK_USER, DELETE_POST, FORCE_DREAMING, REGENERATE_CAPTIONS, SYNC_POSTS, or TRIGGER_REPLY.',
           enum: ['BLOCK_USER', 'UNBLOCK_USER', 'DELETE_POST', 'FORCE_DREAMING', 'REGENERATE_CAPTIONS', 'SYNC_POSTS', 'TRIGGER_REPLY']
         },
         targetId: {
-          type: Type.STRING,
+          type: 'string',
           description: 'Target identifier: exact verified user handle/ID for BLOCK/UNBLOCK (must be investigated with search_users first), postId for DELETE_POST, or empty for system actions.'
         },
         reason: {
-          type: Type.STRING,
+          type: 'string',
           description: 'Brief reason or summary of why this action is being proposed.'
         }
       },
@@ -63,8 +64,21 @@ export class ProposeDestructiveActionTool implements CopilotTool {
     switch (actionType) {
       case 'BLOCK_USER':
       case 'UNBLOCK_USER': {
-        let resolvedId = cleanTarget.replace(/^@/, '');
-        let resolvedHandle = cleanTarget.startsWith('@') ? cleanTarget : `@${cleanTarget}`;
+        const resolvedIdCandidate = cleanTarget.replace(/^@+/, '');
+        if (cleanTarget.length > 0 && !resolvedIdCandidate) {
+          return {
+            data: {
+              error: isEn
+                ? 'Invalid targetId: please supply a non-empty user ID or @handle.'
+                : 'targetId が不正です。ユーザーIDまたは @ハンドル を指定してください。'
+            }
+          };
+        }
+        let resolvedId = resolvedIdCandidate;
+        let resolvedUserHandle = '';
+        let resolvedHandle = cleanTarget
+          ? (cleanTarget.startsWith('@') ? cleanTarget : `@${cleanTarget}`)
+          : '';
         let resolvedName = cleanTarget;
 
         if (cleanTarget && context.usersRepo) {
@@ -72,14 +86,19 @@ export class ProposeDestructiveActionTool implements CopilotTool {
           if (typeof context.usersRepo.getById === 'function') {
             try {
               directUser = await context.usersRepo.getById(resolvedId);
-            } catch {
+            } catch (err) {
+              logger.warn('Direct user lookup failed in actionTool, falling back to search', {
+                resolvedId,
+                error: err instanceof Error ? err.message : String(err),
+              });
               directUser = null;
             }
           }
 
           if (directUser) {
             resolvedId = directUser.id;
-            resolvedHandle = directUser.username ? `@${directUser.username}` : `@${directUser.id}`;
+            resolvedUserHandle = directUser.username ? `@${directUser.username}` : '';
+            resolvedHandle = resolvedUserHandle || `@${directUser.id}`;
             resolvedName = directUser.name && directUser.name.length > 0 ? directUser.name : resolvedHandle;
           } else if (typeof context.usersRepo.getAll === 'function') {
             const searchRes = await context.usersRepo.getAll({ search: resolvedId, limit: 5 });
@@ -101,8 +120,20 @@ export class ProposeDestructiveActionTool implements CopilotTool {
 
             if (exactMatch) {
               resolvedId = exactMatch.id;
-              resolvedHandle = exactMatch.username ? `@${exactMatch.username}` : `@${exactMatch.id}`;
+              resolvedUserHandle = exactMatch.username ? `@${exactMatch.username}` : '';
+              resolvedHandle = resolvedUserHandle || `@${exactMatch.id}`;
               resolvedName = exactMatch.name && exactMatch.name.length > 0 ? exactMatch.name : resolvedHandle;
+            } else {
+              const candidateSummary = candidates
+                .map((c) => `${c.name || '(no name)'} (@${c.username || c.id})`)
+                .join(', ');
+              return {
+                data: {
+                  error: isEn
+                    ? `No exact user match found for "${cleanTarget}". Ambiguous candidates: ${candidateSummary}. Please disambiguate with search_users first.`
+                    : `「${cleanTarget}」に完全一致するユーザーが見つかりませんでした（候補: ${candidateSummary}）。search_usersで正確なユーザーを特定してください。`,
+                },
+              };
             }
           }
         }
@@ -116,7 +147,7 @@ export class ProposeDestructiveActionTool implements CopilotTool {
 
         const userLabel = hasDistinctName
           ? `${resolvedName} (${resolvedHandle})`
-          : cleanTarget;
+          : (resolvedUserHandle || cleanTarget);
 
         if (actionType === 'BLOCK_USER') {
           impactLevel = 'danger';

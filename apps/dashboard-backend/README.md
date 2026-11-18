@@ -16,9 +16,13 @@ src/
 │   ├── assets/            # Media library management (Gemini auto-captions)
 │   ├── auth/              # Admin session authentication context
 │   ├── campaign/          # Narrative episodic campaign orchestration & slot dispatch
-│   ├── system-memory/     # Rebecca's multi-layered system memory (Dreaming trigger)
+│   ├── config/            # Public client runtime configuration & active persona metadata bootstrap
+│   ├── copilot/           # Admin Dashboard Copilot (ReAct tool loop + HITL action proposals)
+│   ├── settings/          # Admin global language and timezone preference endpoints
+│   ├── supporters/        # Active campaign and supporter contribution endpoints
+│   ├── system-memory/     # Persona multi-layered system memory & Dreaming trigger
 │   ├── timeline/          # Timeline post audit logs and bulk deletion
-│   └── users/             # Monitored master users list & chat history
+│   └── users/             # Monitored users list & chat history
 └── index.ts               # Server bootstrapping and module registration
 ```
 
@@ -44,6 +48,8 @@ Copy or configure the following environment variables in `.env` or pass them in 
 | `FIREBASE_AUTH_EMULATOR_HOST` | Host + Port for Firebase Auth Emulator | `127.0.0.1:9099` |
 | `BOT_BACKEND_URL` | Endpoint of the bot execution engine | `http://localhost:50051` |
 | `CORS_ALLOWED_ORIGINS` | Comma-separated allowed CORS origins | `http://localhost:4200` |
+| `APP_TIMEZONE` | Application IANA timezone for date filters and Copilot prompts | `Asia/Tokyo` |
+| `GEMINI_TIMEOUT_MS` | Gemini API request timeout in milliseconds | `60000` |
 
 
 ---
@@ -93,7 +99,7 @@ The complete specification is available in [openapi.yaml](./openapi.yaml).
 | | `PUT` | `/api/v1/users/status` | Bulk update user statuses (Active, Blocked, Muted) |
 | | `GET` | `/api/v1/users/{id}` | Get specific user details and paginated chat history |
 | | `PUT` | `/api/v1/users/{id}/memory` | Update a user's memory profile (RAG attributes) |
-| **Posts** | `GET` | `/api/v1/posts` | Paginated timeline posts with JST-aligned range filtering |
+| **Posts** | `GET` | `/api/v1/posts` | Paginated timeline posts with `APP_TIMEZONE`-aligned range filtering |
 | | `GET` | `/api/v1/posts/{id}` | Get specific timeline post detail |
 | | `DELETE` | `/api/v1/posts` | Bulk delete posts from Firestore & X (via Bot Worker HTTP API) |
 | **Images** | `GET` | `/api/v1/images` | Get paginated library image assets (alias: `/api/v1/assets`) |

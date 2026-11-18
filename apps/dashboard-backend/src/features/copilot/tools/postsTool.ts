@@ -1,6 +1,21 @@
-import { FunctionDeclaration, Type } from '@google/genai';
+import type { ToolDeclaration } from '@rebecca/tools';
 import { CopilotAttachment, PostLeaderboard } from '@rebecca/types';
-import { CopilotTool, CopilotToolContext, CopilotToolExecutionResult } from '../types';
+import { CopilotTool, CopilotToolContext, CopilotToolExecutionResult, resolveBoundedLimit } from '../types';
+
+const ALLOWED_POST_SORT_FIELDS: ReadonlySet<string> = new Set([
+  'impressions',
+  'likes',
+  'replies',
+  'createdAt',
+]);
+const ALLOWED_POST_PERIOD_PRESETS: ReadonlySet<string> = new Set([
+  'today',
+  'weekly',
+  'monthly',
+  'yearly',
+  'all-time',
+]);
+const RELATIVE_POST_PERIOD_REGEX = /^[1-9]\d*[dwmy]$/i;
 
 /**
  * Tool for querying and ranking timeline posts by metrics.
@@ -9,31 +24,32 @@ export class SearchTimelinePostsTool implements CopilotTool {
   readonly name = 'search_timeline_posts';
   readonly description = 'Searches and ranks timeline posts from the database by performance metrics (impressions, likes, replies, createdAt) across time periods.';
 
-  readonly declaration: FunctionDeclaration = {
+  readonly declaration: ToolDeclaration = {
     name: this.name,
     description: this.description,
     parameters: {
-      type: Type.OBJECT,
+      type: 'object',
       properties: {
         sortBy: {
-          type: Type.STRING,
+          type: 'string',
           description: 'Metric to rank by: impressions, likes, replies, or createdAt. Default is impressions.',
           enum: ['impressions', 'likes', 'replies', 'createdAt']
         },
         sortOrder: {
-          type: Type.STRING,
+          type: 'string',
           description: 'Sort direction: desc or asc. Default is desc.',
           enum: ['desc', 'asc']
         },
         period: {
-          type: Type.STRING,
+          type: 'string',
           description: "Time window for posts. Accepts standard presets ('today', 'weekly', 'monthly', 'yearly', 'all-time') or custom relative durations (e.g. '7d', '14d', '30d', '90d', '2w', '3m', '1y'). Default is 'all-time'."
         },
         limit: {
-          type: Type.INTEGER,
+          type: 'integer',
           description: 'Number of posts to return (1 to 20, default is 5).'
         }
-      }
+      },
+      required: []
     }
   };
 
@@ -42,15 +58,21 @@ export class SearchTimelinePostsTool implements CopilotTool {
       return { data: { error: 'TimelineRepository is not configured' } };
     }
 
-    const limit = Math.max(1, Math.min(Number(params.limit) || 5, 20));
-    const sortBy = typeof params.sortBy === 'string' ? params.sortBy : 'impressions';
+    const limit = resolveBoundedLimit(params.limit, 20);
+    const rawSortBy = typeof params.sortBy === 'string' ? params.sortBy.trim() : '';
+    const sortBy = ALLOWED_POST_SORT_FIELDS.has(rawSortBy) ? rawSortBy : 'impressions';
     const sortOrder = params.sortOrder === 'asc' ? 'asc' : 'desc';
-    const period = typeof params.period === 'string' ? params.period : 'all-time';
+    const rawPeriod = typeof params.period === 'string' ? params.period.trim().toLowerCase() : '';
+    const period =
+      ALLOWED_POST_PERIOD_PRESETS.has(rawPeriod) || RELATIVE_POST_PERIOD_REGEX.test(rawPeriod)
+        ? rawPeriod
+        : 'all-time';
 
     const result = await context.timelineRepo.getPosts({
       sortBy,
       sortOrder,
       period,
+      timezone: context.timezone,
       limit,
       page: 1
     });

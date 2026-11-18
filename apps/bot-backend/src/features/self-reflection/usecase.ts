@@ -1,3 +1,4 @@
+import { SelfReflectionEngine } from '@rebecca/memory';
 import { AppDependencies } from '../../types';
 import { SelfReflectionResult } from './types';
 import { logger } from '../../utils/logger';
@@ -10,12 +11,12 @@ export interface SelfReflectionConfig {
 }
 
 /**
- * Orchestrates Rebecca's self-reflection batch process.
- * Summarizes recent timeline events into Layer 2 long-term memory (system/persona.timeline_summary).
- * Enforces fail-fast semantics and ensures existing memory is never overwritten with blank data.
+ * Orchestrates the persona's self-reflection batch process (Layer 2).
+ * Delegates activity summarization and fail-fast guards to `@rebecca/memory`'s
+ * {@link SelfReflectionEngine} backed by X timeline Firestore and Gemini adapters.
  */
 export class SelfReflectionUseCase {
-  private readonly postLimit: number;
+  private readonly engine: SelfReflectionEngine;
 
   /**
    * Initializes a new instance of SelfReflectionUseCase.
@@ -24,10 +25,27 @@ export class SelfReflectionUseCase {
    * @param config - Optional configuration specifying the number of recent posts to summarize.
    */
   constructor(
-    private readonly deps: AppDependencies,
+    deps: AppDependencies,
     config?: SelfReflectionConfig,
   ) {
-    this.postLimit = config?.postLimit ?? 20;
+    this.engine = new SelfReflectionEngine(
+      {
+        store: {
+          getRecentActivities: (limit) => deps.firestore.getRecentTimelinePosts({ limit }),
+          getSummary: () => deps.firestore.getTimelineSummary(),
+          saveSummary: (summary) => deps.firestore.saveTimelineSummary(summary),
+        },
+        synthesizer: {
+          generateSummary: ({ prompt, systemInstruction }) =>
+            deps.gemini.generateTimelineSummary(prompt, systemInstruction),
+        },
+        personaDisplayName: deps.persona.metadata.displayName,
+        activitySectionLabel: '最近のツイート（古い順）',
+        logger,
+        logTag: '[SelfReflectionUseCase]',
+      },
+      config,
+    );
   }
 
   /**
@@ -37,48 +55,6 @@ export class SelfReflectionUseCase {
    * @throws Error if Gemini API fails or returns invalid/empty content, preventing data corruption.
    */
   async execute(): Promise<SelfReflectionResult> {
-    logger.info('[SelfReflectionUseCase] Starting timeline self-reflection');
-
-    const recentPosts = await this.deps.firestore.getRecentTimelinePosts({ limit: this.postLimit });
-    if (!recentPosts || recentPosts.length === 0) {
-      logger.info('[SelfReflectionUseCase] No recent timeline posts found. Skipping summarization');
-      return { status: 'skipped', reason: 'no_recent_timeline_posts', postsCount: 0 };
-    }
-
-    const previousSummary = await this.deps.firestore.getTimelineSummary();
-    const personaName = this.deps.persona.metadata.displayName;
-
-    const formattedPosts = recentPosts.map((post, index) => {
-      const thoughtSuffix = post.thought ? ` (内心: ${post.thought})` : '';
-      return `[${index + 1}] ${post.text}${thoughtSuffix}`;
-    });
-
-    const prompt = `【過去の要約】
-${previousSummary ? previousSummary : '（まだ要約なし）'}
-
-【${personaName}の最近のツイート（古い順）】
-${formattedPosts.join('\n')}`;
-
-    try {
-      const newSummary = await this.deps.gemini.generateTimelineSummary(prompt);
-      const trimmedSummary = newSummary ? newSummary.trim() : '';
-
-      if (trimmedSummary.length === 0) {
-        throw new Error('[SelfReflectionUseCase] Generated timeline summary was empty.');
-      }
-
-      await this.deps.firestore.saveTimelineSummary(trimmedSummary);
-      logger.info('[SelfReflectionUseCase] Timeline summary successfully updated');
-
-      return {
-        status: 'success',
-        summary: trimmedSummary,
-        previousSummary,
-        postsCount: recentPosts.length,
-      };
-    } catch (error) {
-      logger.error('[SelfReflectionUseCase] Timeline summary generation failed', error);
-      throw error;
-    }
+    return this.engine.execute();
   }
 }

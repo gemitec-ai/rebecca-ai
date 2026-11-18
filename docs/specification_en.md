@@ -9,6 +9,9 @@ This system is built with a highly scalable, fully serverless architecture that 
 - **Main Processing / API Endpoints**: Cloud Run (Node.js / Express) *Uses polling and scheduled batches instead of Webhooks due to X API Free Tier limitations.*
   - **Routing Separation**: Routes are completely separated into `batchRoutes` (for scheduled execution) and `workerRoutes` (for Cloud Tasks workers).
   - **Design Pattern**: Dependency Injection (DI) is used. Core logic does not depend directly on the infrastructure layer (e.g., Firestore, APIs) and instead accesses them via interfaces (`AppDependencies`).
+- **Shared Cognitive Core (`@rebecca/memory`)**: Channel-agnostic, persona-agnostic cognitive core (`packages/memory`) providing Tatemae/Honne working memory & turn reconstruction, core vectorization/RAG primitives, Layer 1 Global Evolution (`GlobalEvolutionEngine`), Layer 2 Self-Reflection (`SelfReflectionEngine`), Layer 3 Dreaming consolidation (`DreamingConsolidationEngine`), and asymmetric one-way memory overlay.
+- **Shared Prompt Building Blocks (`@rebecca/prompt`)**: Reusable prompt section builders and declarative assemblers (`packages/prompt`) combining `@rebecca/persona` Layer 0 identity with `@rebecca/memory` layers, localized temporal awareness, and situational few-shot anchoring.
+- **Shared Runtime Tools (`@rebecca/tools`)**: Zero-dependency, multi-provider tool contract and dialogue orchestration package (`packages/tools`) providing JSON Schema tool declarations, web lookup ports (`IWebSearchProvider`, `createSearchWebTool`), tool registry (`PersonaToolRegistry`), and Function Calling loop coordination (`runToolDialogueLoop`, `ILLMToolDialogueClient`).
 - **Asynchronous Queue (Delayed Execution)**: Cloud Tasks
 - **Database**: Firestore (NoSQL)
 - **Image Storage**: Cloud Storage (GCS)

@@ -1,37 +1,32 @@
 import {
-  getBasePrompt,
-  getCoreIdentityPrompt,
-  getDreamingPrompt,
-  persona,
   personaPatterns,
   precomputedPersonaPatternEmbeddings,
   REBECCA_METADATA,
+  rebeccaPersona,
   cosineSimilarity,
   findTopPersonaPatterns,
   buildPersonaFewShotPrompt,
-  getFormattedPersonaPatternsText,
   PERSONA_RESPONSE_SCHEMA,
+  createStructuredPersonaSchema,
+  parsePersonaJsonObject,
   parsePersonaResponse,
   cleanJsonString,
   getActivePersona
 } from '../src/index';
 
 describe('persona package exports verification', () => {
-  test('should export getBasePrompt, getCoreIdentityPrompt, and getDreamingPrompt functions', () => {
-    expect(typeof getBasePrompt).toBe('function');
-    expect(typeof getCoreIdentityPrompt).toBe('function');
-    expect(typeof getDreamingPrompt).toBe('function');
-  });
-
-  test('should export persona object with structured metadata, core identity, and patterns text', () => {
-    expect(persona).toBeDefined();
-    expect(persona.metadata).toBe(REBECCA_METADATA);
-    expect(persona.core.identity).toBe(getCoreIdentityPrompt('ja'));
-    expect(persona.core.identity).toContain('レベッカ');
-    expect(persona.core.identity).not.toContain('【コンテキスト：');
-    expect(persona.core.patternsText).toContain('#1 [究極の世話焼き＆日常サポート]');
-    expect(persona.core.patternsText).toContain('#120 [セカイとの繋がり＆AIとしての幸福]');
-    expect(getFormattedPersonaPatternsText()).toBe(persona.core.patternsText);
+  test('should expose active persona definition with metadata, core identity, dreaming prompt, and patterns text', () => {
+    const active = getActivePersona();
+    expect(active).toBe(rebeccaPersona);
+    expect(getActivePersona('   ')).toBe(rebeccaPersona);
+    expect(() => getActivePersona('unknown-persona')).toThrow('Unknown persona ID');
+    expect(active.metadata).toBe(REBECCA_METADATA);
+    const coreJa = active.getCoreIdentityPrompt('ja');
+    expect(coreJa).toContain('レベッカ');
+    expect(coreJa).not.toContain('【コンテキスト：');
+    const patternsText = active.getFormattedPatternsText();
+    expect(patternsText).toContain('#1 [究極の世話焼き＆日常サポート]');
+    expect(patternsText).toContain('#120 [セカイとの繋がり＆AIとしての幸福]');
   });
 
   describe('REBECCA_METADATA structured official master data verification', () => {
@@ -116,7 +111,8 @@ describe('persona package exports verification', () => {
     });
 
     test('getCoreIdentityPrompt should synthesize bilingual Layer 0 prompts directly from metadata', () => {
-      const jaCore = getCoreIdentityPrompt();
+      const active = getActivePersona();
+      const jaCore = active.getCoreIdentityPrompt('ja');
       expect(jaCore).toContain('ジェミテック社（Gemitec Inc.）');
       expect(jaCore).toContain('Unit-001');
       expect(jaCore).toContain('4月24日');
@@ -142,7 +138,7 @@ describe('persona package exports verification', () => {
       expect(jaCore).not.toContain('MITライセンス');
       expect(jaCore).not.toContain('）（');
 
-      const enCore = getCoreIdentityPrompt('en');
+      const enCore = active.getCoreIdentityPrompt('en');
       expect(enCore).toContain('developed by Gemitec Inc.');
       expect(enCore).not.toContain('Inc..');
       expect(enCore).not.toContain('""');
@@ -201,36 +197,23 @@ describe('persona package exports verification', () => {
     expect(pattern77?.sample_response).toContain('ワイヤレス給電スポット');
   });
 
-  test('getBasePrompt should return string with context for all branches including copilot', () => {
-    expect(getBasePrompt('reply', 'ja')).toContain('【文字数注釈・解説の禁止】');
-    expect(getBasePrompt('timeline', 'ja')).toContain('【文字数注釈の禁止】');
-    expect(getBasePrompt('random_engagement', 'ja')).toContain('【公開SNSにおける健全性と節度】');
-    expect(getBasePrompt('random_engagement', 'ja')).toContain('【Xプラットフォーム制約】');
-    expect(getBasePrompt('copilot', 'ja')).toContain('【コンテキスト：管理ダッシュボード・専属コパイロット対話】');
+  test('composePrompt should combine Layer 0 identity with host-supplied channel rules without embedding platform constraints', () => {
+    const active = getActivePersona();
+    const jaCoreOnly = active.composePrompt('', 'ja');
+    expect(jaCoreOnly).toBe(active.getCoreIdentityPrompt('ja'));
+    expect(jaCoreOnly).not.toContain('130文字');
+    expect(jaCoreOnly).not.toContain('@rebecca_ai_gal');
 
-    expect(getBasePrompt('reply', 'en')).toContain('[NO CHARACTER COUNT ANNOTATION]');
-    expect(getBasePrompt('timeline', 'en')).toContain('Do not include character count notes');
-    expect(getBasePrompt('random_engagement', 'en')).toContain('[Public Etiquette & Non-Coercive Stance]');
-    expect(getBasePrompt('random_engagement', 'en')).toContain('[No URLs]');
-    expect(getBasePrompt('copilot', 'en')).toContain('[Context: Admin Dashboard Copilot]');
-    expect(getBasePrompt('copilot', 'en')).toContain('Comprehensive Data Analytics');
+    const jaWithChannel = active.composePrompt('【カスタムルール】テスト指示', 'ja');
+    expect(jaWithChannel).toContain(active.getCoreIdentityPrompt('ja'));
+    expect(jaWithChannel.endsWith('\n\n【カスタムルール】テスト指示')).toBe(true);
 
-    expect(getBasePrompt('chat', 'ja')).toContain('【コンテキスト：マスターとの1対1対話】');
-    expect(getBasePrompt('chat', 'ja')).toContain('【対話履歴（Contents）と過去記憶（RAG）の活用】');
-    expect(getBasePrompt('chat', 'ja')).toContain('【情報検索】');
-    expect(getBasePrompt('chat', 'ja')).not.toContain('130文字');
+    const enCoreOnly = active.composePrompt('   ', 'en');
+    expect(enCoreOnly).toBe(active.getCoreIdentityPrompt('en'));
 
-    expect(getBasePrompt('chat', 'en')).toContain('[Context: 1-on-1 Dialogue with Master]');
-    expect(getBasePrompt('chat', 'en')).toContain('[Dialogue History (Contents) & Memory (RAG) Utilization]');
-    expect(getBasePrompt('chat', 'en')).toContain('[Information Search]');
-    expect(getBasePrompt('chat', 'en')).not.toContain('130');
-
-    expect(getBasePrompt('reply', 'ja')).toContain('【情報検索】');
-    expect(getBasePrompt('reply', 'ja')).toContain('【メンション（@ID）の正しい理解と使用ルール】');
-    expect(getBasePrompt('reply', 'ja')).toContain('@rebecca_ai_gal');
-    expect(getBasePrompt('reply', 'en')).toContain('[Information Search]');
-    expect(getBasePrompt('reply', 'en')).toContain('[Proper @Mention Semantics]');
-    expect(getBasePrompt('reply', 'en')).toContain('@rebecca_ai_gal');
+    const enWithChannel = active.composePrompt('[Custom Rule] Stay helpful.', 'en');
+    expect(enWithChannel).toContain(active.getCoreIdentityPrompt('en'));
+    expect(enWithChannel.endsWith('\n\n[Custom Rule] Stay helpful.')).toBe(true);
   });
 
   test('cosineSimilarity should compute vector similarity correctly', () => {
@@ -241,15 +224,42 @@ describe('persona package exports verification', () => {
     expect(cosineSimilarity([1, 2], [1])).toBe(0);
   });
 
-  test('findTopPersonaPatterns should extract top matching patterns', () => {
-    const mockVectors = [
-      { id: 1, vector: [1, 0, 0] },
-      { id: 2, vector: [0, 1, 0] },
-      { id: 3, vector: [0, 0, 1] }
+  test('findTopPersonaPatterns should rank strictly against the provided patternVectors', () => {
+    const customVectors = [
+      {
+        id: 101,
+        category: 'custom-A',
+        trigger: 'trigger A',
+        internal_thought: 'thought A',
+        behavior: 'behavior A',
+        sample_response: 'sample A',
+        vector: [1, 0, 0],
+      },
+      {
+        id: 102,
+        category: 'custom-B',
+        trigger: 'trigger B',
+        internal_thought: 'thought B',
+        behavior: 'behavior B',
+        sample_response: 'sample B',
+        vector: [0, 1, 0],
+      },
+      {
+        id: 103,
+        category: 'custom-C',
+        trigger: 'trigger C',
+        internal_thought: 'thought C',
+        behavior: 'behavior C',
+        sample_response: 'sample C',
+        vector: [0, 0, 1],
+      },
     ];
-    const top = findTopPersonaPatterns([1, 0.1, 0], mockVectors, 2);
+    const top = findTopPersonaPatterns([0, 1, 0.1], customVectors, 2);
     expect(top.length).toBe(2);
-    expect(top[0].id).toBe(1);
+    expect(top[0].id).toBe(102);
+    expect(top[0].sample_response).toBe('sample B');
+    expect(findTopPersonaPatterns([1, 0], customVectors, 0)).toEqual([]);
+    expect(findTopPersonaPatterns([], customVectors, 2).length).toBe(2);
   });
 
   test('buildPersonaFewShotPrompt should format patterns cleanly', () => {
@@ -288,9 +298,9 @@ describe('persona package exports verification', () => {
     expect(resGenericMd.thought).toBe('内省汎用');
     expect(resGenericMd.reply).toBe('返答汎用');
 
-    const textFallback = '{"text": "テキストのみ"}';
-    const resText = parsePersonaResponse(textFallback);
-    expect(resText.reply).toBe('テキストのみ');
+    const nonReplyLegacy = '{"text": "レガシーキー"}';
+    const resNonReply = parsePersonaResponse(nonReplyLegacy);
+    expect(resNonReply).toEqual({ thought: '', reply: '' });
 
     const truncatedJson = '{\n "thought": "バスケ女子の劇的な逆転勝ちのニュースを見て...ノイズ';
     const resTruncated = parsePersonaResponse(truncatedJson);
@@ -324,7 +334,7 @@ describe('persona package exports verification', () => {
   });
 
   test('getDreamingPrompt should return the dreaming instruction', () => {
-    const dreamingPrompt = getDreamingPrompt();
+    const dreamingPrompt = getActivePersona().getDreamingPrompt();
     expect(dreamingPrompt).toContain('記憶の統合（Dreaming）');
     expect(dreamingPrompt).toContain('JSONのフォーマットは以下のキーを持つ');
   });
@@ -355,20 +365,87 @@ describe('persona package exports verification', () => {
       expect(en).toContain('why did you ignore me');
     });
 
-    test('findTopPatterns should fallback to slice when queryVector is missing', () => {
+    test('findTopPatterns should fallback to slice when queryVector is missing and return empty for non-positive or non-finite topK', () => {
       const p = getActivePersona('rebecca');
       const fallback = p.findTopPatterns([], 2);
       expect(fallback.length).toBe(2);
       expect(fallback[0].id).toBe(1);
+      expect(p.findTopPatterns([], 0)).toEqual([]);
+      expect(p.findTopPatterns([], -1)).toEqual([]);
+      expect(p.findTopPatterns([], Number.NaN)).toEqual([]);
+      expect(p.findTopPatterns([], Number.POSITIVE_INFINITY)).toEqual([]);
+      expect(p.findTopPatterns([], 0.7)).toEqual([]);
     });
 
-    test('getBasePrompt should support fallback contexts for both languages', () => {
+    test('composePrompt should support default arguments and optional channel overrides in both languages', () => {
       const p = getActivePersona('rebecca');
-      const jaTimeline = p.getBasePrompt('timeline', 'ja');
-      expect(jaTimeline).toContain('【コンテキスト：タイムラインへの自発的ポスト】');
+      expect(p.composePrompt()).toBe(p.getCoreIdentityPrompt('ja'));
 
-      const enTimeline = p.getBasePrompt('timeline', 'en');
-      expect(enTimeline).toContain('[Context: Spontaneous Timeline Post]');
+      const enWithChannel = p.composePrompt('[Channel Context]', 'en');
+      expect(enWithChannel).toContain(p.getCoreIdentityPrompt('en'));
+      expect(enWithChannel).toContain('[Channel Context]');
+    });
+  });
+
+  describe('Unified Honne & Tatemae schema builder and JSON object parser', () => {
+    test('createStructuredPersonaSchema always enforces thought and spoken reply fields across extensions', () => {
+      expect(PERSONA_RESPONSE_SCHEMA.required).toEqual(['thought', 'reply']);
+      expect(Object.keys(PERSONA_RESPONSE_SCHEMA.properties)).toEqual(['thought', 'reply']);
+
+      const extended = createStructuredPersonaSchema({
+        thoughtDescription: 'Custom Honne',
+        replyDescription: 'Custom Tatemae',
+        additionalProperties: {
+          suggestionChips: {
+            type: 'array',
+            items: { type: 'string' },
+            description: 'Follow-up suggestions',
+          },
+        },
+        additionalRequired: ['suggestionChips'],
+      });
+      expect(extended.required).toEqual(['thought', 'reply', 'suggestionChips']);
+      expect(extended.properties['thought'].description).toBe('Custom Honne');
+      expect(extended.properties['reply'].description).toBe('Custom Tatemae');
+      expect(extended.properties['suggestionChips'].type).toBe('array');
+
+      const supportLike = createStructuredPersonaSchema({ replyFieldName: 'replyBody' });
+      expect(supportLike.required).toEqual(['thought', 'replyBody']);
+      expect(supportLike.properties['replyBody'].type).toBe('string');
+    });
+
+    test('createStructuredPersonaSchema fails fast on invalid replyFieldName or field override attempts', () => {
+      expect(() => createStructuredPersonaSchema({ replyFieldName: '' })).toThrow(/distinct from "thought"/);
+      expect(() => createStructuredPersonaSchema({ replyFieldName: 'thought' })).toThrow(/distinct from "thought"/);
+      expect(() =>
+        createStructuredPersonaSchema({
+          additionalProperties: { thought: { type: 'string' } },
+        }),
+      ).toThrow(/must not override/);
+      expect(() =>
+        createStructuredPersonaSchema({
+          replyFieldName: 'replyBody',
+          additionalProperties: { replyBody: { type: 'string' } },
+        }),
+      ).toThrow(/must not override/);
+    });
+
+    test('parsePersonaJsonObject extracts fenced, surrounded, and control-char JSON records safely', () => {
+      expect(parsePersonaJsonObject('')).toBeNull();
+      expect(parsePersonaJsonObject(null as unknown as string)).toBeNull();
+      expect(parsePersonaJsonObject('[1, 2, 3]')).toBeNull();
+      expect(parsePersonaJsonObject('plain conversational text without braces')).toBeNull();
+      expect(parsePersonaJsonObject('{broken json}')).toBeNull();
+
+      const fenced = '```json\n{"thought": "本音", "reply": "建前"}\n```';
+      expect(parsePersonaJsonObject(fenced)).toEqual({ thought: '本音', reply: '建前' });
+
+      const surrounded = 'Sure:\n{"thought": "内心\nメモ\b\f", "reply": "返事\u001b[0m", "suggestionChips": ["次へ"]}\nThanks!';
+      expect(parsePersonaJsonObject(surrounded)).toEqual({
+        thought: '内心\nメモ\b\f',
+        reply: '返事\u001b[0m',
+        suggestionChips: ['次へ'],
+      });
     });
   });
 });

@@ -11,7 +11,7 @@ This file defines repository-wide invariants for AI coding agents and contributo
   - `apps/dashboard-frontend`: Angular 22 Zoneless administration SPA (**Hexagonal ports/adapters**, **Atomic Design** UI hierarchy, Signals).
   - `apps/dashboard-e2e`: Playwright end-to-end test suite against local emulators and services.
   - `apps/functions`: Firebase Cloud Functions (Gen 2) asynchronous event and auth-blocking triggers.
-  - `packages/types` (`@rebecca/types`), `packages/db` (`@rebecca/db`), `packages/logger` (`@rebecca/logger`), `packages/persona` (`@rebecca/persona`).
+  - `packages/types` (`@rebecca/types`), `packages/db` (`@rebecca/db`), `packages/logger` (`@rebecca/logger`), `packages/persona` (`@rebecca/persona`), `packages/memory` (`@rebecca/memory`), `packages/prompt` (`@rebecca/prompt`), `packages/tools` (`@rebecca/tools`).
 - **Unidirectional Dependency Law**:
   - `apps/*` may depend on `packages/*`.
   - `packages/*` **MUST NEVER** import from `apps/*`.
@@ -43,7 +43,7 @@ Run all verification commands from the repository root before opening or updatin
    - Keep transport layers (Express routes/controllers, Cloud Function triggers, Angular components) thin and free of domain persistence or raw SDK orchestration.
    - Isolate domain orchestration inside `usecase` / `core` modules and external I/O (Firestore, Cloud Storage, Cloud Tasks, Gemini, social APIs, HTTP) behind typed `repository` / `port` / `service` interfaces.
 2. **Pragmatic DRY, High Cohesion & Pluggable Persona Encapsulation**:
-   - Centralize shared domain models (`@rebecca/types`), Firestore converters (`@rebecca/db`), structured logging (`@rebecca/logger`), and persona definitions (`@rebecca/persona`).
+   - Centralize shared domain models (`@rebecca/types`), Firestore converters (`@rebecca/db`), structured logging (`@rebecca/logger`), persona definitions (`@rebecca/persona`), working/episodic memory formatting (`@rebecca/memory`), multi-layer prompt composition (`@rebecca/prompt`), and Gemini tool orchestration (`@rebecca/tools`).
    - **Pluggable Persona Boundary (Zero Character Leakage)**: Keep `apps/*` character-agnostic. Consolidate all Rebecca-specific lore, profile specs, speech style, callsigns, hashtags, UI branding, and base/dreaming prompts exclusively inside `packages/persona/src/personas/rebecca.ts` paired with the 120-pattern dataset (`packages/persona/src/data/personaPatterns.json` + `personaPatternVectors.ts`) so swapping those files switches the AI persona without modifying `apps/*`.
    - Apply the **Rule of Three** before extracting behavioral abstractions: eliminate true knowledge duplication without coupling distinct domain workflows via boolean flags.
 3. **Strict Typing — Parse at Boundaries, Never Guess**:

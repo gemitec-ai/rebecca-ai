@@ -60,7 +60,7 @@ export interface IFirestoreService {
   ): Promise<{ allowed: boolean; reason?: string }>;
   getAllUsers(): Promise<FirestoreUser[]>;
   saveRawConversationLog(userId: string, userText: string, aiText: string, thought?: string): Promise<void>;
-  getRecentConversationLogs(limit?: number, days?: number, somethingElse?: unknown): Promise<RawConversationLog[]>;
+  getRecentConversationLogs(days?: number): Promise<RawConversationLog[]>;
   getExtendedPrompt(): Promise<string>;
   saveExtendedPrompt(promptText: string): Promise<void>;
   getTimelineSummary(): Promise<string>;
@@ -135,7 +135,7 @@ export interface IFirestoreService {
  * embedding creation, and image analysis.
  */
 export interface IGeminiService {
-  generateStructuredReply(systemInstruction: string, history: ConversationLogEntry[], userInput: string): Promise<StructuredPersonaResponse>;
+  generateStructuredReply(systemInstruction: string, history: ConversationLogEntry[], userInput: string, lang?: 'ja' | 'en'): Promise<StructuredPersonaResponse>;
   verifyImageRelevance(imageCaption: string, postText: string): Promise<boolean>;
   generateDreaming(systemPrompt: string, episodicBuffer: ConversationLogEntry[], coreProfile: UserCoreProfile): Promise<UserCoreProfile>;
   generateEvolutionPrompt(prompt: string): Promise<string>;
@@ -144,7 +144,7 @@ export interface IGeminiService {
   generateStructuredNewsPost(systemInstruction: string, prompt: string, candidateHeadlines: string[]): Promise<StructuredNewsPostResponse>;
   generateStructuredPollPost(systemInstruction: string, prompt: string): Promise<StructuredPollPostResponse>;
   generateStructuredTimelinePost(systemInstruction: string, prompt: string): Promise<StructuredPersonaResponse>;
-  generateTimelineSummary(prompt: string): Promise<string>;
+  generateTimelineSummary(prompt: string, systemInstruction?: string): Promise<string>;
   detectLanguage(prompt: string): Promise<'ja' | 'en'>;
   generateEmbedding(text: string): Promise<number[]>;
   generateSearchQuery(prompt: string): Promise<string>;

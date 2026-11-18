@@ -192,4 +192,22 @@ describe('AiDrawerComponent', () => {
     navBtns[0].click();
     expect(mockRouter.navigateByUrl).toHaveBeenCalledWith('/dashboard');
   });
+
+  it('should render visible reply text cleanly without exposing internal Honne thought in DOM', () => {
+    messagesSignal.set([
+      {
+        id: 'msg-honne-1',
+        role: 'model',
+        text: 'マスター、今日もお疲れ様♡',
+        thought: 'INTERNAL_SECRET_HONNE_MUST_NOT_APPEAR_IN_UI',
+        suggestionChips: ['続ける']
+      }
+    ]);
+    fixture.detectChanges();
+
+    const bubbleText = fixture.nativeElement.querySelector('.bubble-text')?.textContent ?? '';
+    const fullDomText = fixture.nativeElement.textContent ?? '';
+    expect(bubbleText).toContain('マスター、今日もお疲れ様♡');
+    expect(fullDomText).not.toContain('INTERNAL_SECRET_HONNE_MUST_NOT_APPEAR_IN_UI');
+  });
 });

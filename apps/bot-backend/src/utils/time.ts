@@ -1,21 +1,11 @@
+import {
+  formatZonedDateTime as formatZonedDateTimeCore,
+  getZonedDateParts as getZonedDatePartsCore,
+  type ZonedDateParts,
+} from '@rebecca/prompt';
 import config from '../config';
 
-/**
- * Structured date and time components localized to a specific IANA time zone.
- */
-export interface ZonedDateParts {
-  year: string;
-  month: string;
-  day: string;
-  hour: string;
-  minute: string;
-  second: string;
-  numericYear: number;
-  numericMonth: number;
-  numericDay: number;
-  numericHour: number;
-  numericMinute: number;
-}
+export type { ZonedDateParts };
 
 /**
  * Extracts localized calendar and clock components for a given date in the target timezone.
@@ -24,46 +14,13 @@ export interface ZonedDateParts {
  * @param date - The Date instance to evaluate (defaults to current time).
  * @param timezone - Target IANA time zone identifier (defaults to config.appTimezone).
  * @returns Localized date parts with string (zero-padded) and numeric values.
+ * @throws RangeError if `timezone` is not a valid IANA time zone identifier or `date` is invalid.
  */
 export const getZonedDateParts = (
   date: Date = new Date(),
   timezone: string = config.appTimezone,
 ): ZonedDateParts => {
-  const formatter = new Intl.DateTimeFormat('en-US', {
-    timeZone: timezone,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-    hour12: false,
-  });
-
-  const parts = formatter.formatToParts(date);
-  const findPart = (type: Intl.DateTimeFormatPartTypes) =>
-    parts.find((p) => p.type === type)?.value || '00';
-
-  const year = findPart('year');
-  const month = findPart('month');
-  const day = findPart('day');
-  const hour = findPart('hour');
-  const minute = findPart('minute');
-  const second = findPart('second');
-
-  return {
-    year,
-    month,
-    day,
-    hour,
-    minute,
-    second,
-    numericYear: parseInt(year, 10),
-    numericMonth: parseInt(month, 10),
-    numericDay: parseInt(day, 10),
-    numericHour: parseInt(hour, 10),
-    numericMinute: parseInt(minute, 10),
-  };
+  return getZonedDatePartsCore(date, timezone);
 };
 
 /**
@@ -73,26 +30,12 @@ export const getZonedDateParts = (
  * @param timezone - Target IANA time zone identifier (defaults to config.appTimezone).
  * @returns Formatted date string with timezone abbreviation (e.g. "2026-09-13 07:30 JST"),
  *          or an empty string if input is falsy or invalid.
+ * @throws RangeError if `timezone` is not a valid IANA time zone identifier when formatting a valid date.
  */
 export const formatZonedDateTime = (
   isoOrDate?: string | Date | null,
   timezone: string = config.appTimezone,
 ): string => {
-  if (!isoOrDate) return '';
-  const date = typeof isoOrDate === 'string' ? new Date(isoOrDate) : isoOrDate;
-  if (isNaN(date.getTime())) return '';
-
-  const formatter = new Intl.DateTimeFormat('ja-JP', {
-    timeZone: timezone,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false,
-    timeZoneName: 'short',
-  });
-
-  return formatter.format(date).replace(/\//g, '-');
+  return formatZonedDateTimeCore(isoOrDate, timezone);
 };
 

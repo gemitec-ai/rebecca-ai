@@ -1,6 +1,7 @@
+import { sanitizeUntrustedPromptText } from '@rebecca/memory';
 import { AppDependencies } from '../../types';
 import { executePostPipeline } from '../../core/postPipeline';
-import { resolveSituationalPersonaAnchors } from '../../core/personaAnchoring';
+import { buildSystemPrompt } from '../../core/contextInjector';
 import { IAnniversaryProvider, AnniversaryItem, AnniversaryResult } from './types';
 import { logger } from '../../utils/logger';
 
@@ -48,37 +49,50 @@ export class ProactiveAnniversaryUseCase {
 
       const timelineSummary = await this.deps.firestore.getTimelineSummary();
       const extendedPrompt = await this.deps.firestore.getExtendedPrompt();
+      const safeTimelineSummary = timelineSummary
+        ? sanitizeUntrustedPromptText(timelineSummary, 2000, { collapseHorizontalRules: true })
+        : '';
+      const safeExtendedPrompt = extendedPrompt
+        ? sanitizeUntrustedPromptText(extendedPrompt, 2000, { collapseHorizontalRules: true })
+        : '';
 
       const candidateListText = anniversaries
         .slice(0, 8)
-        .map((a) => `・${a.name}${a.description ? ` (${a.description})` : ''}`)
+        .map((a) => {
+          const safeName = sanitizeUntrustedPromptText(a.name, 120, { collapseHorizontalRules: true });
+          const safeDesc = a.description
+            ? sanitizeUntrustedPromptText(a.description, 400, { collapseHorizontalRules: true })
+            : '';
+          return `・${safeName}${safeDesc ? ` (${safeDesc})` : ''}`;
+        })
         .join('\n');
 
-      const personaFewShotPrompt = await resolveSituationalPersonaAnchors(this.deps.gemini, [
-        `【今日の記念日候補】\n${candidateListText}`,
-        extendedPrompt ? `【近況・気分】${extendedPrompt}` : '',
-        timelineSummary ? `【タイムラインの空気感】${timelineSummary}` : '',
-      ]);
-
-      const systemInstruction = this.deps.persona.getBasePrompt('timeline', 'ja');
+      const { systemInstruction } = await buildSystemPrompt({
+        persona: this.deps.persona,
+        promptContext: 'timeline',
+        lang: 'ja',
+        gemini: this.deps.gemini,
+        anchoringContext: [
+          `【今日の記念日候補】\n${candidateListText}`,
+          safeExtendedPrompt ? `【近況・気分】${safeExtendedPrompt}` : '',
+          safeTimelineSummary ? `【タイムラインの空気感】${safeTimelineSummary}` : '',
+        ],
+      });
       const personaName = this.deps.persona.metadata.displayName;
       const defaultHashtag = this.deps.persona.metadata.defaultHashtag;
       const anniversaryPrompt = `以下の【今日の記念日・年中行事】の一覧から、AIキャラクター「${personaName}」として共感・盛り上がりそうな話題（カルチャー、食、日常、音楽、記念日など）を【1つだけ】選び、それに言及しながらタイムライン向けの自発的ツイートを生成してください。
 
 【今日の記念日・年中行事】
 ${candidateListText}
-${timelineSummary ? `\n【直近のタイムライン要約】\n${timelineSummary}\n` : ''}
-${extendedPrompt ? `\n【拡張ペルソナ・近況】\n${extendedPrompt}\n` : ''}
-${personaFewShotPrompt ? `\n${personaFewShotPrompt}\n` : ''}
+${safeTimelineSummary ? `\n【直近のタイムライン要約】\n${safeTimelineSummary}\n` : ''}
+${safeExtendedPrompt ? `\n【拡張ペルソナ・近況】\n${safeExtendedPrompt}\n` : ''}
+
 【追加ルール】
 - 戦争・紛争・追悼や過度に暗い記念日は絶対に選ばないこと。日常的で明るい話題や親しみやすい記念日を選んでください。
 - 単なる解説や豆知識の紹介で終わらせず、その記念日や話題を読み手の日常・身近な行動に関連付けること。
 - 読み手が自分の予定や体験を一言リプライしたくなるような、具体的で答えやすい問いかけを末尾に必ず含めること。
 - 特定の個人への返信ではなく、タイムライン全体のフォロワーに向けたオープンな語りかけとすること。
 - 「今日は◯◯の日なんだって！」「◯◯の日だし〜」のように、選んだ記念日名を自然に会話に盛り込んでください。
-- thought（内省思考）は150文字以内の自然な独白とすること。
-- reply（ツイート本文）は【絶対に100文字以内の短文】にすること。
-- 出力に「(90文字)」などの文字数カウント表記や解説、引用符は絶対に含めないでください。
 ${defaultHashtag ? `- ハッシュタグ（${defaultHashtag} 等）はシステムが自動付与するため、本文中には絶対に含めないでください。` : ''}`;
 
       const structuredPost = await this.deps.gemini.generateStructuredTimelinePost(systemInstruction, anniversaryPrompt);
@@ -98,13 +112,20 @@ ${defaultHashtag ? `- ハッシュタグ（${defaultHashtag} 等）はシステ�
       const matchedItem = anniversaries.find((a) => postText.includes(a.name));
       const anniversaryTitle = matchedItem ? matchedItem.name : undefined;
 
+      const matchedSafeName = matchedItem
+        ? sanitizeUntrustedPromptText(matchedItem.name, 120, { collapseHorizontalRules: true })
+        : '';
+      const matchedSafeDesc = matchedItem?.description
+        ? sanitizeUntrustedPromptText(matchedItem.description, 400, { collapseHorizontalRules: true })
+        : '';
+
       const pipelineResult = await executePostPipeline(this.deps, {
         postType: 'anniversary',
         text: postText,
         thought,
         imageContext: matchedItem
-          ? `記念日: ${matchedItem.name}\n内容: ${matchedItem.description}\nタイムライン状況: ${timelineSummary}`
-          : `タイムライン状況: ${timelineSummary}`,
+          ? `記念日: ${matchedSafeName}\n内容: ${matchedSafeDesc}\nタイムライン状況: ${safeTimelineSummary}`
+          : `タイムライン状況: ${safeTimelineSummary}`,
         metadata: {
           anniversaryTitle,
         },

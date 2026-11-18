@@ -4,13 +4,13 @@ WORKDIR /app
 RUN apk add --no-cache libc6-compat
 
 # Copy root configuration and dependency definitions
-COPY package*.json turbo.json tsconfig*.json ./
+COPY package*.json turbo.json ./
 COPY packages ./packages
 COPY apps/dashboard-backend ./apps/dashboard-backend
 
 # Install dependencies and build shared packages & dashboard-backend
 RUN npm ci
-RUN npm run build --workspace=@rebecca/types --workspace=@rebecca/db --workspace=@rebecca/persona --workspace=@rebecca/logger --workspace=dashboard-backend
+RUN npm run build --workspace=@rebecca/types --workspace=@rebecca/db --workspace=@rebecca/logger --workspace=@rebecca/tools --workspace=@rebecca/memory --workspace=@rebecca/persona --workspace=@rebecca/prompt --workspace=dashboard-backend
 
 # Stage 2: Minimal production image
 FROM node:24-alpine AS runner
@@ -23,6 +23,9 @@ COPY packages/types/package.json ./packages/types/
 COPY packages/db/package.json ./packages/db/
 COPY packages/persona/package.json ./packages/persona/
 COPY packages/logger/package.json ./packages/logger/
+COPY packages/memory/package.json ./packages/memory/
+COPY packages/prompt/package.json ./packages/prompt/
+COPY packages/tools/package.json ./packages/tools/
 
 COPY apps/dashboard-backend/package.json ./apps/dashboard-backend/
 
@@ -34,6 +37,9 @@ COPY --from=builder /app/packages/types/dist ./packages/types/dist
 COPY --from=builder /app/packages/db/dist ./packages/db/dist
 COPY --from=builder /app/packages/persona/dist ./packages/persona/dist
 COPY --from=builder /app/packages/logger/dist ./packages/logger/dist
+COPY --from=builder /app/packages/memory/dist ./packages/memory/dist
+COPY --from=builder /app/packages/prompt/dist ./packages/prompt/dist
+COPY --from=builder /app/packages/tools/dist ./packages/tools/dist
 COPY --from=builder /app/apps/dashboard-backend/dist ./apps/dashboard-backend/dist
 
 WORKDIR /app/apps/dashboard-backend

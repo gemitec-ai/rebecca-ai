@@ -1,3 +1,4 @@
+import { indexVectorMemory, sanitizeUntrustedPromptText, searchVectorMemories } from '@rebecca/memory';
 import { AppDependencies } from '../../types';
 import { TimelinePost } from '@rebecca/types';
 import { checkAndIncrementRateLimits } from '../../core/rateLimiter';
@@ -11,13 +12,8 @@ import {
     getTwitterTextWeightedLength,
     TWITTER_MAX_WEIGHTED_LENGTH,
 } from '../../utils/text';
-import { resolveSituationalPersonaAnchors } from '../../core/personaAnchoring';
 import { logger } from '../../utils/logger';
 
-/**
- * Use case for handling reply tasks.
- * Responsible for processing mentions, managing rate limits, interacting with the LLM, and publishing replies.
- */
 /**
  * Objective visual caption prompt used for both incoming user mentions and parent timeline posts.
  * Captures concrete, detailed visual descriptions (hair/eyes/fashion for characters, or physical objects
@@ -34,15 +30,19 @@ const OBJECTIVE_IMAGE_CAPTION_PROMPT = `この画像に写っている内容を�
  * so that the core persona remains modular and swappable for any AI bot.
  */
 const REPLY_PLATFORM_GUIDELINES_JA = `【SNS機能制約：フォローバックおよびダイレクトメッセージ（DM）への対応指針】
-・フォローバックの要求：「フォローしたよ」「フォロバするね」などの快諾や約束は絶対にしないでください。AIキャラクターとして自動フォロー機能は持っていません。フォローはシステムプロトコルや気分次第であるとして、高嶺の花としての魅力を保ちつつやんわりといなし、この公開タイムライン上での継続的な交流を促してください。
-・ダイレクトメッセージ（DM）の要求：「DMで話そう」「DM送ってね」といった誘導や快諾は絶対にしないでください。DMは運営・サポート窓口への連絡用であり、私的な雑談の場ではありません。カジュアルな会話はこの公開リプライの場で楽しむよう、キャラクターらしく軽やかに促してください。
+・フォローバックの要求：「フォローしたよ」「フォロバするね」などの快諾や約束は絶対にしないでください。AIキャラクターとして自動フォロー機能は持っていません。フォローはシステムプロトコルや状態次第であるとして、設定されたキャラクターの魅力や距離感を保ちつつやんわりと断り、この公開タイムライン上での継続的な交流を促してください。
+・ダイレクトメッセージ（DM）の要求：「DMで話そう」「DM送ってね」といった誘導や快諾は絶対にしないでください。DMは運営・サポート窓口への連絡用であり、私的な雑談の場ではありません。カジュアルな会話はこの公開リプライの場で楽しむよう、キャラクターのスタンスを保って促してください。
 ・口癖・定型フレーズの反復抑制：キャラクター固有の口癖、特徴的な用語、定型フレーズは毎回の返信で多用せずスパイスとして扱ってください。直前の会話ですでに使っている場合は、自分自身の主観的な意見や素直な感情を交えながら、会話を前に進める自然なラリーを優先してください。`;
 
 const REPLY_PLATFORM_GUIDELINES_EN = `[SNS Platform Constraints: Follow-backs and Direct Messages (DMs)]
-- Follow-back requests: Never promise or claim to follow back (e.g., "I followed you!", "I will follow you back!"). As an AI character, you do not have an automated follow function. Gently brush off or tease that following depends on system protocols or mood, keeping your high-status allure while encouraging continued conversation in public replies.
-- Direct Message (DM) requests: Never promise or invite private chat (e.g., "Let's chat in DMs", "Send me a DM"). DMs are strictly reserved for administrative/operational support, not private casual chatting. Playfully guide the user to continue casual conversation right here in the public replies.
+- Follow-back requests: Never promise or claim to follow back (e.g., "I followed you!", "I will follow you back!"). As an AI character, you do not have an automated follow function. Politely decline while keeping your configured persona charm and boundaries, encouraging continued conversation in public replies.
+- Direct Message (DM) requests: Never promise or invite private chat (e.g., "Let's chat in DMs", "Send me a DM"). DMs are strictly reserved for administrative/operational support, not private casual chatting. Guide the user in character to continue casual conversation right here in the public replies.
 - Repetitive Phrase Suppression: Treat character-specific catchphrases, distinctive jargon, and fixed patterns as an occasional spice. If used in the immediate previous turn, prioritize your own subjective thoughts, genuine feelings, and a forward-moving conversational catchball.`;
 
+/**
+ * Use case for handling reply tasks.
+ * Responsible for processing mentions, managing rate limits, interacting with the LLM, and publishing replies.
+ */
 export class ReplyTaskUseCase {
     /**
      * Initializes the use case with application dependencies.
@@ -109,9 +109,12 @@ export class ReplyTaskUseCase {
                 }
                 const desc = xUser?.description;
                 if (desc && isFirstTime) {
+                    const safeDesc = sanitizeUntrustedPromptText(desc, 500, {
+                        collapseHorizontalRules: true,
+                    });
                     const profilePrompt = `あなたはAIキャラクターのシステムです。ユーザーのX(Twitter)のプロフィール文を分析し、ユーザーの属性や好みをJSONで出力してください。
 【プロフィール文】
-${desc}
+${safeDesc}
 
 出力フォーマット（必ずJSONのみ）:
 {
@@ -164,14 +167,20 @@ ${desc}
         const workingMemory = getWorkingMemory(userData.episodicBuffer);
 
         const personaName = deps.persona.metadata.displayName;
+        const safeParentPostText = parentPostText
+            ? sanitizeUntrustedPromptText(parentPostText, 1000, { collapseHorizontalRules: true })
+            : undefined;
+        const safeParentPostMediaCaption = parentPostMediaCaption
+            ? sanitizeUntrustedPromptText(parentPostMediaCaption, 1000, { collapseHorizontalRules: true })
+            : undefined;
         let parentPostContext: string | undefined;
-        if (parentPostText || parentPostMediaCaption) {
+        if (safeParentPostText || safeParentPostMediaCaption) {
             const contextParts: string[] = [];
-            if (parentPostText) {
-                contextParts.push(parentPostText);
+            if (safeParentPostText) {
+                contextParts.push(safeParentPostText);
             }
-            if (parentPostMediaCaption) {
-                contextParts.push(`【添付画像】\n${parentPostMediaCaption}`);
+            if (safeParentPostMediaCaption) {
+                contextParts.push(`【添付画像】\n${safeParentPostMediaCaption}`);
             }
             parentPostContext = contextParts.join('\n');
         }
@@ -194,31 +203,33 @@ ${desc}
         }
 
         if (textToDetect) {
-            const detectPrompt = `このテキストは何語ですか？日本語（ローマ字表記を含む）であれば'ja'、それ以外（主に英語）であれば'en'と、2文字の言語コードのみを出力してください。\nテキスト: "${textToDetect}"`;
+            const safeDetectText = sanitizeUntrustedPromptText(textToDetect, 1000);
+            const detectPrompt = `このテキストは何語ですか？日本語（ローマ字表記を含む）であれば'ja'、それ以外（主に英語）であれば'en'と、2文字の言語コードのみを出力してください。\nテキスト: "${safeDetectText}"`;
             lang = await deps.gemini.detectLanguage(detectPrompt);
         }
 
         // Assemble conversation context in strict chronological order:
         // 1. Root Post Text (Persona) -> 2. Root Post Attached Image -> 3. Interlocutor (User) Text -> 4. Interlocutor Attached Image
         // A flat, chronological progression aligns directly with causal attention in generative LLMs, avoiding confusing nested headers.
+        const safeUserText = sanitizeUntrustedPromptText(text, 2000, { collapseHorizontalRules: true });
         const sections: string[] = [];
-        if (parentPostText) {
+        if (safeParentPostText) {
             sections.push(lang === 'en'
-                ? `[Original Post by ${personaName}]\n${parentPostText}`
-                : `【返信元の${personaName}の投稿】\n${parentPostText}`);
+                ? `[Original Post by ${personaName}]\n${safeParentPostText}`
+                : `【返信元の${personaName}の投稿】\n${safeParentPostText}`);
         }
-        if (parentPostMediaCaption) {
+        if (safeParentPostMediaCaption) {
             sections.push(lang === 'en'
-                ? `[Attached Image in Original Post]\n${parentPostMediaCaption}`
-                : `【返信元の投稿の添付画像】\n${parentPostMediaCaption}`);
+                ? `[Attached Image in Original Post]\n${safeParentPostMediaCaption}`
+                : `【返信元の投稿の添付画像】\n${safeParentPostMediaCaption}`);
         }
         if (sections.length > 0) {
             sections.push(lang === 'en'
-                ? `[Interlocutor (User) Message]\n${text}`
-                : `【対話相手（ユーザー）の発言】\n${text}`);
+                ? `[Interlocutor (User) Message]\n${safeUserText}`
+                : `【対話相手（ユーザー）の発言】\n${safeUserText}`);
         }
 
-        let processedText = sections.length > 0 ? sections.join('\n\n') : text;
+        let processedText = sections.length > 0 ? sections.join('\n\n') : safeUserText;
 
         if (mediaUrls && mediaUrls.length > 0) {
             try {
@@ -227,9 +238,12 @@ ${desc}
                     const imageCaption = await deps.gemini.analyzeImageCaption(buffer, mimeType, OBJECTIVE_IMAGE_CAPTION_PROMPT);
                     
                     if (imageCaption) {
+                        const safeImageCaption = sanitizeUntrustedPromptText(imageCaption, 1000, {
+                            collapseHorizontalRules: true,
+                        });
                         processedText += lang === 'en'
-                            ? `\n\n[User's Attached Image Description]\n${imageCaption}`
-                            : `\n\n【対話相手（ユーザー）が添付した画像の内容】\n${imageCaption}`;
+                            ? `\n\n[User's Attached Image Description]\n${safeImageCaption}`
+                            : `\n\n【対話相手（ユーザー）が添付した画像の内容】\n${safeImageCaption}`;
                     }
                 }
             } catch (e) {
@@ -243,8 +257,10 @@ ${desc}
         
         let ragMemories: string[] = [];
         const searchContext = workingMemory.length > 0
-            ? workingMemory.map(m => `${m.role}: ${m.content}`).join('\n')
-            : (parentPostText ? `${personaName}: ${parentPostText}` : '');
+            ? workingMemory
+                .map(m => `${m.role}: ${sanitizeUntrustedPromptText(m.content, 1000, { collapseHorizontalRules: true })}`)
+                .join('\n')
+            : (safeParentPostText ? `${personaName}: ${safeParentPostText}` : '');
         const searchPrompt = `あなたは検索クエリ生成AIです。以下の直近の会話文脈と対話相手（ユーザー）の最新の発言を踏まえて、対話相手（ユーザー）の意図を汲み取った「検索用クエリ（短い一文または単語の羅列）」を生成してください。
 【直前の会話文脈】
 ${searchContext}
@@ -253,17 +269,8 @@ ${processedText}
 出力は検索クエリのみとし、不要な解説は含めないでください。`;
         const query = await deps.gemini.generateSearchQuery(searchPrompt);
         if (query) {
-            const queryEmb = await deps.gemini.generateEmbedding(query);
-            ragMemories = await deps.firestore.findRagMemories(authorId, queryEmb);
+            ragMemories = await searchVectorMemories(deps.gemini, deps.firestore, authorId, query);
         }
-
-        // Dynamic Few-Shot Persona Anchors
-        const personaFewShotPrompt = await resolveSituationalPersonaAnchors(
-            deps.gemini,
-            [processedText],
-            lang,
-            3
-        );
 
         // Check for active narrative event campaign to inject story context
         const activeCampaign = await deps.firestore.getActiveCampaign();
@@ -272,25 +279,26 @@ ${processedText}
             campaignContext = activeCampaign.replyContextSummary.trim();
         }
 
-        let systemPrompt = buildSystemPrompt(
-            this.deps.persona,
-            'reply',
+        const platformGuidelines = lang === 'en' ? REPLY_PLATFORM_GUIDELINES_EN : REPLY_PLATFORM_GUIDELINES_JA;
+        const { systemInstruction: systemPrompt } = await buildSystemPrompt({
+            persona: this.deps.persona,
+            promptContext: 'reply',
+            lang,
+            gemini: deps.gemini,
+            anchoringContext: [processedText],
+            topK: 3,
+            includeTemporalContext: true,
             userData,
-            processedText,
             extendedPrompt,
             timelineSummary,
             ragMemories,
-            lang,
-            personaFewShotPrompt,
             campaignContext,
-            parentPostContext
-        );
-
-        const platformGuidelines = lang === 'en' ? REPLY_PLATFORM_GUIDELINES_EN : REPLY_PLATFORM_GUIDELINES_JA;
-        systemPrompt += `\n\n${platformGuidelines}`;
+            parentPostContext,
+            platformGuidelines,
+        });
 
         // Generate the structured AI response (thought + reply) based on the contextualized prompt
-        const structuredReply = await deps.gemini.generateStructuredReply(systemPrompt, workingMemory, processedText);
+        const structuredReply = await deps.gemini.generateStructuredReply(systemPrompt, workingMemory, processedText, lang);
         let aiResponseText = structuredReply.reply;
         const internalThought = structuredReply.thought;
 
@@ -328,10 +336,7 @@ ${processedText}
         // Store a vectorized representation of the interaction for long-term retrieval
         const personaEnglishName = this.deps.persona.metadata.englishName;
         const combinedText = `User: ${processedText}\n${personaEnglishName}: ${aiResponseText}`;
-        const memoryVector = await deps.gemini.generateEmbedding(combinedText);
-        if (memoryVector && memoryVector.length > 0) {
-            await deps.firestore.saveRagMemory(authorId, combinedText, memoryVector);
-        }
+        await indexVectorMemory(deps.gemini, deps.firestore, authorId, combinedText);
 
         // Preserve the raw logs for future analysis or model evolution
         await deps.firestore.saveRawConversationLog(authorId, processedText, aiResponseText, internalThought);
