@@ -12,10 +12,14 @@ import { PersonaPatternWithVector } from './personaPatternVectors';
 /**
  * Registry resolver for active persona.
  * Fail-fast: Throws an explicit error if an unrecognized persona ID is requested.
- * Defaults to 'rebecca' if id is undefined, null, or empty string.
+ * Defaults to 'rebecca' if id is undefined, null, empty, or whitespace-only.
+ *
+ * @param id - Optional persona identifier to resolve.
+ * @returns The matching `IPersonaDefinition` implementation.
+ * @throws Error if a non-empty unrecognized persona ID is requested.
  */
 export function getActivePersona(id?: string): IPersonaDefinition {
-  const normalizedId = (id || 'rebecca').trim().toLowerCase();
+  const normalizedId = (id?.trim() || 'rebecca').toLowerCase();
   if (normalizedId === 'rebecca') {
     return rebeccaPersona;
   }

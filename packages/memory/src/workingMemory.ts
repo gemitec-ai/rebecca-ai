@@ -93,6 +93,7 @@ export const createTurnPair = (
  * @param modelText - Spoken reply delivered by the persona.
  * @param thought - Optional internal monologue (`thought`) attached to the model turn.
  * @param now - Optional timestamp override (defaults to `new Date()`).
+ * @throws Error if `userId` is empty/whitespace or if the persistence adapter rejects.
  */
 export const saveInteraction = async (
   store: IMemoryEpisodicStore,

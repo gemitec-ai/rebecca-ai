@@ -18,6 +18,8 @@ describe('persona package exports verification', () => {
   test('should expose active persona definition with metadata, core identity, dreaming prompt, and patterns text', () => {
     const active = getActivePersona();
     expect(active).toBe(rebeccaPersona);
+    expect(getActivePersona('   ')).toBe(rebeccaPersona);
+    expect(() => getActivePersona('unknown-persona')).toThrow('Unknown persona ID');
     expect(active.metadata).toBe(REBECCA_METADATA);
     const coreJa = active.getCoreIdentityPrompt('ja');
     expect(coreJa).toContain('レベッカ');

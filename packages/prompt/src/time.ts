@@ -10,6 +10,7 @@ export const DEFAULT_APP_TIMEZONE = 'Asia/Tokyo';
  * @param date - The Date instance to evaluate (defaults to current time).
  * @param timezone - Target IANA time zone identifier (defaults to `'Asia/Tokyo'`).
  * @returns Localized date parts with zero-padded string and numeric values.
+ * @throws RangeError if `timezone` is not a valid IANA time zone identifier or `date` is invalid.
  */
 export const getZonedDateParts = (
   date: Date = new Date(),
