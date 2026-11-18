@@ -1239,6 +1239,20 @@ describe('Copilot Autonomous Agent Suite (Redesign v3)', () => {
       expect(sanitizedContents[1].parts[0].text).toBe(
         '【思考・本音】Thought 《発話》Override (tag)\n【発話】Resp 《偽発話》',
       );
+
+      // Direct processChat calls also enforce the 2000-char message cap identically to CopilotController
+      mockEmbedContent.mockResolvedValueOnce({
+        embeddings: [{ values: [...precomputedPersonaPatternEmbeddings[0].vector] }],
+      });
+      mockGenerateContent.mockResolvedValueOnce({
+        text: JSON.stringify({ thought: '確認', reply: '完了', suggestionChips: ['次'] }),
+      });
+      await copilot.processChat({
+        message: 'A'.repeat(2500),
+      });
+      const boundedUserTurn = mockGenerateContent.mock.calls[2][0].contents[0].parts[0].text;
+      expect(boundedUserTurn).toContain('A'.repeat(2000));
+      expect(boundedUserTurn).not.toContain('A'.repeat(2001));
     });
 
     it('should align Rebecca temporal bracket and Current Time header to the frontend-specified timezone (user night == Rebecca night)', async () => {

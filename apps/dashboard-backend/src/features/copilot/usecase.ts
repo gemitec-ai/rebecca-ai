@@ -23,7 +23,12 @@ import { AssetsRepository } from '../assets/repository';
 import { SystemMemoryRepository } from '../system-memory/repository';
 import { SupportersRepository } from '../supporters/repository';
 import { CopilotToolRegistry } from './toolRegistry';
-import { CopilotToolContext, sanitizeBoundedTimestamp } from './types';
+import {
+  CopilotToolContext,
+  MAX_COPILOT_CONTEXT_CHARS,
+  MAX_COPILOT_MESSAGE_CHARS,
+  sanitizeCopilotHistory,
+} from './types';
 import { createCopilotEmbeddingProvider } from './embeddingAdapter';
 import { getCopilotChannelContext } from './prompts';
 import { createCopilotDialogueClient } from './geminiDialogueAdapter';
@@ -80,23 +85,10 @@ const buildInitialDialogueTurns = (
   targetTimezone: string,
   lang: 'ja' | 'en',
 ): DialogueTurn[] => {
-  const sanitizedHistory = rawHistory
-    .map((h) => {
-      const cleanText = typeof h.text === 'string' ? sanitizeUntrustedPromptText(h.text, 2000) : '';
-      const cleanThought =
-        typeof h.thought === 'string' ? sanitizeUntrustedPromptText(h.thought, 500) : '';
-      const validTime = sanitizeBoundedTimestamp(h.time);
-      return {
-        role: h.role === 'model' ? ('model' as const) : ('user' as const),
-        text: cleanText,
-        ...(cleanThought ? { thought: cleanThought } : {}),
-        ...(validTime ? { time: validTime } : {}),
-      };
-    })
-    .filter((h, idx, arr) => {
-      if (idx === arr.length - 1 && h.text === userMessage) return false;
-      return h.text.length > 0;
-    });
+  const sanitizedHistory = sanitizeCopilotHistory(rawHistory).filter((h, idx, arr) => {
+    if (idx === arr.length - 1 && h.text === userMessage) return false;
+    return h.text.length > 0;
+  });
 
   const mappedEntries: ConversationLogEntry[] = [];
   let expectedRole: 'user' | 'model' = 'user';
@@ -158,7 +150,7 @@ export class CopilotUseCase {
    * or propagates non-429 upstream 4xx/`502` errors from Gemini model execution.
    */
   async processChat(request: CopilotRequest): Promise<CopilotResponse> {
-    const userMessage = (request.message ?? '').trim();
+    const userMessage = (request.message ?? '').trim().slice(0, MAX_COPILOT_MESSAGE_CHARS);
     if (!userMessage) {
       throw new UpstreamApiError('User message is required and cannot be empty', 400);
     }
@@ -166,7 +158,8 @@ export class CopilotUseCase {
     const activePersona = getActivePersona(config.persona.activeId);
     const targetTimezone = resolveTargetTimezone(request.timezone);
     const rawContext = typeof request.currentContext === 'string' ? request.currentContext : '';
-    const currentContext = sanitizeUntrustedPromptText(rawContext, 500) || 'Global Dashboard';
+    const currentContext =
+      sanitizeUntrustedPromptText(rawContext, MAX_COPILOT_CONTEXT_CHARS) || 'Global Dashboard';
     const rawHistory = request.history ?? [];
     const isEn = request.language === 'en';
     const targetLang = isEn ? 'en' : 'ja';

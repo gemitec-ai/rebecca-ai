@@ -1,4 +1,4 @@
-import type { IMemoryVectorEmbedder } from '@rebecca/memory';
+import { sanitizeUntrustedPromptText, type IMemoryVectorEmbedder } from '@rebecca/memory';
 import type { ToolDeclaration } from '@rebecca/tools';
 import { CopilotAction, CopilotAttachment } from '@rebecca/types';
 import { TimelineRepository } from '../timeline/repository';
@@ -63,6 +63,15 @@ export const resolveBoundedLimit = (rawLimit: unknown, max: number, defaultLimit
   return defaultLimit;
 };
 
+/** Maximum character count permitted for incoming Copilot chat messages and history texts. */
+export const MAX_COPILOT_MESSAGE_CHARS = 2000;
+/** Maximum character count permitted for active UI context summaries. */
+export const MAX_COPILOT_CONTEXT_CHARS = 500;
+/** Maximum number of recent history turns accepted per Copilot request. */
+export const MAX_COPILOT_HISTORY_ITEMS = 20;
+/** Maximum character count permitted for prior assistant inner thoughts in history. */
+export const MAX_COPILOT_THOUGHT_CHARS = 500;
+
 /**
  * Validates and normalizes an optional ISO-8601/parseable timestamp string bounded to 64 characters.
  *
@@ -76,3 +85,51 @@ export const sanitizeBoundedTimestamp = (raw: unknown): string | undefined => {
   }
   return trimmed;
 };
+
+/**
+ * Unvalidated Copilot chat history item shape accepted at controller or usecase trust boundaries.
+ */
+export interface RawCopilotHistoryEntry {
+  readonly role?: string;
+  readonly text?: string;
+  readonly thought?: string;
+  readonly time?: string;
+}
+
+/**
+ * Normalized, bounded, and delimiter-sanitized Copilot history item.
+ */
+export interface SanitizedCopilotHistoryEntry {
+  readonly role: 'user' | 'model';
+  readonly text: string;
+  readonly thought?: string;
+  readonly time?: string;
+}
+
+/**
+ * Slices an untrusted Copilot history array to {@link MAX_COPILOT_HISTORY_ITEMS} entries and
+ * sanitizes control characters, prompt delimiters, timestamps, and lengths uniformly.
+ *
+ * @param rawHistory - Untrusted client or caller conversation history.
+ * @returns Sanitized history turns ready for working-memory conversion.
+ */
+export const sanitizeCopilotHistory = (
+  rawHistory: readonly RawCopilotHistoryEntry[],
+): SanitizedCopilotHistoryEntry[] =>
+  rawHistory.slice(-MAX_COPILOT_HISTORY_ITEMS).map((item) => {
+    const validTime = sanitizeBoundedTimestamp(item?.time);
+    const cleanText =
+      typeof item?.text === 'string'
+        ? sanitizeUntrustedPromptText(item.text, MAX_COPILOT_MESSAGE_CHARS)
+        : '';
+    const cleanThought =
+      typeof item?.thought === 'string'
+        ? sanitizeUntrustedPromptText(item.thought, MAX_COPILOT_THOUGHT_CHARS)
+        : '';
+    return {
+      role: item?.role === 'model' ? ('model' as const) : ('user' as const),
+      text: cleanText,
+      ...(cleanThought.length > 0 ? { thought: cleanThought } : {}),
+      ...(validTime !== undefined ? { time: validTime } : {}),
+    };
+  });

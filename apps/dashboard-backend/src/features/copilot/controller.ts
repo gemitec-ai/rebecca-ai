@@ -2,7 +2,11 @@ import { sanitizeUntrustedPromptText } from '@rebecca/memory';
 import { Request, Response } from 'express';
 import { isValidTimezone } from '../../config';
 import { CopilotUseCase } from './usecase';
-import { sanitizeBoundedTimestamp } from './types';
+import {
+  MAX_COPILOT_CONTEXT_CHARS,
+  MAX_COPILOT_MESSAGE_CHARS,
+  sanitizeCopilotHistory,
+} from './types';
 import { getTraceHeader, handleControllerError } from '../../utils/httpError';
 
 /**
@@ -60,25 +64,13 @@ export class CopilotController {
     }
 
     const traceHeader = getTraceHeader(req);
-    const boundedMessage = message.trim().slice(0, 2000);
+    const boundedMessage = message.trim().slice(0, MAX_COPILOT_MESSAGE_CHARS);
     const sanitizedContext =
-      typeof currentContext === 'string' ? sanitizeUntrustedPromptText(currentContext, 500) : '';
+      typeof currentContext === 'string'
+        ? sanitizeUntrustedPromptText(currentContext, MAX_COPILOT_CONTEXT_CHARS)
+        : '';
     const boundedContext = sanitizedContext.length > 0 ? sanitizedContext : undefined;
-    const boundedHistory = Array.isArray(history)
-      ? history.slice(-20).map((item: { role?: string; text?: string; thought?: string; time?: string }) => {
-          const validTime = sanitizeBoundedTimestamp(item?.time);
-          const cleanText =
-            typeof item?.text === 'string' ? sanitizeUntrustedPromptText(item.text, 2000) : '';
-          const cleanThought =
-            typeof item?.thought === 'string' ? sanitizeUntrustedPromptText(item.thought, 500) : '';
-          return {
-            role: item?.role === 'model' ? ('model' as const) : ('user' as const),
-            text: cleanText,
-            ...(cleanThought.length > 0 ? { thought: cleanThought } : {}),
-            ...(validTime !== undefined ? { time: validTime } : {}),
-          };
-        })
-      : undefined;
+    const boundedHistory = Array.isArray(history) ? sanitizeCopilotHistory(history) : undefined;
 
     try {
       const response = await this.useCase.processChat({
