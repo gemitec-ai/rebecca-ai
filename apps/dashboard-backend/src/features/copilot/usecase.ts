@@ -149,7 +149,17 @@ export class CopilotUseCase {
 
     const activePersona = getActivePersona(config.persona.activeId);
     const targetTimezone = resolveTargetTimezone(request.timezone);
-    const currentContext = request.currentContext ?? 'Global Dashboard';
+    const rawContext = typeof request.currentContext === 'string' ? request.currentContext : '';
+    const sanitizedContext = rawContext
+      .replace(/\p{Cc}+/gu, ' ')
+      .replace(/\[/g, '(')
+      .replace(/\]/g, ')')
+      .replace(/【/g, '《')
+      .replace(/】/g, '》')
+      .replace(/\s{2,}/g, ' ')
+      .trim()
+      .slice(0, 500);
+    const currentContext = sanitizedContext || 'Global Dashboard';
     const rawHistory = request.history ?? [];
     const isEn = request.language === 'en';
     const targetLang = isEn ? 'en' : 'ja';

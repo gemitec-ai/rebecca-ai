@@ -64,6 +64,8 @@ export class CopilotController {
         .replace(/\p{Cc}+/gu, ' ')
         .replace(/\[/g, '(')
         .replace(/\]/g, ')')
+        .replace(/【/g, '《')
+        .replace(/】/g, '》')
         .replace(/\s{2,}/g, ' ')
         .trim()
         .slice(0, 500);
