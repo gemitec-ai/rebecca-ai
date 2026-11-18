@@ -52,6 +52,8 @@ const sanitizeUntrustedPromptText = (raw: string, maxLength: number): string =>
     .replace(/\p{Cc}+/gu, ' ')
     .replace(/\[/g, '(')
     .replace(/\]/g, ')')
+    .replace(/【/g, '《')
+    .replace(/】/g, '》')
     .replace(/\s{2,}/g, ' ')
     .trim()
     .slice(0, maxLength);
@@ -276,19 +278,23 @@ export const formatAbsenceSection = (
 
 /**
  * Formats Layer 1 dynamic collective evolution trend instructions when non-empty.
+ * Sanitizes stored trend text against delimiter/control-character injection and caps length at 1,500 chars.
  */
 export const formatExtendedTrendSection = (
   extendedPrompt: string | undefined,
   lang: Language = 'ja',
 ): PromptSection | null => {
-  const trimmed = extendedPrompt?.trim();
-  if (!trimmed) {
+  if (!extendedPrompt) {
+    return null;
+  }
+  const sanitized = sanitizeUntrustedPromptText(extendedPrompt, 1500);
+  if (!sanitized) {
     return null;
   }
 
   return {
     header: lang === 'en' ? '[Collective Unconscious Trend]' : '【集合無意識トレンド】',
-    body: trimmed,
+    body: sanitized,
   };
 };
 

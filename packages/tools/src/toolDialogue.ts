@@ -201,11 +201,14 @@ export const runToolDialogueLoop = async <TOutput>(
   const generateStep =
     typeof client === 'function' ? client : (ctx: ToolDialogueStepContext) => client.generateStep(ctx);
 
+  const normalizedMaxRounds = Number.isFinite(maxToolRounds)
+    ? Math.max(0, Math.trunc(maxToolRounds))
+    : 0;
   const declarations = toolRegistry ? toolRegistry.getDeclarations() : [];
   const rounds: ToolRoundRecord[] = [];
 
-  if (toolRegistry && declarations.length > 0 && maxToolRounds > 0) {
-    for (let roundIndex = 0; roundIndex < maxToolRounds; roundIndex++) {
+  if (toolRegistry && declarations.length > 0 && normalizedMaxRounds > 0) {
+    for (let roundIndex = 0; roundIndex < normalizedMaxRounds; roundIndex++) {
       const step = await generateStep({
         initialTurns,
         userInput,

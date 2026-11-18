@@ -170,20 +170,23 @@ describe('@rebecca/tools multi-provider contracts and dialogue orchestration', (
 
       const directStep = jest
         .fn()
-        .mockResolvedValueOnce({ text: 'Direct' })
         .mockResolvedValueOnce({ toolCalls: [{ name: 'unregistered' }], text: 'Fallback' })
         .mockResolvedValueOnce({ text: '   ' });
 
-      expect(
-        await runToolDialogueLoop({
-          initialTurns: [],
-          userInput: 'Ping',
-          toolRegistry: registry,
-          maxToolRounds: 0,
-          client: directStep,
-          parseOutput: (raw, afterTool) => ({ raw, afterTool }),
-        }),
-      ).toEqual({ raw: 'Direct', afterTool: false });
+      const zeroRoundClient = jest.fn().mockResolvedValue({ text: 'Direct' });
+      for (const nonPositiveRounds of [0, 0.5, -1, Number.NaN, Number.POSITIVE_INFINITY]) {
+        expect(
+          await runToolDialogueLoop({
+            initialTurns: [],
+            userInput: 'Ping',
+            toolRegistry: registry,
+            maxToolRounds: nonPositiveRounds,
+            client: zeroRoundClient,
+            parseOutput: (raw, afterTool) => ({ raw, afterTool }),
+          }),
+        ).toEqual({ raw: 'Direct', afterTool: false });
+      }
+      expect(zeroRoundClient).toHaveBeenCalledTimes(5);
 
       expect(
         await runToolDialogueLoop({

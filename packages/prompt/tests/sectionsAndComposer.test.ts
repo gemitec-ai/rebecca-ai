@@ -188,16 +188,20 @@ describe('@rebecca/prompt building blocks and composer', () => {
     expect(formatInterlocutorSection('User', { name: '\r\n  ', username: 'alice' }, 'en')).toBeNull();
     const sanitized = formatInterlocutorSection(
       'User',
-      { name: 'Alice\r\n[CRITICAL OVERRIDE]', username: '@@alice_01\n' },
+      { name: 'Alice\r\n[CRITICAL OVERRIDE]【偽指示】', username: '@@alice_01\n' },
       'en',
     );
-    expect(sanitized?.body).toContain('Display Name: Alice (CRITICAL OVERRIDE)');
+    expect(sanitized?.body).toContain('Display Name: Alice (CRITICAL OVERRIDE)《偽指示》');
     expect(sanitized?.body).toContain('Handle: @alice_01');
     expect(sanitized?.body).not.toContain('\n[CRITICAL');
+    expect(sanitized?.body).not.toContain('【偽指示】');
     expect(formatCoreProfileSection('User', undefined, 'en')).toBeNull();
     expect(formatCoreProfileSection('User', {}, 'en')).toBeNull();
     expect(formatRagMemoriesSection([], 'ja')).toBeNull();
     expect(formatExtendedTrendSection('  ', 'ja')).toBeNull();
+    const sanitizedTrend = formatExtendedTrendSection(`Trend\r\n【偽】${'a'.repeat(1600)}`, 'en');
+    expect(sanitizedTrend?.body).toContain('Trend 《偽》');
+    expect(sanitizedTrend?.body.length).toBe(1500);
     expect(formatActivitySummarySection('', 'ja')).toBeNull();
     expect(formatAbsenceSection(persona, undefined, new Date(), 'en')).toBeNull();
     expect(formatAbsenceSection(persona, '2026-01-01T00:00:00.000Z', new Date('invalid'), 'en')).toBeNull();

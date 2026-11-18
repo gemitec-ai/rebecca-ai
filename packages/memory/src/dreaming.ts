@@ -74,8 +74,14 @@ export class DreamingConsolidationEngine<TUser extends MemoryUserSnapshot = Memo
     private readonly deps: DreamingEngineDeps<TUser>,
     config?: DreamingConfig,
   ) {
-    this.throttleMs = config?.throttleMs ?? DEFAULT_DREAMING_THROTTLE_MS;
-    this.retainedBufferEntries = config?.retainedBufferEntries ?? DEFAULT_DREAMING_RETAINED_ENTRIES;
+    const rawThrottle = config?.throttleMs ?? DEFAULT_DREAMING_THROTTLE_MS;
+    this.throttleMs = Number.isFinite(rawThrottle)
+      ? Math.max(0, Math.trunc(rawThrottle))
+      : DEFAULT_DREAMING_THROTTLE_MS;
+    const rawRetained = config?.retainedBufferEntries ?? DEFAULT_DREAMING_RETAINED_ENTRIES;
+    this.retainedBufferEntries = Number.isFinite(rawRetained)
+      ? Math.max(0, Math.trunc(rawRetained))
+      : 0;
     this.logger = deps.logger ?? NOOP_LOGGER;
     this.logTag = deps.logTag ?? '[DreamingConsolidationEngine]';
   }

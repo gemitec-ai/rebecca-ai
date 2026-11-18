@@ -175,6 +175,21 @@ describe('DreamingConsolidationEngine and hasUnconsolidatedActivity', () => {
         }),
       ).toBe(true);
       expect(updated.get('u1')?.retainedBuffer).toEqual([]);
+
+      // Fractional and non-finite retainedBufferEntries clamp safely to 0 entries instead of slicing the full buffer
+      for (const badRetention of [0.5, -1, Number.NaN, Number.POSITIVE_INFINITY]) {
+        (synthesizer.generateDreaming as jest.Mock).mockResolvedValueOnce({ done: true });
+        const clampedEngine = new DreamingConsolidationEngine(
+          { store, synthesizer, dreamingPrompt: 'DREAM' },
+          { throttleMs: Number.NaN, retainedBufferEntries: badRetention },
+        );
+        expect(
+          await clampedEngine.consolidateUser('u1', {
+            episodicBuffer: [{ role: 'user', content: 'hello' }],
+          }),
+        ).toBe(true);
+        expect(updated.get('u1')?.retainedBuffer).toEqual([]);
+      }
     });
   });
 });

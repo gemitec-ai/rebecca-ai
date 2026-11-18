@@ -78,16 +78,27 @@ export class SelfReflectionEngine {
   private readonly systemInstruction: string;
   private readonly logTag: string;
 
+  /**
+   * @param deps - Store, synthesizer, persona display name, and optional logger/overrides.
+   * @param config - Optional self-reflection post limit configuration.
+   * @throws Error if `config.postLimit` is zero, negative, or non-finite.
+   */
   constructor(
     private readonly deps: SelfReflectionEngineDependencies,
     config?: SelfReflectionConfig,
   ) {
-    this.postLimit = config?.postLimit ?? DEFAULT_SELF_REFLECTION_POST_LIMIT;
+    const rawLimit = config?.postLimit ?? DEFAULT_SELF_REFLECTION_POST_LIMIT;
+    const normalizedLimit = Number.isFinite(rawLimit) ? Math.trunc(rawLimit) : 0;
+    const logTag = deps.logTag ?? '[SelfReflectionEngine]';
+    if (normalizedLimit <= 0) {
+      throw new Error(`${logTag} postLimit must be a positive integer.`);
+    }
+    this.postLimit = normalizedLimit;
     this.activitySectionLabel =
       deps.activitySectionLabel ?? DEFAULT_SELF_REFLECTION_ACTIVITY_LABEL;
     this.systemInstruction =
       deps.systemInstruction ?? DEFAULT_SELF_REFLECTION_SYSTEM_INSTRUCTION;
-    this.logTag = deps.logTag ?? '[SelfReflectionEngine]';
+    this.logTag = logTag;
   }
 
   /**

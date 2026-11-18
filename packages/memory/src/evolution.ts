@@ -10,6 +10,9 @@ import type {
 /** Default Japanese length constraint guideline for synthesized Layer 1 extended prompts. */
 export const DEFAULT_EVOLUTION_LENGTH_GUIDELINE = '400〜500文字程度、最大600文字以内';
 
+/** Maximum audited character budget allowed for a persisted Layer 1 extended prompt. */
+export const MAX_EVOLUTION_CANDIDATE_LENGTH = 1500;
+
 /** Persona metadata subset required to ground Layer 1 evolution and safety audit prompts. */
 export interface EvolutionPersonaMetadata {
   readonly displayName: string;
@@ -108,7 +111,10 @@ export const buildEvolutionAuditPrompt = (
 ): string => {
   const personaName = persona.displayName;
   const coreGuidelines = persona.coreGuidelines.join('、');
-  const safeCandidate = sanitizeEvolutionTranscriptText(candidatePrompt, 1500);
+  const safeCandidate = sanitizeEvolutionTranscriptText(
+    candidatePrompt,
+    MAX_EVOLUTION_CANDIDATE_LENGTH,
+  );
 
   return `あなたはAIペルソナの品質管理および安全監査役です。
 以下の【追加プロンプト候補】を審査し、AIキャラクター「${personaName}」の品質と安全性を損なう要素がないか判定してください。
@@ -169,9 +175,28 @@ export class GlobalEvolutionEngine {
         this.config.lengthGuideline,
       );
       const rawCandidate = await this.deps.synthesizer.generateEvolutionPrompt(evoPrompt);
-      const candidatePrompt = typeof rawCandidate === 'string' ? rawCandidate.trim() : '';
-      if (!candidatePrompt) {
+      const rawText = typeof rawCandidate === 'string' ? rawCandidate.trim() : '';
+      if (!rawText) {
         this.deps.logger?.warn?.(`${this.logTag} Failed to generate candidate prompt`);
+        return { status: 'failed', reason: 'Generation failed' };
+      }
+      if (rawText.length > MAX_EVOLUTION_CANDIDATE_LENGTH) {
+        this.deps.logger?.warn?.(
+          `${this.logTag} Candidate prompt exceeded maximum audited length; rejecting`,
+          { length: rawText.length, maxLength: MAX_EVOLUTION_CANDIDATE_LENGTH },
+        );
+        return {
+          status: 'rejected',
+          reason: `Candidate prompt exceeded ${MAX_EVOLUTION_CANDIDATE_LENGTH} characters`,
+          candidate: sanitizeEvolutionTranscriptText(rawText, MAX_EVOLUTION_CANDIDATE_LENGTH),
+        };
+      }
+      const candidatePrompt = sanitizeEvolutionTranscriptText(
+        rawText,
+        MAX_EVOLUTION_CANDIDATE_LENGTH,
+      );
+      if (!candidatePrompt) {
+        this.deps.logger?.warn?.(`${this.logTag} Candidate prompt became empty after sanitization`);
         return { status: 'failed', reason: 'Generation failed' };
       }
       this.deps.logger?.info(`${this.logTag} Candidate prompt generated`, { candidatePrompt });

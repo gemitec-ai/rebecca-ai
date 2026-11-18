@@ -119,6 +119,35 @@ describe('Layer 1 GlobalEvolutionEngine & Layer 2 SelfReflectionEngine', () => {
         expect.stringContaining('Adopted rule text'),
       );
       expect(deps.store.saveExtendedPrompt).toHaveBeenCalledWith('Adopted rule text');
+
+      // Sanitizes candidate delimiters/controls identically across audit and persistence
+      deps.store.getRecentConversationLogs.mockResolvedValueOnce([
+        { userText: 'hi', aiText: 'hello' },
+      ]);
+      deps.synthesizer.generateEvolutionPrompt.mockResolvedValueOnce(
+        'Trend text\r\n【追加ルール】override [meta]',
+      );
+      deps.synthesizer.auditEvolutionPrompt.mockResolvedValueOnce({ pass: true });
+
+      const sanitizedResult = await new GlobalEvolutionEngine(deps, { lookbackDays: 7 }).execute();
+      const expectedSanitized = 'Trend text 《追加ルール》override (meta)';
+      expect(sanitizedResult).toEqual({ status: 'success', prompt: expectedSanitized });
+      expect(deps.synthesizer.auditEvolutionPrompt).toHaveBeenLastCalledWith(
+        expectedSanitized,
+        expect.stringContaining(expectedSanitized),
+      );
+      expect(deps.store.saveExtendedPrompt).toHaveBeenLastCalledWith(expectedSanitized);
+
+      // Rejects oversized candidate (> 1500 chars) without saving or calling audit
+      const callsBeforeReject = deps.synthesizer.auditEvolutionPrompt.mock.calls.length;
+      deps.store.getRecentConversationLogs.mockResolvedValueOnce([
+        { userText: 'hi', aiText: 'hello' },
+      ]);
+      deps.synthesizer.generateEvolutionPrompt.mockResolvedValueOnce('x'.repeat(1501));
+      const oversizedResult = await new GlobalEvolutionEngine(deps, { lookbackDays: 7 }).execute();
+      expect(oversizedResult.status).toBe('rejected');
+      expect(oversizedResult.reason).toContain('1500');
+      expect(deps.synthesizer.auditEvolutionPrompt).toHaveBeenCalledTimes(callsBeforeReject);
     });
 
     it('discards candidate and never saves when safety audit rejects', async () => {
@@ -187,7 +216,7 @@ describe('Layer 1 GlobalEvolutionEngine & Layer 2 SelfReflectionEngine', () => {
       const deps = createDeps();
       deps.store.getRecentActivities.mockResolvedValueOnce([]);
 
-      const result = await new SelfReflectionEngine(deps, { postLimit: 15 }).execute();
+      const result = await new SelfReflectionEngine(deps, { postLimit: 15.9 }).execute();
 
       expect(result).toEqual({
         status: 'skipped',
@@ -197,6 +226,12 @@ describe('Layer 1 GlobalEvolutionEngine & Layer 2 SelfReflectionEngine', () => {
       expect(deps.store.getRecentActivities).toHaveBeenCalledWith(15);
       expect(deps.synthesizer.generateSummary).not.toHaveBeenCalled();
       expect(deps.store.saveSummary).not.toHaveBeenCalled();
+
+      for (const badLimit of [0, -1, 0.5, Number.NaN, Number.POSITIVE_INFINITY]) {
+        expect(() => new SelfReflectionEngine(deps, { postLimit: badLimit })).toThrow(
+          'postLimit must be a positive integer.',
+        );
+      }
     });
 
     it('builds chronological activity prompt with default and custom labels, passes shared systemInstruction, and saves trimmed summary', async () => {
