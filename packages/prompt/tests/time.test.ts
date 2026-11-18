@@ -58,6 +58,10 @@ describe('@rebecca/prompt time utilities', () => {
       expect(formattedUtc).toContain('07:30');
       expect(formattedFromDate).toBe(formattedUtc);
     });
+
+    it('throws RangeError when given an invalid IANA timezone for a valid timestamp', () => {
+      expect(() => formatZonedDateTime('2026-09-13T07:30:00.000Z', 'Invalid/Timezone_XYZ')).toThrow(RangeError);
+    });
   });
 
   describe('resolveTimeContextPeriod', () => {

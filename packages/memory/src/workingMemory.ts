@@ -120,6 +120,7 @@ export const saveInteraction = async (
  * @param timezone - IANA timezone identifier for formatting timestamps. Defaults to `'Asia/Tokyo'`.
  * @param lang - Natural language (`'ja'` or `'en'`) controlling inner thought / speech framing labels. Defaults to `'ja'`.
  * @returns Provider-agnostic turn representation preserving role and inner thought framing.
+ * @throws RangeError if `timezone` is not a valid IANA time zone identifier when formatting a valid `entry.timestamp`.
  */
 export const formatTurnWithInnerThought = (
   entry: ConversationLogEntry,
@@ -132,8 +133,9 @@ export const formatTurnWithInnerThought = (
   if (entry.role === 'model') {
     const thoughtLabel = lang === 'en' ? '[Inner Thought]' : '【思考・本音】';
     const spokenLabel = lang === 'en' ? '[Spoken Reply]' : '【発話】';
-    const modelBody = entry.thought
-      ? `${thoughtLabel}${entry.thought}\n${spokenLabel}${entry.content}`
+    const trimmedThought = typeof entry.thought === 'string' ? entry.thought.trim() : '';
+    const modelBody = trimmedThought
+      ? `${thoughtLabel}${trimmedThought}\n${spokenLabel}${entry.content}`
       : entry.content;
     return {
       role: 'model',
@@ -154,6 +156,7 @@ export const formatTurnWithInnerThought = (
  * @param timezone - IANA timezone identifier for timestamp prefixes. Defaults to `'Asia/Tokyo'`.
  * @param lang - Natural language (`'ja'` or `'en'`) controlling inner thought / speech framing labels. Defaults to `'ja'`.
  * @returns Immutable array of formatted conversation turns ready to map to SDK message parts.
+ * @throws RangeError if `timezone` is not a valid IANA time zone identifier when formatting entries with valid timestamps.
  */
 export const formatHistoryWithInnerThought = (
   history: readonly ConversationLogEntry[],

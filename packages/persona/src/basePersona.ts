@@ -286,6 +286,9 @@ ${stanceRulesJa}${quotesSectionJa}`;
    * @returns Array of matching PersonaPattern instances ranked by similarity.
    */
   findTopPatterns(queryVector: number[], topK = 3): PersonaPattern[] {
+    if (topK <= 0) {
+      return [];
+    }
     if (!queryVector || queryVector.length === 0 || !this.patternVectors || this.patternVectors.length === 0) {
       return this.patterns.slice(0, Math.min(topK, this.patterns.length));
     }

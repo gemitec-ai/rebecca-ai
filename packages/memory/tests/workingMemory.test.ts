@@ -119,9 +119,18 @@ describe('workingMemory and Tatemae/Honne reconstruction', () => {
       expect(formattedEn[1]?.text).toContain('[Inner Thought]Actually thrilled they asked.\n[Spoken Reply]Doing great!');
     });
 
-    it('omits timestamp prefix cleanly when timestamp is invalid', () => {
+    it('omits timestamp prefix cleanly when timestamp is invalid and ignores whitespace-only thoughts', () => {
       const turned = formatTurnWithInnerThought({ role: 'user', content: 'ping', timestamp: 'bad-ts' }, 'UTC');
       expect(turned).toEqual({ role: 'user', text: 'ping' });
+
+      const blankThoughtModel = formatTurnWithInnerThought({ role: 'model', content: 'pong', thought: '   \n\t ' }, 'UTC');
+      expect(blankThoughtModel).toEqual({ role: 'model', text: 'pong' });
+    });
+
+    it('throws RangeError when given an invalid IANA timezone for a valid timestamp', () => {
+      const turn: ConversationLogEntry = { role: 'user', content: 'ping', timestamp: '2026-05-01T00:00:00.000Z' };
+      expect(() => formatTurnWithInnerThought(turn, 'Invalid/Timezone_XYZ')).toThrow(RangeError);
+      expect(() => formatHistoryWithInnerThought([turn], 'Invalid/Timezone_XYZ')).toThrow(RangeError);
     });
   });
 });

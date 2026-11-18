@@ -365,11 +365,13 @@ describe('persona package exports verification', () => {
       expect(en).toContain('why did you ignore me');
     });
 
-    test('findTopPatterns should fallback to slice when queryVector is missing', () => {
+    test('findTopPatterns should fallback to slice when queryVector is missing and return empty for non-positive topK', () => {
       const p = getActivePersona('rebecca');
       const fallback = p.findTopPatterns([], 2);
       expect(fallback.length).toBe(2);
       expect(fallback[0].id).toBe(1);
+      expect(p.findTopPatterns([], 0)).toEqual([]);
+      expect(p.findTopPatterns([], -1)).toEqual([]);
     });
 
     test('composePrompt should support default arguments and optional channel overrides in both languages', () => {

@@ -47,7 +47,7 @@ export const resolveSituationalPersonaAnchors = async (
     .filter((s) => s.length > 0)
     .join('\n');
 
-  if (!query || resolvedVectors.length === 0) {
+  if (topK <= 0 || !query || resolvedVectors.length === 0) {
     return '';
   }
 

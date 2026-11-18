@@ -62,6 +62,7 @@ export const getZonedDateParts = (
  * @param isoOrDate - ISO-8601 string or Date object representing the timestamp.
  * @param timezone - Target IANA time zone identifier (defaults to `'Asia/Tokyo'`).
  * @returns Formatted date string with timezone abbreviation, or `''` if input is empty or invalid.
+ * @throws RangeError if `timezone` is not a valid IANA time zone identifier when formatting a valid date.
  */
 export const formatZonedDateTime = (
   isoOrDate?: string | Date | null,

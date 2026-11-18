@@ -15,7 +15,7 @@ describe('resolveSituationalPersonaAnchors', () => {
     expect(embedder.generateEmbedding).not.toHaveBeenCalled();
   });
 
-  it('returns empty string when resolvedVectors is empty without calling embedder', async () => {
+  it('returns empty string when resolvedVectors is empty or topK is non-positive without calling embedder', async () => {
     const embedder = { generateEmbedding: jest.fn() };
     const res = await resolveSituationalPersonaAnchors({
       embedder,
@@ -23,6 +23,30 @@ describe('resolveSituationalPersonaAnchors', () => {
       patternVectors: [],
     });
     expect(res).toBe('');
+    expect(embedder.generateEmbedding).not.toHaveBeenCalled();
+
+    const nonEmptyVectors = [
+      {
+        id: 1,
+        category: 'care',
+        trigger: 'tired',
+        internal_thought: 'worry',
+        behavior: 'encourage',
+        sample_response: 'Rest up!',
+        vector: [1, 0],
+      },
+    ];
+    for (const nonPositiveTopK of [0, -1]) {
+      const zeroRes = await resolveSituationalPersonaAnchors({
+        embedder,
+        contextElements: ['morning coffee'],
+        patternVectors: nonEmptyVectors,
+        findTopPatterns: jest.fn(),
+        buildFewShotPrompt: jest.fn(),
+        topK: nonPositiveTopK,
+      });
+      expect(zeroRes).toBe('');
+    }
     expect(embedder.generateEmbedding).not.toHaveBeenCalled();
   });
 
