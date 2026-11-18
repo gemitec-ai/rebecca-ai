@@ -16,8 +16,10 @@ src/
 │   ├── assets/            # Media library management (Gemini auto-captions)
 │   ├── auth/              # Admin session authentication context
 │   ├── campaign/          # Narrative episodic campaign orchestration & slot dispatch
+│   ├── config/            # Public client runtime configuration & active persona metadata bootstrap
 │   ├── copilot/           # Admin Dashboard Copilot (ReAct tool loop + HITL action proposals)
-│   ├── settings/          # Dynamic client/Firebase configuration bootstrap endpoint
+│   ├── settings/          # Admin global language and timezone preference endpoints
+│   ├── supporters/        # Active campaign and supporter contribution endpoints
 │   ├── system-memory/     # Persona multi-layered system memory & Dreaming trigger
 │   ├── timeline/          # Timeline post audit logs and bulk deletion
 │   └── users/             # Monitored users list & chat history
