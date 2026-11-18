@@ -504,6 +504,14 @@ describe('Dashboard Backend Controllers Unit Tests', () => {
       await controller.chat(reqEmpty, resEmpty);
       expect(resEmpty.status).toHaveBeenCalledWith(400);
 
+      for (const badBody of [null, undefined, [], 'raw-text']) {
+        const { req: reqInvalidBody, res: resInvalidBody } = createMockReqRes({
+          body: badBody as unknown as Record<string, unknown>,
+        });
+        await controller.chat(reqInvalidBody, resInvalidBody);
+        expect(resInvalidBody.status).toHaveBeenCalledWith(400);
+      }
+
       const { req, res } = createMockReqRes({ body: { message: 'Hi', currentContext: 'Home', history: [] } });
       useCase.processChat.mockResolvedValueOnce({ reply: 'Hi Master!', actionRequired: null, suggestionChips: [] });
       await controller.chat(req, res);
@@ -540,11 +548,17 @@ describe('Dashboard Backend Controllers Unit Tests', () => {
       expect(resSpaces.status).toHaveBeenCalledWith(400);
 
       const { req: reqPadded, res: resPadded } = createMockReqRes({
-        body: { message: `${' '.repeat(2005)}hello` },
+        body: {
+          message: `${' '.repeat(2005)}hello`,
+          history: [{ role: 'user', text: `${' '.repeat(2005)}hello` }],
+        },
       });
       useCase.processChat.mockResolvedValueOnce({ reply: 'Hello!', actionRequired: null, suggestionChips: [] });
       await controller.chat(reqPadded, resPadded);
-      expect(useCase.processChat).toHaveBeenCalledWith({ message: 'hello' });
+      expect(useCase.processChat).toHaveBeenCalledWith({
+        message: 'hello',
+        history: [{ role: 'user', text: 'hello' }],
+      });
       expect(resPadded.json).toHaveBeenCalledWith({ reply: 'Hello!', actionRequired: null, suggestionChips: [] });
     });
 

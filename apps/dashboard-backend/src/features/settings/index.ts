@@ -43,6 +43,9 @@ export function initializeSettingsModule(firestore: Firestore): Router {
   // PATCH /api/v1/settings
   router.patch('/', async (req, res) => {
     try {
+      if (!req.body || typeof req.body !== 'object' || Array.isArray(req.body)) {
+        return res.status(400).json({ error: 'Invalid request body: expected JSON object' });
+      }
       const { language, timezone } = req.body;
 
       if (language !== undefined && language !== 'ja' && language !== 'en') {

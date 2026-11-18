@@ -22,6 +22,11 @@ export class CopilotController {
    * @returns A promise that resolves when the response is sent.
    */
   async chat(req: Request, res: Response): Promise<void> {
+    if (!req.body || typeof req.body !== 'object' || Array.isArray(req.body)) {
+      res.status(400).json({ error: 'Invalid request body: expected JSON object' });
+      return;
+    }
+
     const { message, currentContext, history, language, timezone } = req.body;
     if (typeof message !== 'string' || message.trim().length === 0) {
       res.status(400).json({ error: 'Message is required' });
@@ -56,7 +61,7 @@ export class CopilotController {
     const boundedHistory = Array.isArray(history)
       ? history.slice(-20).map((item: { role?: string; text?: string; thought?: string; time?: string }) => ({
           role: item?.role === 'model' ? ('model' as const) : ('user' as const),
-          text: typeof item?.text === 'string' ? item.text.slice(0, 2000) : '',
+          text: typeof item?.text === 'string' ? item.text.trim().slice(0, 2000) : '',
           ...(typeof item?.thought === 'string' && item.thought.trim().length > 0
             ? { thought: item.thought.trim().slice(0, 500) }
             : {}),

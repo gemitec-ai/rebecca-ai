@@ -1228,7 +1228,7 @@ components:
       properties:
         id:
           type: string
-          example: "1934600616791482000"
+          example: "poll_001"
         options:
           type: array
           items:

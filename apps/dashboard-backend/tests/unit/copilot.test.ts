@@ -567,6 +567,23 @@ describe('Copilot Autonomous Agent Suite (Redesign v3)', () => {
     });
 
     it('should safely handle explicit administrative commands via propose_destructive_action', async () => {
+      (usersRepo.getAll as jest.Mock).mockResolvedValueOnce({
+        data: [
+          {
+            id: 'bad_bot',
+            username: 'bad_bot',
+            name: 'Bad Bot',
+            interactions: 1,
+            firstSeen: '2026-01-01T00:00:00Z',
+            lastSeen: '2026-11-10T09:00:00Z',
+            coreProfile: '{}',
+            chatHistory: [],
+            status: UserStatus.ACTIVE,
+          },
+        ],
+        meta: { totalItems: 1, totalPages: 1, currentPage: 1, limit: 10 },
+      });
+
       mockGenerateContent.mockResolvedValueOnce({
         functionCalls: [
           {
@@ -858,6 +875,21 @@ describe('Copilot Autonomous Agent Suite (Redesign v3)', () => {
       expect(res.actionRequired?.payload['userId']).toBe('doc_123');
       expect(res.actionRequired?.payload['handle']).toBe('@taro_example');
       expect(res.actionRequired?.title).toContain('Taro Example (@taro_example)');
+
+      const ambiguousRepo = {
+        getById: jest.fn().mockResolvedValue(null),
+        getAll: jest.fn().mockResolvedValue({
+          data: [
+            { id: 'u1', username: 'taro_one', name: 'Taro Alpha', status: UserStatus.ACTIVE, interactions: 1 },
+          ],
+        }),
+      } as unknown as UsersRepository;
+      const ambRes = await tool.execute(
+        { actionType: 'BLOCK_USER', targetId: 'taro' },
+        { usersRepo: ambiguousRepo, isEn: true },
+      );
+      expect((ambRes.data as { error?: string }).error).toContain('Ambiguous candidates');
+      expect(ambRes.actionRequired).toBeUndefined();
     });
 
     it('should resolve user directly when getById returns matching user with name', async () => {

@@ -679,6 +679,9 @@ describe('Dashboard Backend Exhaustive Branch Coverage Tests', () => {
     });
 
     it('processChat should handle tool calling with propose_destructive_action and final synthesis', async () => {
+      usersRepo.getAll.mockResolvedValueOnce({
+        data: [{ id: 'spammer_user', username: 'spammer_user', name: 'Spammer User', interactions: 1, status: 'ACTIVE' }],
+      });
       // 1. Tool call turn
       mockGenerateContent.mockResolvedValueOnce({
         functionCalls: [

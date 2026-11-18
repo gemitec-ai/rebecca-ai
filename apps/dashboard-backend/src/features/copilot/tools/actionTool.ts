@@ -120,6 +120,17 @@ export class ProposeDestructiveActionTool implements CopilotTool {
               resolvedId = exactMatch.id;
               resolvedHandle = exactMatch.username ? `@${exactMatch.username}` : `@${exactMatch.id}`;
               resolvedName = exactMatch.name && exactMatch.name.length > 0 ? exactMatch.name : resolvedHandle;
+            } else {
+              const candidateSummary = candidates
+                .map((c) => `${c.name || '(no name)'} (@${c.username || c.id})`)
+                .join(', ');
+              return {
+                data: {
+                  error: isEn
+                    ? `No exact user match found for "${cleanTarget}". Ambiguous candidates: ${candidateSummary}. Please disambiguate with search_users first.`
+                    : `「${cleanTarget}」に完全一致するユーザーが見つかりませんでした（候補: ${candidateSummary}）。search_usersで正確なユーザーを特定してください。`,
+                },
+              };
             }
           }
         }
