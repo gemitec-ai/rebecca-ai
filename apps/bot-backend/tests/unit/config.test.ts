@@ -101,6 +101,7 @@ describe('Config', () => {
         process.env.X_FOLLOWERS_PAGE_SIZE = '1';
         process.env.X_FOLLOWERS_MAX_RESULTS = '99999';
         process.env.RANDOM_ENGAGEMENT_COOLDOWN_DAYS = 'not-a-number';
+        process.env.EVOLUTION_LOOKBACK_DAYS = '0';
 
         const config = require('../../src/config/index').default;
 
@@ -108,5 +109,17 @@ describe('Config', () => {
         expect(config.xApi.followersPageSize).toBe(5);
         expect(config.xApi.followersMaxResults).toBe(2000);
         expect(config.engagement.cooldownDays).toBe(365);
+        expect(config.evolution.lookbackDays).toBe(1);
+    });
+
+    it('should fallback EVOLUTION_LOOKBACK_DAYS when non-numeric and clamp negatives or overflow', () => {
+        process.env.EVOLUTION_LOOKBACK_DAYS = 'not-a-number';
+        let cfg = require('../../src/config/index').default;
+        expect(cfg.evolution.lookbackDays).toBe(7);
+
+        jest.resetModules();
+        process.env.EVOLUTION_LOOKBACK_DAYS = '9999';
+        cfg = require('../../src/config/index').default;
+        expect(cfg.evolution.lookbackDays).toBe(365);
     });
 });
