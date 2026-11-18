@@ -40,8 +40,11 @@ describe('core vectorization and RAG primitives', () => {
       expect(store.saveRagMemory).toHaveBeenCalledWith('u1', 'hello world', [0.2, 0.8]);
 
       expect(await searchVectorMemories(embedder, store, 'u1', 'query', 0)).toEqual([]);
+      expect(await searchVectorMemories(embedder, store, 'u1', 'query', Number.NaN)).toEqual([]);
+      expect(await searchVectorMemories(embedder, store, 'u1', 'query', Number.POSITIVE_INFINITY)).toEqual([]);
+      expect(await searchVectorMemories(embedder, store, 'u1', 'query', 0.4)).toEqual([]);
       expect(await searchVectorMemories(embedder, store, 'u1', '   ', 3)).toEqual([]);
-      expect(await searchVectorMemories(embedder, store, 'u1', 'coffee', 5)).toEqual(['episode 1']);
+      expect(await searchVectorMemories(embedder, store, 'u1', 'coffee', 5.8)).toEqual(['episode 1']);
       expect(store.findRagMemories).toHaveBeenCalledWith('u1', [0.2, 0.8], 5);
     });
 

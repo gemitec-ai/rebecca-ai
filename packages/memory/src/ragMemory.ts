@@ -124,7 +124,8 @@ export const searchVectorMemories = async (
     throw new Error('Cannot search vector memories: userId must be a non-empty string');
   }
 
-  if (limit <= 0) {
+  const normalizedLimit = Number.isFinite(limit) ? Math.trunc(limit) : 0;
+  if (normalizedLimit <= 0) {
     return [];
   }
 
@@ -133,5 +134,5 @@ export const searchVectorMemories = async (
     return [];
   }
 
-  return store.findRagMemories(userId, queryVector, limit);
+  return store.findRagMemories(userId, queryVector, normalizedLimit);
 };

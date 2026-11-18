@@ -39,10 +39,11 @@ export const getWorkingMemory = (
   episodicBuffer: readonly ConversationLogEntry[] | undefined,
   limit: number = DEFAULT_WORKING_MEMORY_LIMIT,
 ): ConversationLogEntry[] => {
-  if (!episodicBuffer || episodicBuffer.length === 0 || limit <= 0) {
+  const normalizedLimit = Number.isFinite(limit) ? Math.trunc(limit) : 0;
+  if (!episodicBuffer || episodicBuffer.length === 0 || normalizedLimit <= 0) {
     return [];
   }
-  return episodicBuffer.slice(-limit * 2);
+  return episodicBuffer.slice(-normalizedLimit * 2);
 };
 
 /**

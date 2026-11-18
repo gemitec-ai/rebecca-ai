@@ -36,7 +36,7 @@ describe('resolveSituationalPersonaAnchors', () => {
         vector: [1, 0],
       },
     ];
-    for (const nonPositiveTopK of [0, -1]) {
+    for (const nonPositiveTopK of [0, -1, Number.NaN, Number.POSITIVE_INFINITY, 0.5]) {
       const zeroRes = await resolveSituationalPersonaAnchors({
         embedder,
         contextElements: ['morning coffee'],

@@ -150,6 +150,12 @@ export const cleanJsonString = (raw: string): string => {
           result += '\\r';
         } else if (char === '\t') {
           result += '\\t';
+        } else if (char === '\b') {
+          result += '\\b';
+        } else if (char === '\f') {
+          result += '\\f';
+        } else if (char.charCodeAt(0) < 0x20) {
+          result += `\\u${char.charCodeAt(0).toString(16).padStart(4, '0')}`;
         } else {
           result += char;
         }

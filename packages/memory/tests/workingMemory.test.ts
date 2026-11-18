@@ -10,12 +10,18 @@ import {
 
 describe('workingMemory and Tatemae/Honne reconstruction', () => {
   describe('getWorkingMemory', () => {
-    it('returns empty array for undefined, empty buffer, or non-positive limits', () => {
-      const sample: ConversationLogEntry[] = [{ role: 'user', content: 'hi' }];
+    it('returns empty array for undefined, empty buffer, or non-positive/non-finite limits', () => {
+      const sample: ConversationLogEntry[] = [
+        { role: 'user', content: 'hi' },
+        { role: 'model', content: 'hello' },
+      ];
       expect(getWorkingMemory(undefined)).toEqual([]);
       expect(getWorkingMemory([])).toEqual([]);
       expect(getWorkingMemory(sample, 0)).toEqual([]);
       expect(getWorkingMemory(sample, -2)).toEqual([]);
+      expect(getWorkingMemory(sample, Number.NaN)).toEqual([]);
+      expect(getWorkingMemory(sample, Number.POSITIVE_INFINITY)).toEqual([]);
+      expect(getWorkingMemory(sample, 0.5)).toEqual([]);
     });
 
     it('slices exact trailing 2 * limit entries across boundary sizes', () => {

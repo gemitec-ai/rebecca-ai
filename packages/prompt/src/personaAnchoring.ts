@@ -47,7 +47,8 @@ export const resolveSituationalPersonaAnchors = async (
     .filter((s) => s.length > 0)
     .join('\n');
 
-  if (topK <= 0 || !query || resolvedVectors.length === 0) {
+  const normalizedTopK = Number.isFinite(topK) ? Math.trunc(topK) : 0;
+  if (normalizedTopK <= 0 || !query || resolvedVectors.length === 0) {
     return '';
   }
 
@@ -56,7 +57,7 @@ export const resolveSituationalPersonaAnchors = async (
     if (queryVector.length === 0) {
       return '';
     }
-    const topPatterns = resolvePatterns(queryVector, resolvedVectors, topK);
+    const topPatterns = resolvePatterns(queryVector, resolvedVectors, normalizedTopK);
     return formatFewShot(topPatterns, lang);
   } catch (err) {
     logger?.warn?.('Failed to resolve dynamic situational persona anchors', { err });

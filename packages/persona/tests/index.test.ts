@@ -365,13 +365,16 @@ describe('persona package exports verification', () => {
       expect(en).toContain('why did you ignore me');
     });
 
-    test('findTopPatterns should fallback to slice when queryVector is missing and return empty for non-positive topK', () => {
+    test('findTopPatterns should fallback to slice when queryVector is missing and return empty for non-positive or non-finite topK', () => {
       const p = getActivePersona('rebecca');
       const fallback = p.findTopPatterns([], 2);
       expect(fallback.length).toBe(2);
       expect(fallback[0].id).toBe(1);
       expect(p.findTopPatterns([], 0)).toEqual([]);
       expect(p.findTopPatterns([], -1)).toEqual([]);
+      expect(p.findTopPatterns([], Number.NaN)).toEqual([]);
+      expect(p.findTopPatterns([], Number.POSITIVE_INFINITY)).toEqual([]);
+      expect(p.findTopPatterns([], 0.7)).toEqual([]);
     });
 
     test('composePrompt should support default arguments and optional channel overrides in both languages', () => {
@@ -437,10 +440,10 @@ describe('persona package exports verification', () => {
       const fenced = '```json\n{"thought": "本音", "reply": "建前"}\n```';
       expect(parsePersonaJsonObject(fenced)).toEqual({ thought: '本音', reply: '建前' });
 
-      const surrounded = 'Sure:\n{"thought": "内心\nメモ", "reply": "返事", "suggestionChips": ["次へ"]}\nThanks!';
+      const surrounded = 'Sure:\n{"thought": "内心\nメモ\b\f", "reply": "返事\u001b[0m", "suggestionChips": ["次へ"]}\nThanks!';
       expect(parsePersonaJsonObject(surrounded)).toEqual({
-        thought: '内心\nメモ',
-        reply: '返事',
+        thought: '内心\nメモ\b\f',
+        reply: '返事\u001b[0m',
         suggestionChips: ['次へ'],
       });
     });

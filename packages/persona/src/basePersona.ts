@@ -44,11 +44,12 @@ export const rankPersonaPatternVectors = (
   patternVectors: readonly PersonaPatternWithVector[],
   topK = 3,
 ): PersonaPattern[] => {
-  if (topK <= 0 || patternVectors.length === 0) {
+  const normalizedTopK = Number.isFinite(topK) ? Math.trunc(topK) : 0;
+  if (normalizedTopK <= 0 || patternVectors.length === 0) {
     return [];
   }
   if (!queryVector || queryVector.length === 0) {
-    return patternVectors.slice(0, Math.min(topK, patternVectors.length));
+    return patternVectors.slice(0, Math.min(normalizedTopK, patternVectors.length));
   }
 
   return patternVectors
@@ -57,7 +58,7 @@ export const rankPersonaPatternVectors = (
       score: cosineSimilarity([...queryVector], item.vector),
     }))
     .sort((a, b) => b.score - a.score)
-    .slice(0, topK)
+    .slice(0, normalizedTopK)
     .map(({ pattern }) => pattern);
 };
 
@@ -286,13 +287,14 @@ ${stanceRulesJa}${quotesSectionJa}`;
    * @returns Array of matching PersonaPattern instances ranked by similarity.
    */
   findTopPatterns(queryVector: number[], topK = 3): PersonaPattern[] {
-    if (topK <= 0) {
+    const normalizedTopK = Number.isFinite(topK) ? Math.trunc(topK) : 0;
+    if (normalizedTopK <= 0) {
       return [];
     }
     if (!queryVector || queryVector.length === 0 || !this.patternVectors || this.patternVectors.length === 0) {
-      return this.patterns.slice(0, Math.min(topK, this.patterns.length));
+      return this.patterns.slice(0, Math.min(normalizedTopK, this.patterns.length));
     }
-    return rankPersonaPatternVectors(queryVector, this.patternVectors, topK);
+    return rankPersonaPatternVectors(queryVector, this.patternVectors, normalizedTopK);
   }
 
   /**
