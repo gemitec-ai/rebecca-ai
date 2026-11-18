@@ -95,7 +95,7 @@ describe('Bot Single-Pipeline Prompt Architecture Guards', () => {
     };
 
     const forbiddenPersonaPattern =
-      /レベッカ|マスター|@rebecca_ai_gal|ギャル|ツンデレ|Gyaru|全肯定|包容力|大人の余裕|高嶺の花|キャッシュ切れ|教えて♡|よ、バカ|わけないでしょ|！♡|ね♡/;
+      /レベッカ|マスター|@rebecca_ai_gal|@[mM]aster|ギャル|ツンデレ|Gyaru|全肯定|包容力|大人の余裕|高嶺の花|キャッシュ切れ|教えて♡|よ、バカ|わけないでしょ|！♡|ね♡/;
     for (const filePath of collectTsFiles(BOT_SRC_ROOT)) {
       const content = fs.readFileSync(filePath, 'utf8');
       expect({
