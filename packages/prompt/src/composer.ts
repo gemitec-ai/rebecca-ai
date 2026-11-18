@@ -65,6 +65,8 @@ export const assemblePromptSections = (
  *
  * @param options - System prompt composition options requiring `anchoring`.
  * @returns Base anchored instruction, raw few-shot slice, and complete system instruction.
+ * @throws Error if neither `anchoring.patternVectors` nor `persona.patternVectors` is provided.
+ * @throws RangeError if `temporal.timezone` (or external overlay timestamps under an invalid timezone) is not a valid IANA time zone identifier.
  */
 export const composeSystemPrompt = async (
   options: SystemPromptCompositionOptions,
