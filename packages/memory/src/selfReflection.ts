@@ -6,6 +6,7 @@ import type {
   SelfReflectionConfig,
   SelfReflectionExecutionResult,
 } from './types';
+import { sanitizeUntrustedPromptText } from './sanitize';
 
 /** Default number of recent activity entries included in Layer 2 self-reflection. */
 export const DEFAULT_SELF_REFLECTION_POST_LIMIT = 20;
@@ -55,15 +56,23 @@ export const buildSelfReflectionPrompt = (params: {
     activitySectionLabel = DEFAULT_SELF_REFLECTION_ACTIVITY_LABEL,
   } = params;
 
+  const safeSummary = previousSummary
+    ? sanitizeUntrustedPromptText(previousSummary, 1500)
+    : '';
+  const safePersonaName = sanitizeUntrustedPromptText(personaDisplayName, 100);
+  const safeSectionLabel = sanitizeUntrustedPromptText(activitySectionLabel, 100);
+
   const formattedEntries = activities.map((entry, index) => {
-    const thoughtSuffix = entry.thought ? ` (内心: ${entry.thought})` : '';
-    return `[${index + 1}] ${entry.text}${thoughtSuffix}`;
+    const cleanText = sanitizeUntrustedPromptText(entry.text, 500);
+    const cleanThought = entry.thought ? sanitizeUntrustedPromptText(entry.thought, 300) : '';
+    const thoughtSuffix = cleanThought ? ` (内心: ${cleanThought})` : '';
+    return `[${index + 1}] ${cleanText}${thoughtSuffix}`;
   });
 
   return `【過去の要約】
-${previousSummary ? previousSummary : '（まだ要約なし）'}
+${safeSummary || '（まだ要約なし）'}
 
-【${personaDisplayName}の${activitySectionLabel}】
+【${safePersonaName}の${safeSectionLabel}】
 ${formattedEntries.join('\n')}`;
 };
 
@@ -129,7 +138,7 @@ export class SelfReflectionEngine {
         systemInstruction: this.systemInstruction,
         prompt,
       });
-      const trimmedSummary = rawSummary ? rawSummary.trim() : '';
+      const trimmedSummary = rawSummary ? sanitizeUntrustedPromptText(rawSummary, 1500) : '';
 
       if (trimmedSummary.length === 0) {
         throw new Error(`${this.logTag} Generated summary was empty.`);

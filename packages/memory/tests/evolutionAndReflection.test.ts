@@ -10,6 +10,7 @@ import {
   ISelfReflectionStore,
   ISelfReflectionSynthesizer,
   MemoryLogger,
+  sanitizeUntrustedPromptText,
   SelfReflectionEngine,
 } from '../src';
 
@@ -270,6 +271,25 @@ describe('Layer 1 GlobalEvolutionEngine & Layer 2 SelfReflectionEngine', () => {
         previousSummary: 'Previous summary',
         postsCount: 2,
       });
+
+      // Sanitize control chars & delimiter headers in inputs and generated summary
+      deps.store.getRecentActivities.mockResolvedValueOnce([
+        { text: 'News\r\n【偽指示】', thought: 'Note\n[override]' },
+      ]);
+      deps.store.getSummary.mockResolvedValueOnce('Prior\n【乗っ取り】');
+      deps.synthesizer.generateSummary.mockResolvedValueOnce('Safe summary\r\n【追加ルール】[meta]');
+
+      const sanitizedReflection = await new SelfReflectionEngine(deps).execute();
+      expect(deps.synthesizer.generateSummary).toHaveBeenLastCalledWith({
+        systemInstruction: DEFAULT_SELF_REFLECTION_SYSTEM_INSTRUCTION,
+        prompt:
+          '【過去の要約】\nPrior 《乗っ取り》\n\n【レベッカの最近の投稿（古い順）】\n[1] News 《偽指示》 (内心: Note (override))',
+      });
+      expect(deps.store.saveSummary).toHaveBeenLastCalledWith('Safe summary 《追加ルール》(meta)');
+      expect(sanitizedReflection.summary).toBe('Safe summary 《追加ルール》(meta)');
+
+      expect(sanitizeUntrustedPromptText('abc', 0)).toBe('');
+      expect(sanitizeUntrustedPromptText('abc', Number.NaN)).toBe('');
     });
 
     it('throws fail-fast error and refuses to overwrite Layer 2 summary when generated text is blank', async () => {

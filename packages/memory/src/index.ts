@@ -10,6 +10,7 @@
  */
 
 export * from './types';
+export * from './sanitize';
 export * from './workingMemory';
 export * from './ragMemory';
 export * from './compositeOverlay';

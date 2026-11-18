@@ -8,6 +8,7 @@ Channel-agnostic, infrastructure-independent cognitive memory core for persona-d
 
 ## Modules
 
+- **Prompt Sanitization (`src/sanitize.ts`)**: Shared untrusted-text sanitization collapsing control/newline characters, neutralizing ASCII and Japanese bracket delimiters (`[...]`, `【...】`), and bounding lengths (`sanitizeUntrustedPromptText`).
 - **Working Memory & Turn Reconstruction (`src/workingMemory.ts`)**: Bounded sliding-window retrieval (`getWorkingMemory`), `[user, model]` turn construction (`createTurnPair`, `saveInteraction`), and inner-monologue (`thought` / `reply`) turn reconstruction (`formatTurnWithInnerThought`, `formatHistoryWithInnerThought`).
 - **Core Vectorization & RAG Primitives (`src/ragMemory.ts`)**: Cosine similarity calculation (`cosineSimilarity`), text embedding gating (`vectorizeText`), and store-backed indexing/retrieval (`indexVectorMemory`, `searchVectorMemories`).
 - **Asymmetric One-Way Memory Overlay (`src/compositeOverlay.ts`)**: Defensively clones read-only source snapshots into isolated target session views with configurable provenance tags (`composeAsymmetricMemoryOverlay`).

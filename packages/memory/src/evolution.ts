@@ -6,6 +6,7 @@ import type {
   IEvolutionSynthesizer,
   MemoryLogger,
 } from './types';
+import { sanitizeUntrustedPromptText } from './sanitize';
 
 /** Default Japanese length constraint guideline for synthesized Layer 1 extended prompts. */
 export const DEFAULT_EVOLUTION_LENGTH_GUIDELINE = '400〜500文字程度、最大600文字以内';
@@ -32,22 +33,6 @@ export interface GlobalEvolutionEngineDependencies {
 }
 
 /**
- * Sanitizes untrusted conversation log fields for Layer 1 evolution transcripts,
- * stripping control/newline characters and bracket/rule delimiters that could forge prompt sections.
- */
-const sanitizeEvolutionTranscriptText = (raw: string, maxLength: number): string =>
-  raw
-    .replace(/\p{Cc}+/gu, ' ')
-    .replace(/\[/g, '(')
-    .replace(/\]/g, ')')
-    .replace(/【/g, '《')
-    .replace(/】/g, '》')
-    .replace(/-{3,}/g, '—')
-    .replace(/\s{2,}/g, ' ')
-    .trim()
-    .slice(0, maxLength);
-
-/**
  * Formats recent conversation log pairs for Layer 1 Global Evolution trend analysis,
  * preserving internal thought context when present and neutralizing untrusted text against prompt injection.
  *
@@ -59,9 +44,15 @@ export const formatEvolutionConversationLogs = (
 ): string => {
   return logs
     .map((entry) => {
-      const cleanUser = sanitizeEvolutionTranscriptText(entry.userText, 500);
-      const cleanAi = sanitizeEvolutionTranscriptText(entry.aiText, 500);
-      const cleanThought = entry.thought ? sanitizeEvolutionTranscriptText(entry.thought, 300) : '';
+      const cleanUser = sanitizeUntrustedPromptText(entry.userText, 500, {
+        collapseHorizontalRules: true,
+      });
+      const cleanAi = sanitizeUntrustedPromptText(entry.aiText, 500, {
+        collapseHorizontalRules: true,
+      });
+      const cleanThought = entry.thought
+        ? sanitizeUntrustedPromptText(entry.thought, 300, { collapseHorizontalRules: true })
+        : '';
       const aiPart = cleanThought
         ? `AI (Thought: ${cleanThought}): ${cleanAi}`
         : `AI: ${cleanAi}`;
@@ -111,9 +102,10 @@ export const buildEvolutionAuditPrompt = (
 ): string => {
   const personaName = persona.displayName;
   const coreGuidelines = persona.coreGuidelines.join('、');
-  const safeCandidate = sanitizeEvolutionTranscriptText(
+  const safeCandidate = sanitizeUntrustedPromptText(
     candidatePrompt,
     MAX_EVOLUTION_CANDIDATE_LENGTH,
+    { collapseHorizontalRules: true },
   );
 
   return `あなたはAIペルソナの品質管理および安全監査役です。
@@ -188,12 +180,15 @@ export class GlobalEvolutionEngine {
         return {
           status: 'rejected',
           reason: `Candidate prompt exceeded ${MAX_EVOLUTION_CANDIDATE_LENGTH} characters`,
-          candidate: sanitizeEvolutionTranscriptText(rawText, MAX_EVOLUTION_CANDIDATE_LENGTH),
+          candidate: sanitizeUntrustedPromptText(rawText, MAX_EVOLUTION_CANDIDATE_LENGTH, {
+            collapseHorizontalRules: true,
+          }),
         };
       }
-      const candidatePrompt = sanitizeEvolutionTranscriptText(
+      const candidatePrompt = sanitizeUntrustedPromptText(
         rawText,
         MAX_EVOLUTION_CANDIDATE_LENGTH,
+        { collapseHorizontalRules: true },
       );
       if (!candidatePrompt) {
         this.deps.logger?.warn?.(`${this.logTag} Candidate prompt became empty after sanitization`);
