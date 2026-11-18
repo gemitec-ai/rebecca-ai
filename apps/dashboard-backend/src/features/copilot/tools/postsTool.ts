@@ -1,6 +1,6 @@
 import type { ToolDeclaration } from '@rebecca/tools';
 import { CopilotAttachment, PostLeaderboard } from '@rebecca/types';
-import { CopilotTool, CopilotToolContext, CopilotToolExecutionResult } from '../types';
+import { CopilotTool, CopilotToolContext, CopilotToolExecutionResult, resolveBoundedLimit } from '../types';
 
 /**
  * Tool for querying and ranking timeline posts by metrics.
@@ -43,7 +43,7 @@ export class SearchTimelinePostsTool implements CopilotTool {
       return { data: { error: 'TimelineRepository is not configured' } };
     }
 
-    const limit = Math.max(1, Math.min(Number(params.limit) || 5, 20));
+    const limit = resolveBoundedLimit(params.limit, 20);
     const sortBy = typeof params.sortBy === 'string' ? params.sortBy : 'impressions';
     const sortOrder = params.sortOrder === 'asc' ? 'asc' : 'desc';
     const period = typeof params.period === 'string' ? params.period : 'all-time';

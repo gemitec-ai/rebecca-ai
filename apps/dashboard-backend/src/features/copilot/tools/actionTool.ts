@@ -64,8 +64,20 @@ export class ProposeDestructiveActionTool implements CopilotTool {
     switch (actionType) {
       case 'BLOCK_USER':
       case 'UNBLOCK_USER': {
-        let resolvedId = cleanTarget.replace(/^@/, '');
-        let resolvedHandle = cleanTarget.startsWith('@') ? cleanTarget : `@${cleanTarget}`;
+        const resolvedIdCandidate = cleanTarget.replace(/^@+/, '');
+        if (cleanTarget.length > 0 && !resolvedIdCandidate) {
+          return {
+            data: {
+              error: isEn
+                ? 'Invalid targetId: please supply a non-empty user ID or @handle.'
+                : 'targetId が不正です。ユーザーIDまたは @ハンドル を指定してください。'
+            }
+          };
+        }
+        let resolvedId = resolvedIdCandidate;
+        let resolvedHandle = cleanTarget
+          ? (cleanTarget.startsWith('@') ? cleanTarget : `@${cleanTarget}`)
+          : '';
         let resolvedName = cleanTarget;
 
         if (cleanTarget && context.usersRepo) {

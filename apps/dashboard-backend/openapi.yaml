@@ -584,8 +584,12 @@ paths:
                 $ref: '#/components/schemas/CopilotResponse'
         '400':
           description: Missing/invalid message or invalid timezone
+        '404':
+          description: Propagated upstream 4xx client error
         '500':
           description: Internal processing error
+        '502':
+          description: Upstream AI provider authentication/authorization failure (401/403)
 
   /settings:
     get:
@@ -1062,13 +1066,13 @@ components:
       properties:
         id:
           type: string
-          example: "1934600616791482369"
+          example: "user_001"
         username:
           type: string
-          example: "se_akina"
+          example: "taro_example"
         name:
           type: string
-          example: "AKINA"
+          example: "Taro Example"
         interactions:
           type: integer
           example: 2
@@ -1090,13 +1094,13 @@ components:
       properties:
         id:
           type: string
-          example: "1934600616791482369"
+          example: "user_001"
         username:
           type: string
-          example: "se_akina"
+          example: "taro_example"
         name:
           type: string
-          example: "AKINA"
+          example: "Taro Example"
         interactions:
           type: integer
           example: 2
@@ -1164,7 +1168,7 @@ components:
           example: p1
         tweetId:
           type: string
-          example: "1934600616791482369"
+          example: "tweet_001"
         time:
           type: string
           format: date-time
@@ -1249,7 +1253,7 @@ components:
           example: p1
         tweetId:
           type: string
-          example: "1934600616791482369"
+          example: "tweet_001"
         time:
           type: string
           format: date-time
@@ -1295,13 +1299,13 @@ components:
       properties:
         id:
           type: string
-          example: "1934600616791482369"
+          example: "user_001"
         username:
           type: string
-          example: "se_akina"
+          example: "taro_example"
         name:
           type: string
-          example: "AKINA"
+          example: "Taro Example"
         interactions:
           type: integer
           example: 25
@@ -1555,6 +1559,10 @@ components:
         useEmulators:
           type: boolean
           example: true
+        appTimezone:
+          type: string
+          description: Default backend IANA time zone identifier.
+          example: "Asia/Tokyo"
         persona:
           type: object
           properties:

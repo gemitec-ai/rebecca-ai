@@ -83,6 +83,10 @@ export const COPILOT_FINAL_RESPONSE_SCHEMA = createStructuredPersonaSchema({
   additionalRequired: ['suggestionChips'],
 });
 
+/**
+ * Validated Copilot LLM payload: optional Honne (`thought`), Tatemae (`reply`),
+ * follow-up `suggestionChips`, and an optional strictly validated HITL `actionRequired` proposal.
+ */
 export interface ParsedCopilotPayload {
   readonly thought?: string;
   readonly reply: string;

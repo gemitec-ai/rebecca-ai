@@ -1,6 +1,6 @@
 import type { ToolDeclaration } from '@rebecca/tools';
 import { CopilotAttachment, UserDetail } from '@rebecca/types';
-import { CopilotTool, CopilotToolContext, CopilotToolExecutionResult } from '../types';
+import { CopilotTool, CopilotToolContext, CopilotToolExecutionResult, resolveBoundedLimit } from '../types';
 
 /**
  * Tool for querying user profiles by handle, interaction rank, or moderation status.
@@ -43,7 +43,7 @@ export class SearchUsersTool implements CopilotTool {
       return { data: { error: 'UsersRepository is not configured' } };
     }
 
-    const limit = Math.max(1, Math.min(Number(params.limit) || 5, 20));
+    const limit = resolveBoundedLimit(params.limit, 20);
     const cleanQuery = typeof params.query === 'string' ? params.query.replace(/^@/, '').trim() : '';
 
     const result = await context.usersRepo.getAll({

@@ -142,7 +142,7 @@ export class CopilotUseCase {
   async processChat(request: CopilotRequest): Promise<CopilotResponse> {
     const userMessage = (request.message ?? '').trim();
     if (!userMessage) {
-      throw new Error('User message is required and cannot be empty');
+      throw new UpstreamApiError('User message is required and cannot be empty', 400);
     }
 
     const activePersona = getActivePersona(config.persona.activeId);

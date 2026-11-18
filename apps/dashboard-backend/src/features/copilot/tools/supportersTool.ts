@@ -1,6 +1,6 @@
 import type { ToolDeclaration } from '@rebecca/tools';
 import { SupportTransactionDoc } from '@rebecca/types';
-import { CopilotTool, CopilotToolContext, CopilotToolExecutionResult } from '../types';
+import { CopilotTool, CopilotToolContext, CopilotToolExecutionResult, resolveBoundedLimit } from '../types';
 
 /**
  * Tool for inspecting supporter transactions and fan club metrics.
@@ -29,7 +29,7 @@ export class SearchSupportersTool implements CopilotTool {
       return { data: { error: 'SupportersRepository is not configured' } };
     }
 
-    const limit = Math.max(1, Math.min(Number(params.limit) || 5, 20));
+    const limit = resolveBoundedLimit(params.limit, 20);
     const ledger = await context.supportersRepo.getTransactions({ limit });
 
     return {

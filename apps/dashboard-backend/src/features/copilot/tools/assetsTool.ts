@@ -1,7 +1,7 @@
 import { GoogleGenAI } from '@google/genai';
 import type { ToolDeclaration } from '@rebecca/tools';
 import { Asset, CopilotAttachment } from '@rebecca/types';
-import { CopilotTool, CopilotToolContext, CopilotToolExecutionResult } from '../types';
+import { CopilotTool, CopilotToolContext, CopilotToolExecutionResult, resolveBoundedLimit } from '../types';
 import { createCopilotEmbeddingProvider } from '../embeddingAdapter';
 import { logger } from '../../../utils/logger';
 import { config } from '../../../config';
@@ -42,7 +42,7 @@ export class SearchAssetsTool implements CopilotTool {
       return { data: { error: 'AssetsRepository is not configured' } };
     }
 
-    const limit = Math.max(1, Math.min(Number(params.limit) || 5, 10));
+    const limit = resolveBoundedLimit(params.limit, 10);
     const semanticQuery = typeof params.semanticQuery === 'string' ? params.semanticQuery.trim() : '';
     let matchedAssets: Asset[] = [];
 

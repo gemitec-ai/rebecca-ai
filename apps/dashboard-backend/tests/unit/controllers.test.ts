@@ -505,10 +505,10 @@ describe('Dashboard Backend Controllers Unit Tests', () => {
       expect(resEmpty.status).toHaveBeenCalledWith(400);
 
       const { req, res } = createMockReqRes({ body: { message: 'Hi', currentContext: 'Home', history: [] } });
-      useCase.processChat.mockResolvedValueOnce({ reply: 'Hi Master!' } as any);
+      useCase.processChat.mockResolvedValueOnce({ reply: 'Hi Master!', actionRequired: null, suggestionChips: [] });
       await controller.chat(req, res);
       expect(useCase.processChat).toHaveBeenCalledWith({ message: 'Hi', currentContext: 'Home', history: [] });
-      expect(res.json).toHaveBeenCalledWith({ reply: 'Hi Master!' });
+      expect(res.json).toHaveBeenCalledWith({ reply: 'Hi Master!', actionRequired: null, suggestionChips: [] });
 
       const { req: reqLang, res: resLang } = createMockReqRes({
         body: {
@@ -518,7 +518,7 @@ describe('Dashboard Backend Controllers Unit Tests', () => {
           language: 'en',
         },
       });
-      useCase.processChat.mockResolvedValueOnce({ reply: 'All nominal' } as any);
+      useCase.processChat.mockResolvedValueOnce({ reply: 'All nominal', actionRequired: null, suggestionChips: [] });
       await controller.chat(reqLang, resLang);
       expect(useCase.processChat).toHaveBeenCalledWith({
         message: 'Status?',
@@ -530,6 +530,22 @@ describe('Dashboard Backend Controllers Unit Tests', () => {
       useCase.processChat.mockRejectedValueOnce(new Error('Copilot error'));
       await controller.chat(req, res);
       expect(res.status).toHaveBeenCalledWith(500);
+    });
+
+    it('chat should trim message before bounding and reject whitespace-only overflow messages with 400', async () => {
+      const { req: reqSpaces, res: resSpaces } = createMockReqRes({
+        body: { message: ' '.repeat(2005) },
+      });
+      await controller.chat(reqSpaces, resSpaces);
+      expect(resSpaces.status).toHaveBeenCalledWith(400);
+
+      const { req: reqPadded, res: resPadded } = createMockReqRes({
+        body: { message: `${' '.repeat(2005)}hello` },
+      });
+      useCase.processChat.mockResolvedValueOnce({ reply: 'Hello!', actionRequired: null, suggestionChips: [] });
+      await controller.chat(reqPadded, resPadded);
+      expect(useCase.processChat).toHaveBeenCalledWith({ message: 'hello' });
+      expect(resPadded.json).toHaveBeenCalledWith({ reply: 'Hello!', actionRequired: null, suggestionChips: [] });
     });
 
     it('chat should forward trimmed valid IANA timezone and reject invalid timezones with 400', async () => {
@@ -544,7 +560,7 @@ describe('Dashboard Backend Controllers Unit Tests', () => {
           timezone: ' America/New_York ',
         },
       });
-      useCase.processChat.mockResolvedValueOnce({ reply: 'Evening, Master!' } as any);
+      useCase.processChat.mockResolvedValueOnce({ reply: 'Evening, Master!', actionRequired: null, suggestionChips: [] });
       await controller.chat(reqValid, resValid);
       expect(useCase.processChat).toHaveBeenCalledWith({
         message: 'Good evening!',
@@ -555,7 +571,7 @@ describe('Dashboard Backend Controllers Unit Tests', () => {
         language: 'en',
         timezone: 'America/New_York',
       });
-      expect(resValid.json).toHaveBeenCalledWith({ reply: 'Evening, Master!' });
+      expect(resValid.json).toHaveBeenCalledWith({ reply: 'Evening, Master!', actionRequired: null, suggestionChips: [] });
 
       for (const badTz of ['', '   ', 'Mars/Phobos', 123]) {
         const { req: reqBad, res: resBad } = createMockReqRes({

@@ -297,13 +297,25 @@ export class TimelineRepository {
       let numA: number;
       let numB: number;
 
-      if (sortBy === 'time' || sortBy === 'created_at' || sortBy === 'timestamp') {
+      if (sortBy === 'time' || sortBy === 'created_at' || sortBy === 'createdAt' || sortBy === 'timestamp') {
         numA = new Date(a.data.timestamp || 0).getTime();
         numB = new Date(b.data.timestamp || 0).getTime();
       } else {
-        const key = sortBy as keyof TimelinePost;
-        numA = typeof a.data[key] === 'number' ? (a.data[key] as number) : 0;
-        numB = typeof b.data[key] === 'number' ? (b.data[key] as number) : 0;
+        const readMetric = (post: TimelinePost): number => {
+          switch (sortBy) {
+            case 'likes':
+              return typeof post.likes === 'number' ? post.likes : 0;
+            case 'reposts':
+              return typeof post.reposts === 'number' ? post.reposts : 0;
+            case 'replies':
+              return typeof post.replies === 'number' ? post.replies : 0;
+            case 'impressions':
+            default:
+              return typeof post.impressions === 'number' ? post.impressions : 0;
+          }
+        };
+        numA = readMetric(a.data);
+        numB = readMetric(b.data);
       }
 
       if (sortOrder === 'desc') return numB < numA ? -1 : numB > numA ? 1 : 0;

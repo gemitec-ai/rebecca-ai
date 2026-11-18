@@ -2,7 +2,10 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { precomputedPersonaPatternEmbeddings } from '@rebecca/persona';
 import { CopilotUseCase } from '../../src/features/copilot/usecase';
-import { extractStructuredCopilotResponse } from '../../src/features/copilot/responseParser';
+import {
+  COPILOT_FINAL_RESPONSE_SCHEMA,
+  extractStructuredCopilotResponse,
+} from '../../src/features/copilot/responseParser';
 import { CopilotToolRegistry } from '../../src/features/copilot/toolRegistry';
 import { SearchTimelinePostsTool } from '../../src/features/copilot/tools/postsTool';
 import { SearchUsersTool } from '../../src/features/copilot/tools/usersTool';
@@ -461,6 +464,22 @@ describe('Copilot Autonomous Agent Suite (Redesign v3)', () => {
 
     it('ProposeDestructiveActionTool should generate safety confirmation cards for explicit commands', async () => {
       const tool = new ProposeDestructiveActionTool();
+      const emptyBlockRes = await tool.execute(
+        { actionType: 'BLOCK_USER', targetId: '  @  ' },
+        { isEn: true },
+      );
+      expect((emptyBlockRes.data as { error?: string }).error).toContain('Invalid targetId');
+      const noTargetRes = await tool.execute({ actionType: 'BLOCK_USER' }, { isEn: true });
+      expect(noTargetRes.actionRequired?.payload?.handle).toBe('');
+
+      const postsTool = new SearchTimelinePostsTool();
+      await postsTool.execute({ limit: 0 }, { timelineRepo, isEn: true });
+      expect(timelineRepo.getPosts).toHaveBeenCalledWith(expect.objectContaining({ limit: 1 }));
+      await postsTool.execute({ limit: '3' }, { timelineRepo, isEn: true });
+      expect(timelineRepo.getPosts).toHaveBeenCalledWith(expect.objectContaining({ limit: 3 }));
+      await postsTool.execute({ limit: 'not-a-number' }, { timelineRepo, isEn: true });
+      expect(timelineRepo.getPosts).toHaveBeenCalledWith(expect.objectContaining({ limit: 5 }));
+
       const blockRes = await tool.execute(
         { actionType: 'BLOCK_USER', targetId: '@troublemaker' },
         { isEn: false }
@@ -1220,7 +1239,7 @@ describe('Copilot Autonomous Agent Suite (Redesign v3)', () => {
       expect(mockGenerateContent).toHaveBeenCalledTimes(3);
 
       const finalCall = mockGenerateContent.mock.calls[2][0];
-      expect(finalCall.config.responseSchema).toBeDefined();
+      expect(finalCall.config.responseSchema).toEqual(COPILOT_FINAL_RESPONSE_SCHEMA);
       expect(finalCall.config.tools).toBeUndefined();
       // Final contents must end with functionResponse user turn (never an unmatched functionCall)
       expect(finalCall.contents[finalCall.contents.length - 1].role).toBe('user');
@@ -1285,7 +1304,7 @@ describe('Copilot Autonomous Agent Suite (Redesign v3)', () => {
       expect(res.attachments?.length).toBe(1);
 
       const finalCall = mockGenerateContent.mock.calls[2][0];
-      expect(finalCall.config.responseSchema).toBeDefined();
+      expect(finalCall.config.responseSchema).toEqual(COPILOT_FINAL_RESPONSE_SCHEMA);
       expect(finalCall.contents[finalCall.contents.length - 1].parts[0].functionResponse.name).toBe(
         'search_timeline_posts',
       );

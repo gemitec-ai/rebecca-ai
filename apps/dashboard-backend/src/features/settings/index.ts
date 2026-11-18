@@ -26,12 +26,12 @@ export function initializeSettingsModule(firestore: Firestore): Router {
         };
         return res.json({ data: defaultSettings });
       }
-      const data = snap.data() as SystemSettings;
+      const data = snap.data();
       res.json({
         data: {
-          language: data.language || 'ja',
-          timezone: data.timezone || 'Asia/Tokyo',
-          updatedAt: data.updatedAt || new Date().toISOString()
+          language: data?.language === 'en' ? 'en' : 'ja',
+          timezone: typeof data?.timezone === 'string' && isValidTimezone(data.timezone) ? data.timezone : 'Asia/Tokyo',
+          updatedAt: typeof data?.updatedAt === 'string' && data.updatedAt.trim() ? data.updatedAt : new Date().toISOString()
         }
       });
     } catch (error) {
@@ -65,13 +65,13 @@ export function initializeSettingsModule(firestore: Firestore): Router {
       await docRef.set(updates, { merge: true });
 
       const snap = await docRef.get();
-      const data = snap.data() as SystemSettings;
+      const data = snap.data();
 
       res.json({
         data: {
-          language: data.language || 'ja',
-          timezone: data.timezone || 'Asia/Tokyo',
-          updatedAt: data.updatedAt || updates.updatedAt
+          language: data?.language === 'en' ? 'en' : 'ja',
+          timezone: typeof data?.timezone === 'string' && isValidTimezone(data.timezone) ? data.timezone : 'Asia/Tokyo',
+          updatedAt: typeof data?.updatedAt === 'string' && data.updatedAt.trim() ? data.updatedAt : updates.updatedAt
         }
       });
     } catch (error) {

@@ -52,7 +52,7 @@ export class CopilotController {
       validatedTimezone = timezone.trim();
     }
 
-    const boundedMessage = message.slice(0, 2000);
+    const boundedMessage = message.trim().slice(0, 2000);
     const boundedHistory = Array.isArray(history)
       ? history.slice(-20).map((item: { role?: string; text?: string; thought?: string; time?: string }) => ({
           role: item?.role === 'model' ? ('model' as const) : ('user' as const),

@@ -46,3 +46,19 @@ export interface CopilotTool {
   /** Executes the tool logic against domain repositories. */
   execute(params: Record<string, unknown>, context: CopilotToolContext): Promise<CopilotToolExecutionResult>;
 }
+
+/**
+ * Clamps an untrusted numeric tool `limit` parameter between `1` and `max`,
+ * falling back to `defaultLimit` only when missing, non-numeric, or non-finite.
+ * Preserves explicit `0` as `1` rather than silently reverting to `defaultLimit`.
+ */
+export const resolveBoundedLimit = (rawLimit: unknown, max: number, defaultLimit = 5): number => {
+  if (typeof rawLimit === 'number') {
+    return Number.isFinite(rawLimit) ? Math.max(1, Math.min(Math.trunc(rawLimit), max)) : defaultLimit;
+  }
+  if (typeof rawLimit === 'string' && rawLimit.trim() !== '') {
+    const parsed = Number(rawLimit);
+    return Number.isFinite(parsed) ? Math.max(1, Math.min(Math.trunc(parsed), max)) : defaultLimit;
+  }
+  return defaultLimit;
+};
