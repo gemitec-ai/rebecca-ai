@@ -2,6 +2,7 @@
  * @fileoverview Domain use case for autonomous X poll creation and closed poll result quote-post reactions.
  */
 
+import { sanitizeUntrustedPromptText } from '@rebecca/memory';
 import { formatTimeContextPeriodLabel, resolveTimeContextPeriod } from '@rebecca/prompt';
 import { AppDependencies, PollData } from '../../types';
 import { executePostPipeline } from '../../core/postPipeline';
@@ -51,15 +52,24 @@ export class PollUseCase {
         this.deps.firestore.getExtendedPrompt(),
         this.deps.firestore.getRecentTimelinePosts({ limit: 30, postType: 'poll' }),
       ]);
+      const safeTimelineSummary = timelineSummary
+        ? sanitizeUntrustedPromptText(timelineSummary, 2000, { collapseHorizontalRules: true })
+        : '';
+      const safeExtendedPrompt = extendedPrompt
+        ? sanitizeUntrustedPromptText(extendedPrompt, 2000, { collapseHorizontalRules: true })
+        : '';
 
       const formattedPastPolls = (recentPolls || []).map((p) => {
         const timeStr = formatZonedDateTime(p.timestamp, this.config.timezone);
         const prefix = timeStr ? `[${timeStr}] ` : '';
         const optionsStr =
           p.poll?.options && p.poll.options.length > 0
-            ? ` (選択肢: ${p.poll.options.map((o) => o.label).join(' / ')})`
+            ? ` (選択肢: ${p.poll.options.map((o) => sanitizeUntrustedPromptText(o.label, 64)).join(' / ')})`
             : '';
-        return `${prefix}${p.text.replace(/\s+/g, ' ').trim()}${optionsStr}`;
+        const safeText = sanitizeUntrustedPromptText(p.text, 500, { collapseHorizontalRules: true })
+          .replace(/\s+/g, ' ')
+          .trim();
+        return `${prefix}${safeText}${optionsStr}`;
       });
 
       const interestsStr = this.deps.persona.metadata.interests.join('・');
@@ -74,8 +84,8 @@ export class PollUseCase {
         anchoringContext: [
           `【現在の時間帯】${timePeriodLabel}`,
           `【シチュエーション】タイムラインのフォロワーに向けたアンケート出題（関心領域: ${interestsStr}）`,
-          extendedPrompt ? `【近況・気分】${extendedPrompt}` : '',
-          timelineSummary ? `【タイムラインの空気感】${timelineSummary}` : '',
+          safeExtendedPrompt ? `【近況・気分】${safeExtendedPrompt}` : '',
+          safeTimelineSummary ? `【タイムラインの空気感】${safeTimelineSummary}` : '',
         ],
       });
       const personaName = this.deps.persona.metadata.displayName;
@@ -90,10 +100,10 @@ ${timePeriodLabel}
 ${interestsStr || '（日常・ライフスタイル全般）'}
 
 【直近のタイムライン要約】
-${timelineSummary || '（特記事項なし）'}
+${safeTimelineSummary || '（特記事項なし）'}
 
 【拡張ペルソナ・近況】
-${extendedPrompt || '（特記事項なし）'}
+${safeExtendedPrompt || '（特記事項なし）'}
 
 【過去に出題済みのアンケート履歴（直近最大30件）】
 ${formattedPastPolls.length > 0 ? formattedPastPolls.map((p, i) => `${i + 1}. ${p}`).join('\n') : '（過去のアンケート履歴なし）'}
@@ -221,7 +231,8 @@ ${defaultHashtag ? `- ハッシュタグ（${defaultHashtag} 等）はシステ�
       const formattedOptions = latestPoll.options
         .map((o) => {
           const pct = Math.round((o.votes / totalVotes) * 1000) / 10;
-          return `${o.position}. ${o.label}: ${o.votes}票 (${pct}%)`;
+          const safeLabel = sanitizeUntrustedPromptText(o.label, 64);
+          return `${o.position}. ${safeLabel}: ${o.votes}票 (${pct}%)`;
         })
         .join('\n');
 
@@ -229,6 +240,15 @@ ${defaultHashtag ? `- ハッシュタグ（${defaultHashtag} 等）はシステ�
         this.deps.firestore.getTimelineSummary(),
         this.deps.firestore.getExtendedPrompt(),
       ]);
+      const safePendingPollText = sanitizeUntrustedPromptText(pendingPoll.text, 500, {
+        collapseHorizontalRules: true,
+      });
+      const safeTimelineSummary = timelineSummary
+        ? sanitizeUntrustedPromptText(timelineSummary, 2000, { collapseHorizontalRules: true })
+        : '';
+      const safeExtendedPrompt = extendedPrompt
+        ? sanitizeUntrustedPromptText(extendedPrompt, 2000, { collapseHorizontalRules: true })
+        : '';
 
       const { systemInstruction } = await buildSystemPrompt({
         persona: this.deps.persona,
@@ -240,7 +260,7 @@ ${defaultHashtag ? `- ハッシュタグ（${defaultHashtag} 等）はシステ�
         anchoringContext: [
           `【現在の時間帯】${timePeriodLabel}`,
           `【シチュエーション】アンケート結果発表と感想トーク`,
-          `【アンケート内容】${pendingPoll.text}`,
+          `【アンケート内容】${safePendingPollText}`,
           `【最終投票結果（合計 ${totalVotes}票）】\n${formattedOptions}`,
         ],
       });
@@ -253,16 +273,16 @@ ${defaultHashtag ? `- ハッシュタグ（${defaultHashtag} 等）はシステ�
 ${timePeriodLabel}
 
 【元のアンケート投稿文】
-${pendingPoll.text}
+${safePendingPollText}
 
 【最終投票結果（合計 ${totalVotes}票）】
 ${formattedOptions}
 
 【直近のタイムライン要約】
-${timelineSummary || '（特記事項なし）'}
+${safeTimelineSummary || '（特記事項なし）'}
 
 【拡張ペルソナ・近況】
-${extendedPrompt || '（特記事項なし）'}
+${safeExtendedPrompt || '（特記事項なし）'}
 
 【生成ルール】
 - 投票してくれたフォロワーへの感謝やリアクションを入れつつ、最終投票結果（各選択肢の得票数や票の割れ方、全体の傾向など）を踏まえて、${personaName}自身の視点・価値観で感想を語ること。

@@ -1,3 +1,4 @@
+import { sanitizeUntrustedPromptText } from '@rebecca/memory';
 import { formatTimeContextPeriodLabel, resolveTimeContextPeriod } from '@rebecca/prompt';
 import { AppDependencies, ProactiveBatchResult } from '../../types';
 import { executePostPipeline } from '../../core/postPipeline';
@@ -40,6 +41,12 @@ export class SoliloquyUseCase {
       );
       const timelineSummary = await this.deps.firestore.getTimelineSummary();
       const extendedPrompt = await this.deps.firestore.getExtendedPrompt();
+      const safeTimelineSummary = timelineSummary
+        ? sanitizeUntrustedPromptText(timelineSummary, 2000, { collapseHorizontalRules: true })
+        : '';
+      const safeExtendedPrompt = extendedPrompt
+        ? sanitizeUntrustedPromptText(extendedPrompt, 2000, { collapseHorizontalRules: true })
+        : '';
       const recentSoliloquies = (await this.deps.firestore.getRecentTimelinePosts({
         limit: 4,
         postType: 'soliloquy',
@@ -48,8 +55,12 @@ export class SoliloquyUseCase {
       const formattedPastSoliloquies = recentSoliloquies.map((p) => {
         const timeStr = formatZonedDateTime(p.timestamp, this.config.timezone);
         const prefix = timeStr ? `[${timeStr}] ` : '';
-        const thoughtPart = p.thought ? ` (内心: ${p.thought})` : '';
-        return `${prefix}${p.text}${thoughtPart}`;
+        const safeText = sanitizeUntrustedPromptText(p.text, 500, { collapseHorizontalRules: true });
+        const safeThought = p.thought
+          ? sanitizeUntrustedPromptText(p.thought, 400, { collapseHorizontalRules: true })
+          : '';
+        const thoughtPart = safeThought ? ` (内心: ${safeThought})` : '';
+        return `${prefix}${safeText}${thoughtPart}`;
       });
 
       const { systemInstruction } = await buildSystemPrompt({
@@ -61,8 +72,8 @@ export class SoliloquyUseCase {
         timezone: this.config.timezone,
         anchoringContext: [
           `【現在の時間帯】${timePeriodLabel}`,
-          extendedPrompt ? `【近況・気分】${extendedPrompt}` : '',
-          timelineSummary ? `【タイムラインの空気感】${timelineSummary}` : '',
+          safeExtendedPrompt ? `【近況・気分】${safeExtendedPrompt}` : '',
+          safeTimelineSummary ? `【タイムラインの空気感】${safeTimelineSummary}` : '',
         ],
       });
       const personaName = this.deps.persona.metadata.displayName;
@@ -74,10 +85,10 @@ export class SoliloquyUseCase {
 ${timePeriodLabel}
 
 【直近のタイムライン要約】
-${timelineSummary || '（特記事項なし）'}
+${safeTimelineSummary || '（特記事項なし）'}
 
 【拡張ペルソナ・近況】
-${extendedPrompt || '（特記事項なし）'}
+${safeExtendedPrompt || '（特記事項なし）'}
 
 【直近の自身の独り言ポスト（直近3〜4回分）】
 ${formattedPastSoliloquies.length > 0 ? formattedPastSoliloquies.map((p, i) => `${i + 1}. ${p}`).join('\n') : '（過去の独り言投稿なし）'}

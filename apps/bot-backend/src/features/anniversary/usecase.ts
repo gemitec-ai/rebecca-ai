@@ -1,3 +1,4 @@
+import { sanitizeUntrustedPromptText } from '@rebecca/memory';
 import { AppDependencies } from '../../types';
 import { executePostPipeline } from '../../core/postPipeline';
 import { buildSystemPrompt } from '../../core/contextInjector';
@@ -48,10 +49,22 @@ export class ProactiveAnniversaryUseCase {
 
       const timelineSummary = await this.deps.firestore.getTimelineSummary();
       const extendedPrompt = await this.deps.firestore.getExtendedPrompt();
+      const safeTimelineSummary = timelineSummary
+        ? sanitizeUntrustedPromptText(timelineSummary, 2000, { collapseHorizontalRules: true })
+        : '';
+      const safeExtendedPrompt = extendedPrompt
+        ? sanitizeUntrustedPromptText(extendedPrompt, 2000, { collapseHorizontalRules: true })
+        : '';
 
       const candidateListText = anniversaries
         .slice(0, 8)
-        .map((a) => `・${a.name}${a.description ? ` (${a.description})` : ''}`)
+        .map((a) => {
+          const safeName = sanitizeUntrustedPromptText(a.name, 120, { collapseHorizontalRules: true });
+          const safeDesc = a.description
+            ? sanitizeUntrustedPromptText(a.description, 400, { collapseHorizontalRules: true })
+            : '';
+          return `・${safeName}${safeDesc ? ` (${safeDesc})` : ''}`;
+        })
         .join('\n');
 
       const { systemInstruction } = await buildSystemPrompt({
@@ -61,8 +74,8 @@ export class ProactiveAnniversaryUseCase {
         gemini: this.deps.gemini,
         anchoringContext: [
           `【今日の記念日候補】\n${candidateListText}`,
-          extendedPrompt ? `【近況・気分】${extendedPrompt}` : '',
-          timelineSummary ? `【タイムラインの空気感】${timelineSummary}` : '',
+          safeExtendedPrompt ? `【近況・気分】${safeExtendedPrompt}` : '',
+          safeTimelineSummary ? `【タイムラインの空気感】${safeTimelineSummary}` : '',
         ],
       });
       const personaName = this.deps.persona.metadata.displayName;
@@ -71,8 +84,8 @@ export class ProactiveAnniversaryUseCase {
 
 【今日の記念日・年中行事】
 ${candidateListText}
-${timelineSummary ? `\n【直近のタイムライン要約】\n${timelineSummary}\n` : ''}
-${extendedPrompt ? `\n【拡張ペルソナ・近況】\n${extendedPrompt}\n` : ''}
+${safeTimelineSummary ? `\n【直近のタイムライン要約】\n${safeTimelineSummary}\n` : ''}
+${safeExtendedPrompt ? `\n【拡張ペルソナ・近況】\n${safeExtendedPrompt}\n` : ''}
 
 【追加ルール】
 - 戦争・紛争・追悼や過度に暗い記念日は絶対に選ばないこと。日常的で明るい話題や親しみやすい記念日を選んでください。

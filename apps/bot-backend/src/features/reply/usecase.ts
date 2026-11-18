@@ -1,4 +1,4 @@
-import { indexVectorMemory, searchVectorMemories } from '@rebecca/memory';
+import { indexVectorMemory, sanitizeUntrustedPromptText, searchVectorMemories } from '@rebecca/memory';
 import { AppDependencies } from '../../types';
 import { TimelinePost } from '@rebecca/types';
 import { checkAndIncrementRateLimits } from '../../core/rateLimiter';
@@ -109,9 +109,12 @@ export class ReplyTaskUseCase {
                 }
                 const desc = xUser?.description;
                 if (desc && isFirstTime) {
+                    const safeDesc = sanitizeUntrustedPromptText(desc, 500, {
+                        collapseHorizontalRules: true,
+                    });
                     const profilePrompt = `あなたはAIキャラクターのシステムです。ユーザーのX(Twitter)のプロフィール文を分析し、ユーザーの属性や好みをJSONで出力してください。
 【プロフィール文】
-${desc}
+${safeDesc}
 
 出力フォーマット（必ずJSONのみ）:
 {
@@ -164,14 +167,20 @@ ${desc}
         const workingMemory = getWorkingMemory(userData.episodicBuffer);
 
         const personaName = deps.persona.metadata.displayName;
+        const safeParentPostText = parentPostText
+            ? sanitizeUntrustedPromptText(parentPostText, 1000, { collapseHorizontalRules: true })
+            : undefined;
+        const safeParentPostMediaCaption = parentPostMediaCaption
+            ? sanitizeUntrustedPromptText(parentPostMediaCaption, 1000, { collapseHorizontalRules: true })
+            : undefined;
         let parentPostContext: string | undefined;
-        if (parentPostText || parentPostMediaCaption) {
+        if (safeParentPostText || safeParentPostMediaCaption) {
             const contextParts: string[] = [];
-            if (parentPostText) {
-                contextParts.push(parentPostText);
+            if (safeParentPostText) {
+                contextParts.push(safeParentPostText);
             }
-            if (parentPostMediaCaption) {
-                contextParts.push(`【添付画像】\n${parentPostMediaCaption}`);
+            if (safeParentPostMediaCaption) {
+                contextParts.push(`【添付画像】\n${safeParentPostMediaCaption}`);
             }
             parentPostContext = contextParts.join('\n');
         }
@@ -194,31 +203,33 @@ ${desc}
         }
 
         if (textToDetect) {
-            const detectPrompt = `このテキストは何語ですか？日本語（ローマ字表記を含む）であれば'ja'、それ以外（主に英語）であれば'en'と、2文字の言語コードのみを出力してください。\nテキスト: "${textToDetect}"`;
+            const safeDetectText = sanitizeUntrustedPromptText(textToDetect, 1000);
+            const detectPrompt = `このテキストは何語ですか？日本語（ローマ字表記を含む）であれば'ja'、それ以外（主に英語）であれば'en'と、2文字の言語コードのみを出力してください。\nテキスト: "${safeDetectText}"`;
             lang = await deps.gemini.detectLanguage(detectPrompt);
         }
 
         // Assemble conversation context in strict chronological order:
         // 1. Root Post Text (Persona) -> 2. Root Post Attached Image -> 3. Interlocutor (User) Text -> 4. Interlocutor Attached Image
         // A flat, chronological progression aligns directly with causal attention in generative LLMs, avoiding confusing nested headers.
+        const safeUserText = sanitizeUntrustedPromptText(text, 2000, { collapseHorizontalRules: true });
         const sections: string[] = [];
-        if (parentPostText) {
+        if (safeParentPostText) {
             sections.push(lang === 'en'
-                ? `[Original Post by ${personaName}]\n${parentPostText}`
-                : `【返信元の${personaName}の投稿】\n${parentPostText}`);
+                ? `[Original Post by ${personaName}]\n${safeParentPostText}`
+                : `【返信元の${personaName}の投稿】\n${safeParentPostText}`);
         }
-        if (parentPostMediaCaption) {
+        if (safeParentPostMediaCaption) {
             sections.push(lang === 'en'
-                ? `[Attached Image in Original Post]\n${parentPostMediaCaption}`
-                : `【返信元の投稿の添付画像】\n${parentPostMediaCaption}`);
+                ? `[Attached Image in Original Post]\n${safeParentPostMediaCaption}`
+                : `【返信元の投稿の添付画像】\n${safeParentPostMediaCaption}`);
         }
         if (sections.length > 0) {
             sections.push(lang === 'en'
-                ? `[Interlocutor (User) Message]\n${text}`
-                : `【対話相手（ユーザー）の発言】\n${text}`);
+                ? `[Interlocutor (User) Message]\n${safeUserText}`
+                : `【対話相手（ユーザー）の発言】\n${safeUserText}`);
         }
 
-        let processedText = sections.length > 0 ? sections.join('\n\n') : text;
+        let processedText = sections.length > 0 ? sections.join('\n\n') : safeUserText;
 
         if (mediaUrls && mediaUrls.length > 0) {
             try {
@@ -227,9 +238,12 @@ ${desc}
                     const imageCaption = await deps.gemini.analyzeImageCaption(buffer, mimeType, OBJECTIVE_IMAGE_CAPTION_PROMPT);
                     
                     if (imageCaption) {
+                        const safeImageCaption = sanitizeUntrustedPromptText(imageCaption, 1000, {
+                            collapseHorizontalRules: true,
+                        });
                         processedText += lang === 'en'
-                            ? `\n\n[User's Attached Image Description]\n${imageCaption}`
-                            : `\n\n【対話相手（ユーザー）が添付した画像の内容】\n${imageCaption}`;
+                            ? `\n\n[User's Attached Image Description]\n${safeImageCaption}`
+                            : `\n\n【対話相手（ユーザー）が添付した画像の内容】\n${safeImageCaption}`;
                     }
                 }
             } catch (e) {
@@ -243,8 +257,10 @@ ${desc}
         
         let ragMemories: string[] = [];
         const searchContext = workingMemory.length > 0
-            ? workingMemory.map(m => `${m.role}: ${m.content}`).join('\n')
-            : (parentPostText ? `${personaName}: ${parentPostText}` : '');
+            ? workingMemory
+                .map(m => `${m.role}: ${sanitizeUntrustedPromptText(m.content, 1000, { collapseHorizontalRules: true })}`)
+                .join('\n')
+            : (safeParentPostText ? `${personaName}: ${safeParentPostText}` : '');
         const searchPrompt = `あなたは検索クエリ生成AIです。以下の直近の会話文脈と対話相手（ユーザー）の最新の発言を踏まえて、対話相手（ユーザー）の意図を汲み取った「検索用クエリ（短い一文または単語の羅列）」を生成してください。
 【直前の会話文脈】
 ${searchContext}

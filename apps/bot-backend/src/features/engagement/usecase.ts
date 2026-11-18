@@ -1,3 +1,4 @@
+import { sanitizeUntrustedPromptText } from '@rebecca/memory';
 import { XApiUser } from '@rebecca/types';
 import { AppDependencies } from '../../types';
 import { buildSystemPrompt } from '../../core/contextInjector';
@@ -90,6 +91,10 @@ export class RandomEngagementUseCase {
       const profileResp = await this.deps.xApi.getUserProfile(targetUser.id);
       const username = profileResp.data.username;
       const description = profileResp.data.description || '';
+      const safeUsername = sanitizeUntrustedPromptText(username, 64);
+      const safeDescription = sanitizeUntrustedPromptText(description, 500, {
+        collapseHorizontalRules: true,
+      });
       logger.info('[RandomEngagementUseCase] Resolved username for random engagement', {
         userId: targetUser.id,
         username,
@@ -97,7 +102,7 @@ export class RandomEngagementUseCase {
       
       const profilePrompt = `あなたはAIキャラクターのシステムです。ユーザーのX(Twitter)のプロフィール文を分析し、ユーザーの属性や好みをJSONで出力してください。
 【プロフィール文】
-${description}
+${safeDescription}
 
 出力フォーマット（必ずJSONのみ）:
 {
@@ -105,6 +110,11 @@ ${description}
   "preferences": ["ゲーム", "酒"など]
 }`;
       const profileAnalysis = await this.deps.gemini.analyzeUserProfile(profilePrompt);
+      const safeProfileAnalysisJson = sanitizeUntrustedPromptText(
+        JSON.stringify(profileAnalysis),
+        1000,
+        { collapseHorizontalRules: true },
+      );
       logger.info('[RandomEngagementUseCase] Profile analysis completed', {
         userId: targetUser.id,
         profileAnalysis,
@@ -117,7 +127,10 @@ ${description}
         if (recentTweets.data && recentTweets.data.length > 0) {
           const latestTweet = recentTweets.data[0];
           targetTweetId = latestTweet.id;
-          tweetContext += `\n【直近の投稿内容】\n${latestTweet.text}`;
+          const safeTweetText = sanitizeUntrustedPromptText(latestTweet.text, 1000, {
+            collapseHorizontalRules: true,
+          });
+          tweetContext += `\n【直近の投稿内容】\n${safeTweetText}`;
           
           const mediaKeys = latestTweet.attachments?.mediaKeys;
           const mediaIncludes = recentTweets.includes?.media || [];
@@ -132,7 +145,10 @@ ${description}
               const imageCaption = await this.deps.gemini.analyzeImageCaption(buffer, mimeType, captionPrompt);
               
               if (imageCaption) {
-                tweetContext += `\n\n【ユーザーが添付した画像の内容】\n${imageCaption}`;
+                const safeImageCaption = sanitizeUntrustedPromptText(imageCaption, 1000, {
+                  collapseHorizontalRules: true,
+                });
+                tweetContext += `\n\n【ユーザーが添付した画像の内容】\n${safeImageCaption}`;
               }
             }
           }
@@ -150,7 +166,8 @@ ${description}
         return { status: 'skipped', reason: 'No valid tweets to engage with' };
       }
 
-      const detectPrompt = `このテキストは何語ですか？日本語（ローマ字表記を含む）であれば'ja'、それ以外（主に英語）であれば'en'と、2文字の言語コードのみを出力してください。\nテキスト: "${description + tweetContext}"`;
+      const detectSourceText = sanitizeUntrustedPromptText(`${safeDescription} ${tweetContext}`, 1500);
+      const detectPrompt = `このテキストは何語ですか？日本語（ローマ字表記を含む）であれば'ja'、それ以外（主に英語）であれば'en'と、2文字の言語コードのみを出力してください。\nテキスト: "${detectSourceText}"`;
       const lang = await this.deps.gemini.detectLanguage(detectPrompt);
 
       const { systemInstruction: systemPrompt } = await buildSystemPrompt({
@@ -160,11 +177,11 @@ ${description}
         gemini: this.deps.gemini,
         anchoringContext: [
           '【シチュエーション】フォローしてくれたフォロワーへの親しみやすい不意打ち挨拶・絡みメンション',
-          description ? `【相手プロフィール】${description}` : '',
+          safeDescription ? `【相手プロフィール】${safeDescription}` : '',
           tweetContext,
         ],
       });
-      const userInput = `【ターゲットユーザー情報】\nユーザー名: @${username}\nプロフィール: ${description}\n分析属性: ${JSON.stringify(profileAnalysis)}\n${tweetContext}\n\n上記を踏まえて、ターゲットユーザーの最近の活動や投稿内容に言及しつつ、不意打ちで話しかける独立したメンション投稿を作成してください。`;
+      const userInput = `【ターゲットユーザー情報】\nユーザー名: @${safeUsername}\nプロフィール: ${safeDescription}\n分析属性: ${safeProfileAnalysisJson}\n${tweetContext}\n\n上記を踏まえて、ターゲットユーザーの最近の活動や投稿内容に言及しつつ、不意打ちで話しかける独立したメンション投稿を作成してください。`;
 
       const structured = await this.deps.gemini.generateStructuredReply(systemPrompt, [], userInput);
       let finalText = structured.reply.trim();

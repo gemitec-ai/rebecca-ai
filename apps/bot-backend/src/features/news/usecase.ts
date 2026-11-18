@@ -1,3 +1,4 @@
+import { sanitizeUntrustedPromptText } from '@rebecca/memory';
 import { AppDependencies } from '../../types';
 import { executePostPipeline } from '../../core/postPipeline';
 import { buildSystemPrompt } from '../../core/contextInjector';
@@ -83,17 +84,32 @@ export class ProactiveNewsUseCase {
         return { status: 'skipped', reason: 'all_duplicates' };
       }
 
-      const freshHeadlineTexts = candidateNews.map((c) => c.headline);
+      const freshHeadlineTexts = candidateNews.map((c) => sanitizeUntrustedPromptText(c.headline, 300));
       logger.info('[ProactiveNewsUseCase] Fresh non-duplicate headlines', {
         freshHeadlines: freshHeadlineTexts,
       });
 
       const formattedNewsContext = candidateNews
-        .map((c) => `・【${c.item.category}】${c.headline}\n  概要: ${c.item.summary}`)
+        .map((c) => {
+          const safeCat = sanitizeUntrustedPromptText(c.item.category, 64);
+          const safeTitle = sanitizeUntrustedPromptText(c.headline, 300, {
+            collapseHorizontalRules: true,
+          });
+          const safeSummary = sanitizeUntrustedPromptText(c.item.summary, 600, {
+            collapseHorizontalRules: true,
+          });
+          return `・【${safeCat}】${safeTitle}\n  概要: ${safeSummary}`;
+        })
         .join('\n\n');
 
       const timelineSummary = await this.deps.firestore.getTimelineSummary();
       const extendedPrompt = await this.deps.firestore.getExtendedPrompt();
+      const safeTimelineSummary = timelineSummary
+        ? sanitizeUntrustedPromptText(timelineSummary, 2000, { collapseHorizontalRules: true })
+        : '';
+      const safeExtendedPrompt = extendedPrompt
+        ? sanitizeUntrustedPromptText(extendedPrompt, 2000, { collapseHorizontalRules: true })
+        : '';
 
       const { systemInstruction } = await buildSystemPrompt({
         persona: this.deps.persona,
@@ -102,8 +118,8 @@ export class ProactiveNewsUseCase {
         gemini: this.deps.gemini,
         anchoringContext: [
           `【今日のニュース候補（${targetCategory}）】\n${freshHeadlineTexts.join('\n')}`,
-          extendedPrompt ? `【近況・気分】${extendedPrompt}` : '',
-          timelineSummary ? `【タイムラインの空気感】${timelineSummary}` : '',
+          safeExtendedPrompt ? `【近況・気分】${safeExtendedPrompt}` : '',
+          safeTimelineSummary ? `【タイムラインの空気感】${safeTimelineSummary}` : '',
         ],
       });
       const personaName = this.deps.persona.metadata.displayName;
@@ -115,8 +131,8 @@ export class ProactiveNewsUseCase {
 
 【今日のニュース候補（${targetCategory}）】
 ${formattedNewsContext}
-${timelineSummary ? `\n【直近のタイムライン要約】\n${timelineSummary}\n` : ''}
-${extendedPrompt ? `\n【拡張ペルソナ・近況】\n${extendedPrompt}\n` : ''}
+${safeTimelineSummary ? `\n【直近のタイムライン要約】\n${safeTimelineSummary}\n` : ''}
+${safeExtendedPrompt ? `\n【拡張ペルソナ・近況】\n${safeExtendedPrompt}\n` : ''}
 
 【トピック選定の重要ルール】
 - 殺人や痛ましい事故など、過度に暗いニュースや人が亡くなっているニュースは絶対に選ばないこと。必ず明るい話題を選んでください。
