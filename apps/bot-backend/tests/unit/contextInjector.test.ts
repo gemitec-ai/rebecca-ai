@@ -327,5 +327,15 @@ describe('Context Injector (Unified buildSystemPrompt)', () => {
     expect(enPrompt).toContain('Winter cafe tour');
     expect(enPrompt).toContain('[Context: Your Original Post Being Replied To]');
     expect(enPrompt).toContain('"It is getting chilly lately!"');
+
+    const { systemInstruction: overridePrompt } = await buildSystemPrompt({
+      persona: rebeccaPersona,
+      promptContext: 'reply',
+      botHandle: '@custom_bot_handle',
+      lang: 'en',
+      gemini: stubEmbedder,
+      anchoringContext: ['Hello'],
+    });
+    expect(overridePrompt).toContain('@custom_bot_handle');
   });
 });

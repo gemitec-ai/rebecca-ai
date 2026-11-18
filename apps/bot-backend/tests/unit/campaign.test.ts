@@ -746,12 +746,14 @@ describe('Campaign Narrative Event Engine Unit Tests', () => {
         expect.stringContaining('Rebecca is having fun on Waikiki beach.'),
         expect.anything(),
         expect.anything(),
+        'ja',
       );
       // Verify Empathy Priority prompt rule was injected
       expect(deps.gemini.generateStructuredReply).toHaveBeenCalledWith(
         expect.stringContaining('共感・ユーザーファースト（Empathy Priority）'),
         expect.anything(),
         expect.anything(),
+        'ja',
       );
     });
   });

@@ -282,7 +282,7 @@ ${processedText}
         });
 
         // Generate the structured AI response (thought + reply) based on the contextualized prompt
-        const structuredReply = await deps.gemini.generateStructuredReply(systemPrompt, workingMemory, processedText);
+        const structuredReply = await deps.gemini.generateStructuredReply(systemPrompt, workingMemory, processedText, lang);
         let aiResponseText = structuredReply.reply;
         const internalThought = structuredReply.thought;
 

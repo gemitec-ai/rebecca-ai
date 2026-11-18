@@ -62,6 +62,7 @@ const buildBotAdditionalSections = (
 export interface BuildBotSystemPromptOptions {
   readonly persona: IPersonaDefinition;
   readonly promptContext: BotChannelContext;
+  readonly botHandle?: string;
   readonly gemini: IMemoryVectorEmbedder;
   readonly anchoringContext: readonly string[];
   readonly lang?: Language;
@@ -86,7 +87,6 @@ export interface BuildBotSystemPromptOptions {
  *
  * @param options - Grounded bot prompt assembly parameters.
  * @returns Structured prompt bundle containing `baseSystemInstruction`, `personaFewShotPrompt`, and `systemInstruction`.
- * @throws Error if situational pattern vectors are unavailable or channel context is malformed.
  * @throws RangeError if `timezone` is not a valid IANA time zone identifier when `includeTemporalContext` is enabled.
  */
 const buildSystemPrompt = async (
@@ -95,6 +95,7 @@ const buildSystemPrompt = async (
   const {
     persona,
     promptContext,
+    botHandle,
     gemini,
     anchoringContext,
     lang = 'ja',
@@ -118,7 +119,12 @@ const buildSystemPrompt = async (
 
   return composeSystemPrompt({
     persona,
-    channelInstruction: getBotChannelGuidelines(promptContext, persona, lang),
+    channelInstruction: getBotChannelGuidelines(
+      promptContext,
+      persona,
+      lang,
+      botHandle ? { botHandle } : undefined,
+    ),
     lang,
     anchoring: {
       embedder: gemini,

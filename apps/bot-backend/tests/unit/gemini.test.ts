@@ -557,6 +557,15 @@ describe('GeminiService Unit Tests', () => {
             expect(calledContents[0].parts[0].text).toContain('User message');
             expect(calledContents[1].parts[0].text).toContain('【思考・本音】AI thought');
             expect(calledContents[2].parts[0].text).toBe('AI reply no thought');
+
+            mockGenerateContent.mockResolvedValueOnce({
+                text: JSON.stringify({ thought: 'English note', reply: 'English reply' })
+            });
+            const resEn = await gemini.generateStructuredReply('System', history, 'Hello', 'en');
+            expect(resEn.reply).toBe('English reply');
+            const enContents = mockGenerateContent.mock.calls[1][0].contents;
+            expect(enContents[1].parts[0].text).toContain('[Inner Thought]AI thought');
+            expect(enContents[1].parts[0].text).toContain('[Spoken Reply]AI reply');
         });
 
         it('should throw error when rawText is empty or reply is empty', async () => {

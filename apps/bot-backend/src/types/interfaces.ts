@@ -135,7 +135,7 @@ export interface IFirestoreService {
  * embedding creation, and image analysis.
  */
 export interface IGeminiService {
-  generateStructuredReply(systemInstruction: string, history: ConversationLogEntry[], userInput: string): Promise<StructuredPersonaResponse>;
+  generateStructuredReply(systemInstruction: string, history: ConversationLogEntry[], userInput: string, lang?: 'ja' | 'en'): Promise<StructuredPersonaResponse>;
   verifyImageRelevance(imageCaption: string, postText: string): Promise<boolean>;
   generateDreaming(systemPrompt: string, episodicBuffer: ConversationLogEntry[], coreProfile: UserCoreProfile): Promise<UserCoreProfile>;
   generateEvolutionPrompt(prompt: string): Promise<string>;

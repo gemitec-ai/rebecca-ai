@@ -701,12 +701,14 @@ ${imageCaption}
    * @param systemInstruction - The system persona and behavioral guidelines.
    * @param history - Conversation history log entries.
    * @param userInput - The most recent text input provided by the user.
+   * @param lang - Conversational language controlling inner-thought turn labels (`'ja'` or `'en'`). Defaults to `'ja'`.
    * @returns A promise resolving to StructuredPersonaResponse ({ thought, reply }).
    */
   async generateStructuredReply(
     systemInstruction: string,
     history: ConversationLogEntry[],
-    userInput: string
+    userInput: string,
+    lang: 'ja' | 'en' = 'ja',
   ): Promise<StructuredPersonaResponse> {
     if (!this.ai) {
       throw new Error('Gemini API client not initialized');
@@ -729,6 +731,7 @@ ${imageCaption}
     const initialTurns: DialogueTurn[] = formatHistoryWithInnerThought(
       history,
       this.config.appTimezone,
+      lang,
     ).map((turn) => ({
       role: turn.role === 'model' ? 'assistant' : 'user',
       text: turn.text,
