@@ -85,8 +85,9 @@ const buildInitialDialogueTurns = (
   targetTimezone: string,
   lang: 'ja' | 'en',
 ): DialogueTurn[] => {
+  const normalizedUserMessage = sanitizeUntrustedPromptText(userMessage, MAX_COPILOT_MESSAGE_CHARS);
   const sanitizedHistory = sanitizeCopilotHistory(rawHistory).filter((h, idx, arr) => {
-    if (idx === arr.length - 1 && h.text === userMessage) return false;
+    if (idx === arr.length - 1 && h.role === 'user' && h.text === normalizedUserMessage) return false;
     return h.text.length > 0;
   });
 

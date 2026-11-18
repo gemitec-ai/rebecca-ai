@@ -1253,6 +1253,27 @@ describe('Copilot Autonomous Agent Suite (Redesign v3)', () => {
       const boundedUserTurn = mockGenerateContent.mock.calls[2][0].contents[0].parts[0].text;
       expect(boundedUserTurn).toContain('A'.repeat(2000));
       expect(boundedUserTurn).not.toContain('A'.repeat(2001));
+
+      // Tail-history deduplication also strips matching multiline/bracketed user messages after history sanitization
+      mockEmbedContent.mockResolvedValueOnce({
+        embeddings: [{ values: [...precomputedPersonaPatternEmbeddings[0].vector] }],
+      });
+      mockGenerateContent.mockResolvedValueOnce({
+        text: JSON.stringify({ thought: '重複回避', reply: 'OK', suggestionChips: [] }),
+      });
+      await copilot.processChat({
+        message: 'Check [KPI]\n  please',
+        history: [
+          { role: 'user', text: 'First question' },
+          { role: 'model', text: 'First answer' },
+          { role: 'user', text: 'Check [KPI]\n  please' },
+        ],
+      });
+      const dedupedContents = mockGenerateContent.mock.calls[3][0].contents;
+      expect(dedupedContents).toHaveLength(3);
+      expect(dedupedContents[0].parts[0].text).toBe('First question');
+      expect(dedupedContents[1].parts[0].text).toBe('First answer');
+      expect(dedupedContents[2].parts[0].text).toContain('Check [KPI]\n  please');
     });
 
     it('should align Rebecca temporal bracket and Current Time header to the frontend-specified timezone (user night == Rebecca night)', async () => {
