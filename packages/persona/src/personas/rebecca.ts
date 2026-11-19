@@ -1,3 +1,13 @@
+/**
+ * @license
+ * Copyright (c) 2026 AKINA. All Rights Reserved.
+ * SPDX-License-Identifier: LicenseRef-Rebecca-Character-IP
+ *
+ * This file contains proprietary Character IP and persona definitions for "Rebecca".
+ * It is expressly EXCLUDED from the repository's MIT License.
+ * See CHARACTER_IP_NOTICE.md and https://rebecca-ai.net/guidelines.html for permitted uses.
+ */
+
 import rawPatterns from '../data/personaPatterns.json';
 import { precomputedPersonaPatternEmbeddings, PersonaPatternWithVector } from '../personaPatternVectors';
 import {
@@ -404,6 +414,7 @@ export const REBECCA_PORTAL_CONFIG: PortalBrandConfig = {
     xHandle: '@rebecca_ai_gal',
     youtubeUrl: 'https://youtube.com/@rebecca-ai',
     pixivUrl: 'https://www.pixiv.net/users/129754550',
+    pixaiUrl: 'https://pixai.art/model/2065444973255770138',
     githubUrl: 'https://github.com/gemitec-ai/rebecca-ai',
     kofiUrl: 'https://ko-fi.com/rebeccaai',
   },

@@ -55,6 +55,7 @@ export function renderFooter(config: PortalBrandConfig, includeMobileDock = fals
           <ul>
             ${config.social.youtubeUrl ? `<li><a href="${config.social.youtubeUrl}" target="_blank" rel="noopener noreferrer">YouTube</a></li>` : ''}
             ${config.social.pixivUrl ? `<li><a href="${config.social.pixivUrl}" target="_blank" rel="noopener noreferrer">Pixiv</a></li>` : ''}
+            ${config.social.pixaiUrl ? `<li><a href="${config.social.pixaiUrl}" target="_blank" rel="noopener noreferrer">PixAI (Official LoRA)</a></li>` : ''}
             ${config.social.githubUrl ? `<li><a href="${config.social.githubUrl}" target="_blank" rel="noopener noreferrer">Repository (OSS)</a></li>` : ''}
             <li><a href="/supporters"><span class="t-ja">サポーター・スポンサー</span><span class="t-en">Supporters &amp; Sponsors</span></a></li>
           </ul>
@@ -63,25 +64,28 @@ export function renderFooter(config: PortalBrandConfig, includeMobileDock = fals
         <div class="footer-col">
           <h4>Governance</h4>
           <ul>
-            <li><a href="/tos.html">Terms of Service</a></li>
-            <li><a href="/privacy.html">Privacy Policy</a></li>
-            <li><a href="/legal.html"><span class="t-ja">特定商取引法に基づく表記</span><span class="t-en">Commercial Transactions</span></a></li>
-            <li><a href="/sitemap.xml">Sitemap (XML)</a></li>
-            <li><a href="${config.social.xUrl}" target="_blank" rel="noopener noreferrer">Contact (X)</a></li>
+            <li><a href="/tos.html"><span class="t-ja">利用規約</span><span class="t-en">Terms of Service</span></a></li>
+            <li><a href="/guidelines.html"><span class="t-ja">二次創作ガイドライン</span><span class="t-en">Creative Guidelines</span></a></li>
+            <li><a href="/privacy.html"><span class="t-ja">プライバシーポリシー</span><span class="t-en">Privacy Policy</span></a></li>
+            <li><a href="/legal.html" rel="nofollow"><span class="t-ja">特定商取引法に基づく表記</span><span class="t-en">Commercial Transactions</span></a></li>
+            <li><a href="/sitemap.xml"><span class="t-ja">サイトマップ (XML)</span><span class="t-en">Sitemap (XML)</span></a></li>
+            <li><a href="${config.social.xUrl}" target="_blank" rel="noopener noreferrer"><span class="t-ja">お問い合わせ (X)</span><span class="t-en">Contact (X)</span></a></li>
           </ul>
         </div>
       </div>
 
       <div class="footer-bottom">
         <div>
-          &copy; ${currentYear} ${config.organizationName}. Developed by AKINA. All rights reserved.
+          &copy; ${currentYear} ${config.organizationName.replace(/\.$/, '')}. Developed by AKINA. All rights reserved.
         </div>
         <div class="footer-legal-links">
           <a href="/tos.html"><span class="t-ja">利用規約</span><span class="t-en">Terms</span></a>
           <span>&bull;</span>
+          <a href="/guidelines.html"><span class="t-ja">二次創作ガイドライン</span><span class="t-en">Guidelines</span></a>
+          <span>&bull;</span>
           <a href="/privacy.html"><span class="t-ja">プライバシーポリシー</span><span class="t-en">Privacy</span></a>
           <span>&bull;</span>
-          <a href="/legal.html"><span class="t-ja">特定商取引法に基づく表記</span><span class="t-en">Legal</span></a>
+          <a href="/legal.html" rel="nofollow"><span class="t-ja">特定商取引法に基づく表記</span><span class="t-en">Legal</span></a>
           <span>&bull;</span>
           <a href="/sitemap.xml"><span class="t-ja">サイトマップ</span><span class="t-en">Sitemap</span></a>
         </div>

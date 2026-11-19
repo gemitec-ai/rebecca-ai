@@ -14,6 +14,7 @@ Dedicated web portal workspace for Rebecca AI and pluggable persona landing page
 - `supporters.html`: Community sponsorship program and live Hall of Fame roster.
 - `support/thank-you.html`: Post-checkout supporter redemption and digital reward download.
 - `tos.html`: Terms of Service.
+- `guidelines.html`: Intellectual Property Policy and Creative / Derivative Works Guidelines.
 - `privacy.html`: Privacy Policy.
 - `legal.html`: Operational legal notices.
 - `tokushoho.html`: Act on Specified Commercial Transactions disclosures.

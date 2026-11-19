@@ -683,6 +683,8 @@
 
     .footer-bottom {
       display: flex;
+      flex-wrap: wrap;
+      gap: 12px 20px;
       align-items: center;
       justify-content: space-between;
       padding-top: 24px;
@@ -696,7 +698,7 @@
       justify-content: center;
       align-items: center;
       display: flex;
-      gap: 20px;
+      gap: 8px 12px;
     }
 
     .footer-legal-links a {

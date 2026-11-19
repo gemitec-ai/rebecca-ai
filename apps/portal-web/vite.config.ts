@@ -54,7 +54,9 @@ function portalHtmlPlugin(): Plugin {
         .replace(/{{ORG_NAME}}/g, activePortalConfig.organizationName)
         .replace(/{{CANONICAL_URL}}/g, activePortalConfig.canonicalUrl)
         .replace(/{{X_URL}}/g, activePortalConfig.social.xUrl)
-        .replace(/{{X_HANDLE}}/g, activePortalConfig.social.xHandle);
+        .replace(/{{X_HANDLE}}/g, activePortalConfig.social.xHandle)
+        .replace(/{{DEFAULT_HASHTAG}}/g, activePortalConfig.defaultHashtag)
+        .replace(/{{PIXAI_URL}}/g, activePortalConfig.social.pixaiUrl ?? '');
 
       return output;
     },
@@ -75,6 +77,7 @@ export default defineConfig({
         tos: resolve(rootDir, 'tos.html'),
         privacy: resolve(rootDir, 'privacy.html'),
         legal: resolve(rootDir, 'legal.html'),
+        guidelines: resolve(rootDir, 'guidelines.html'),
         tokushoho: resolve(rootDir, 'tokushoho.html'),
         thankYou: resolve(rootDir, 'support/thank-you.html'),
       },
