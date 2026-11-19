@@ -5,7 +5,7 @@
  *
  * This file contains proprietary Character IP and persona definitions for "Rebecca".
  * It is expressly EXCLUDED from the repository's MIT License.
- * See CHARACTER_IP_NOTICE.md and https://rebecca-ai.net/guidelines.html for permitted uses.
+ * See CHARACTER_IP_NOTICE.md and https://rebecca-ai.net/guidelines for permitted uses.
  */
 
 import rawPatterns from '../data/personaPatterns.json';

@@ -23,7 +23,7 @@ Rebecca（レベッカ）は、Gemitec Inc.（運営: AKINA）によって研究
 - [Original Character LoRA (Civitai)](https://civitai.com/models/2653231/rebecca-ai-gal): レベッカの初期ビジュアル研究・原型となった実験的LoRAモデル（v0.9-beta / カクヨム小説連動のプロトタイプ資産）。ファンアート・画像生成実験向けのコミュニティアーカイブ
 
 ## Policies & Governance
-- [Terms of Service](https://rebecca-ai.net/tos.html): 利用規約
-- [Creative & Derivative Works Guidelines](https://rebecca-ai.net/guidelines.html): キャラクターIPポリシー・二次創作ガイドライン
-- [Privacy Policy](https://rebecca-ai.net/privacy.html): プライバシーポリシー
+- [Terms of Service](https://rebecca-ai.net/tos): 利用規約
+- [Creative & Derivative Works Guidelines](https://rebecca-ai.net/guidelines): キャラクターIPポリシー・二次創作ガイドライン
+- [Privacy Policy](https://rebecca-ai.net/privacy): プライバシーポリシー
 - [Sitemap](https://rebecca-ai.net/sitemap.xml): XMLサイトマップ

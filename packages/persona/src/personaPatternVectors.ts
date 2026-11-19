@@ -5,7 +5,7 @@
  *
  * This file contains proprietary Character IP and precomputed persona embeddings for "Rebecca".
  * It is expressly EXCLUDED from the repository's MIT License.
- * See CHARACTER_IP_NOTICE.md and https://rebecca-ai.net/guidelines.html for permitted uses.
+ * See CHARACTER_IP_NOTICE.md and https://rebecca-ai.net/guidelines for permitted uses.
  *
  * @fileoverview Precomputed 768-dimensional embedding vectors for the 120 Rebecca persona patterns.
  *
