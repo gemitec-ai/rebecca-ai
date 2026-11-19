@@ -6,6 +6,8 @@ export interface HeadOptions {
   description?: string;
   ogpImage?: string;
   canonicalPath?: string;
+  /** Optional robots meta directive (e.g., "noindex, nofollow, noarchive"). */
+  robots?: string;
 }
 
 /**
@@ -18,6 +20,7 @@ export interface HeadOptions {
 export function renderHead(config: PortalBrandConfig, options: HeadOptions = {}): string {
   const pageTitle = options.title ? `${options.title} | ${config.displayName}` : `${config.displayName} (${config.englishName}) - Autonomous Personal AI | ${config.organizationName}`;
   const pageDescription = options.description ?? config.description;
+  const robotsMeta = options.robots ? `\n  <meta name="robots" content="${options.robots}">` : '';
   const canonicalUrl = `${config.canonicalUrl.replace(/\/$/, '')}${options.canonicalPath ?? ''}`;
   const ogpImage = options.ogpImage
     ? (options.ogpImage.startsWith('http://') || options.ogpImage.startsWith('https://')
@@ -30,7 +33,7 @@ export function renderHead(config: PortalBrandConfig, options: HeadOptions = {})
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>${pageTitle}</title>
   <meta name="title" content="${pageTitle}">
-  <meta name="description" content="${pageDescription}">
+  <meta name="description" content="${pageDescription}">${robotsMeta}
   <link rel="icon" type="image/svg+xml" href="/${config.assets.faviconSvg}">
   <link rel="apple-touch-icon" href="/${config.assets.faviconPng}">
 

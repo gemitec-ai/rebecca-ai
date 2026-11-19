@@ -67,7 +67,7 @@ export function renderFooter(config: PortalBrandConfig, includeMobileDock = fals
             <li><a href="/tos.html">Terms of Service</a></li>
             <li><a href="/guidelines.html"><span class="t-ja">二次創作ガイドライン</span><span class="t-en">Creative Guidelines</span></a></li>
             <li><a href="/privacy.html">Privacy Policy</a></li>
-            <li><a href="/legal.html"><span class="t-ja">特定商取引法に基づく表記</span><span class="t-en">Commercial Transactions</span></a></li>
+            <li><a href="/legal.html" rel="nofollow"><span class="t-ja">特定商取引法に基づく表記</span><span class="t-en">Commercial Transactions</span></a></li>
             <li><a href="/sitemap.xml">Sitemap (XML)</a></li>
             <li><a href="${config.social.xUrl}" target="_blank" rel="noopener noreferrer">Contact (X)</a></li>
           </ul>
@@ -85,7 +85,7 @@ export function renderFooter(config: PortalBrandConfig, includeMobileDock = fals
           <span>&bull;</span>
           <a href="/privacy.html"><span class="t-ja">プライバシーポリシー</span><span class="t-en">Privacy</span></a>
           <span>&bull;</span>
-          <a href="/legal.html"><span class="t-ja">特定商取引法に基づく表記</span><span class="t-en">Legal</span></a>
+          <a href="/legal.html" rel="nofollow"><span class="t-ja">特定商取引法に基づく表記</span><span class="t-en">Legal</span></a>
           <span>&bull;</span>
           <a href="/sitemap.xml"><span class="t-ja">サイトマップ</span><span class="t-en">Sitemap</span></a>
         </div>
