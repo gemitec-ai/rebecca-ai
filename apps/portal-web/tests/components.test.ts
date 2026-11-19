@@ -24,10 +24,10 @@ describe('Portal HTML Template Components', () => {
     it('should respect page-specific title and canonical overrides', () => {
       const html = renderHead(activePortalConfig, {
         title: '利用規約',
-        canonicalPath: '/tos.html',
+        canonicalPath: '/tos',
       });
       expect(html).toContain('<title>利用規約 | 全肯定AIレベッカ</title>');
-      expect(html).toContain('href="https://rebecca-ai.net/tos.html"');
+      expect(html).toContain('href="https://rebecca-ai.net/tos"');
     });
 
     it('resolves relative ogpImage into fully qualified absolute URL', () => {
@@ -75,11 +75,11 @@ describe('Portal HTML Template Components', () => {
   describe('renderFooter', () => {
     it('should render governance links, copyright, and disclaimer', () => {
       const html = renderFooter(activePortalConfig);
-      expect(html).toContain('href="/tos.html"');
-      expect(html).toContain('href="/guidelines.html"');
+      expect(html).toContain('href="/tos"');
+      expect(html).toContain('href="/guidelines"');
       expect(html).toContain('https://pixai.art/model/2065444973255770138');
-      expect(html).toContain('href="/privacy.html"');
-      expect(html).toContain('href="/legal.html" rel="nofollow"');
+      expect(html).toContain('href="/privacy"');
+      expect(html).toContain('href="/legal" rel="nofollow"');
       expect(html).toContain('Gemitec Inc.');
       expect(html).not.toContain('Gemitec Inc..');
       expect(html).toContain('All rights reserved.');
