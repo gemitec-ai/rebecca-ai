@@ -924,6 +924,8 @@ export interface CharacterSocialLinks {
   xHandle: string;
   youtubeUrl?: string;
   pixivUrl?: string;
+  /** Official PixAI LoRA model URL for community fan-art generation. */
+  pixaiUrl?: string;
   githubUrl?: string;
   kofiUrl?: string;
 }

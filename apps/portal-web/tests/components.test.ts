@@ -9,8 +9,16 @@ describe('Portal HTML Template Components', () => {
       const html = renderHead(activePortalConfig);
       expect(html).toContain('<title>全肯定AIレベッカ (Rebecca AI) - Autonomous Personal AI | Gemitec Inc.</title>');
       expect(html).toContain('name="description"');
+      expect(html).not.toContain('name="robots"');
       expect(html).toContain('property="og:image"');
       expect(html).toContain('name="twitter:card"');
+    });
+
+    it('renders robots meta tag when robots option is provided', () => {
+      const html = renderHead(activePortalConfig, {
+        robots: 'noindex, nofollow, noarchive',
+      });
+      expect(html).toContain('<meta name="robots" content="noindex, nofollow, noarchive">');
     });
 
     it('should respect page-specific title and canonical overrides', () => {
@@ -68,9 +76,12 @@ describe('Portal HTML Template Components', () => {
     it('should render governance links, copyright, and disclaimer', () => {
       const html = renderFooter(activePortalConfig);
       expect(html).toContain('href="/tos.html"');
+      expect(html).toContain('href="/guidelines.html"');
+      expect(html).toContain('https://pixai.art/model/2065444973255770138');
       expect(html).toContain('href="/privacy.html"');
-      expect(html).toContain('href="/legal.html"');
+      expect(html).toContain('href="/legal.html" rel="nofollow"');
       expect(html).toContain('Gemitec Inc.');
+      expect(html).not.toContain('Gemitec Inc..');
       expect(html).toContain('All rights reserved.');
     });
 
@@ -85,6 +96,7 @@ describe('Portal HTML Template Components', () => {
       const html = renderFooter(minimalConfig);
       expect(html).not.toContain('YouTube');
       expect(html).not.toContain('Pixiv');
+      expect(html).not.toContain('PixAI');
       expect(html).not.toContain('Repository (OSS)');
     });
   });

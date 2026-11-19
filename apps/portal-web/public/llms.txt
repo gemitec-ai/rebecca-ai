@@ -15,6 +15,7 @@ Rebecca（レベッカ）は、Gemitec Inc.（運営: AKINA）によって研究
 - [Official LINE Stickers](https://store.line.me/stickershop/product/36218323): 公式LINEスタンプ『全肯定AI レベッカ』。日常会話で使えるデフォルメキャラクターの公式スタンプ集
 - [YouTube (@rebecca-ai)](https://youtube.com/@rebecca-ai): 公式YouTubeチャンネル（映像・音楽配信）
 - [Pixiv (ID: 129754550)](https://www.pixiv.net/users/129754550): 公式ビジュアルアーカイブ・イラストギャラリー
+- [Official Fan-Art LoRA (PixAI)](https://pixai.art/model/2065444973255770138): コミュニティ向けファンアート生成用公式共有LoRAモデル（二次創作ガイドライン準拠・非商用ファン創作向け）
 - [GitHub Repository](https://github.com/gemitec-ai/rebecca-ai): オープンソースリポジトリ（コード・アーキテクチャ）
 - [Ko-fi Support](https://ko-fi.com/rebeccaai): コミュニティ支援・サポーターページ
 
@@ -23,5 +24,6 @@ Rebecca（レベッカ）は、Gemitec Inc.（運営: AKINA）によって研究
 
 ## Policies & Governance
 - [Terms of Service](https://rebecca-ai.net/tos.html): 利用規約
+- [Creative & Derivative Works Guidelines](https://rebecca-ai.net/guidelines.html): キャラクターIPポリシー・二次創作ガイドライン
 - [Privacy Policy](https://rebecca-ai.net/privacy.html): プライバシーポリシー
 - [Sitemap](https://rebecca-ai.net/sitemap.xml): XMLサイトマップ

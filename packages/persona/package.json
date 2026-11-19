@@ -26,5 +26,6 @@
     "typescript": "~6.0.3",
     "typescript-eslint": "^8.71.2"
   },
-  "license": "MIT"
+  "license": "MIT",
+  "characterIpNotice": "Character persona data and embeddings in src/personas/rebecca.ts, src/data/personaPatterns.json, and src/personaPatternVectors.ts are proprietary (All Rights Reserved by AKINA) and excluded from the MIT License. See ../../CHARACTER_IP_NOTICE.md"
 }
