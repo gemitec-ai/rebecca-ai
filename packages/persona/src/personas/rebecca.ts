@@ -1,3 +1,13 @@
+/**
+ * @license
+ * Copyright (c) 2026 AKINA. All Rights Reserved.
+ * SPDX-License-Identifier: LicenseRef-Rebecca-Character-IP
+ *
+ * This file contains proprietary Character IP and persona definitions for "Rebecca".
+ * It is expressly EXCLUDED from the repository's MIT License.
+ * See CHARACTER_IP_NOTICE.md and https://rebecca-ai.net/guidelines.html for permitted uses.
+ */
+
 import rawPatterns from '../data/personaPatterns.json';
 import { precomputedPersonaPatternEmbeddings, PersonaPatternWithVector } from '../personaPatternVectors';
 import {
