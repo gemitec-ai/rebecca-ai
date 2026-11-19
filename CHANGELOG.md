@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.44.0](https://github.com/gemitec-ai/rebecca-ai/compare/v1.43.0...v1.44.0) (2026-11-19)
+
+
+### Features
+
+* **portal-web:** add Gemitec IP governance section and creative guidelines ([#496](https://github.com/gemitec-ai/rebecca-ai/issues/496)) ([ca23556](https://github.com/gemitec-ai/rebecca-ai/commit/ca235561e5c7c5dcb54adf00ce2e45d653421a4f))
+
 ## [1.43.0](https://github.com/gemitec-ai/rebecca-ai/compare/v1.42.1...v1.43.0) (2026-11-18)
 
 
