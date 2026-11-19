@@ -404,6 +404,7 @@ export const REBECCA_PORTAL_CONFIG: PortalBrandConfig = {
     xHandle: '@rebecca_ai_gal',
     youtubeUrl: 'https://youtube.com/@rebecca-ai',
     pixivUrl: 'https://www.pixiv.net/users/129754550',
+    pixaiUrl: 'https://pixai.art/model/2065444973255770138',
     githubUrl: 'https://github.com/gemitec-ai/rebecca-ai',
     kofiUrl: 'https://ko-fi.com/rebeccaai',
   },
