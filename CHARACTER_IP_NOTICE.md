@@ -13,7 +13,7 @@ This repository operates under a strict separation between **Software Source Cod
    - Official illustrations, character portraits, icons, favicons, badges, screenshots, audio/video works, and brand logos (including assets under `apps/portal-web/public/`, `apps/dashboard-frontend/public/`, `docs/rebecca_landscape.jpg`, and `screenshots/`)
    - Official character names, trademarks, social handles, character-specific portal narrative copy, and officially shared LoRA model weights
 
-   All rights to the Character IP and Brand Assets above are reserved by **AKINA** (Operator of the Rebecca AI Project / Gemitec Inc. creative project). Non-commercial community fan art and derivative works (including fan art generated via the officially shared PixAI LoRA model) are governed by the official [Creative & Derivative Works Guidelines](https://rebecca-ai.net/guidelines.html).
+   All rights to the Character IP and Brand Assets above are reserved by **AKINA** (Operator of the Rebecca AI Project / Gemitec Inc. creative project). Non-commercial community fan art and derivative works (including fan art generated via the officially shared PixAI LoRA model) are governed by the official [Creative & Derivative Works Guidelines](https://rebecca-ai.net/guidelines).
 
 3. **Limited Developer Exception (Local Testing & Contributions)**  
    Developers cloning this repository may copy and execute the included Rebecca persona files strictly on local or private development environments for software evaluation, automated testing, or submitting Pull Requests to this repository, provided all Rebecca Character IP and Brand Assets are removed and replaced with an original persona prior to any public deployment, commercial hosting, or redistribution.
