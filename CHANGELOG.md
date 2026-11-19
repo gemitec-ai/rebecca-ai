@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.44.1](https://github.com/gemitec-ai/rebecca-ai/compare/v1.44.0...v1.44.1) (2026-11-19)
+
+
+### Bug Fixes
+
+* **portal-web:** unify operator labels and align canonical URLs with cleanUrls ([#500](https://github.com/gemitec-ai/rebecca-ai/issues/500)) ([6479874](https://github.com/gemitec-ai/rebecca-ai/commit/6479874975969a4273af7949c4f6b588a0664175))
+
 ## [1.44.0](https://github.com/gemitec-ai/rebecca-ai/compare/v1.43.0...v1.44.0) (2026-11-19)
 
 
