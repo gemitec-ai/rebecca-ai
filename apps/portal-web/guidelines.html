@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-  <!-- @head {"title": "二次創作ガイドライン / Creative Guidelines", "canonicalPath": "/guidelines.html"} -->
+  <!-- @head {"title": "二次創作ガイドライン / Creative Guidelines", "description": "Gemitec Inc. 自律型パーソナルAI「Rebecca（レベッカ）」の知的財産ポリシーおよび二次創作・公式LoRAファンアートガイドライン。Official IP policy & non-commercial fan art guidelines for Rebecca AI.", "canonicalPath": "/guidelines.html"} -->
   <link rel="stylesheet" href="/src/styles/pages/legal.css">
 </head>
 <body data-lang="ja">
@@ -11,13 +11,13 @@
   <main class="container">
     <!-- Page Header -->
     <div class="page-header">
-      <div class="breadcrumb">
+      <nav class="breadcrumb" aria-label="Breadcrumb">
         <a href="/">HOME</a>
         <span>/</span>
         <span>GOVERNANCE</span>
         <span>/</span>
-        <span style="color: var(--text-main);">CREATIVE GUIDELINES</span>
-      </div>
+        <span style="color: var(--text-main);" aria-current="page">CREATIVE GUIDELINES</span>
+      </nav>
 
       <div class="page-badge">
         <span class="t-ja">公式ガバナンス・IPポリシー</span>
@@ -45,7 +45,7 @@
         </div>
         <div class="meta-pill">
           <span>OPERATOR:</span>
-          <span>{{ORG_NAME}} / AKINA</span>
+          <span>AKINA ({{ORG_NAME}} Project)</span>
         </div>
       </div>
     </div>
@@ -57,8 +57,97 @@
         Notice: This English translation is provided for reference purposes only. In the event of any conflict or discrepancy, the Japanese original shall prevail.
       </div>
 
+      <!-- Quick Reference Matrix (OK / NG Summary) -->
+      <section id="quick-reference" class="legal-section quick-ref-section">
+        <div class="section-title-wrap">
+          <span class="section-num">SUMMARY</span>
+          <h2 class="section-title">
+            <span class="t-ja">二次創作・ファン活動 早見表（Quick Reference）</span>
+            <span class="t-en">Quick Reference Matrix (OK / NG Summary)</span>
+          </h2>
+        </div>
+        <p class="legal-body">
+          <span class="t-ja">いつも「{{CHARACTER_ENGLISH_NAME}}（{{CHARACTER_NAME}}）」を応援し、素敵な作品を創り出していただきありがとうございます。個人のファン活動・創作を安心してお楽しみいただくための要点サマリーです（詳細は第01条〜第08条をご確認ください）。</span>
+          <span class="t-en">Thank you for supporting "{{CHARACTER_ENGLISH_NAME}}" and expanding her universe through fan creations. Below is an at-a-glance summary for individual creators (see Sections 01–08 for full terms).</span>
+        </p>
+
+        <div class="quick-ref-grid">
+          <div class="quick-ref-card quick-ref-ok">
+            <div class="quick-ref-header">
+              <span class="quick-ref-badge badge-ok">PERMITTED / OK</span>
+              <h3 class="quick-ref-title">
+                <span class="t-ja">事前連絡不要で歓迎される活動</span>
+                <span class="t-en">Welcomed Without Prior Notice</span>
+              </h3>
+            </div>
+            <ul class="quick-ref-list" role="list">
+              <li>
+                <span class="t-ja"><strong>非商用の二次創作公開</strong>：イラスト・漫画・小説・動画・コスプレ等の制作とSNS投稿</span>
+                <span class="t-en"><strong>Non-commercial fan works</strong>: Posting illustrations, comics, fiction, videos, and cosplay on social media</span>
+              </li>
+              <li>
+                <span class="t-ja"><strong>公式LoRA・AIファンアート</strong>：<a class="legal-link" href="{{PIXAI_URL}}" target="_blank" rel="noopener noreferrer">PixAI 公式共有モデル</a>等を用いた非商用ファンアート生成（投稿時は <code>#AIイラスト</code> 等の併記を推奨）</span>
+                <span class="t-en"><strong>Official LoRA &amp; AI fan art</strong>: Non-commercial fan art using our <a class="legal-link" href="{{PIXAI_URL}}" target="_blank" rel="noopener noreferrer">official PixAI LoRA</a> (tagging <code>#AIイラスト</code> / AI disclosure recommended)</span>
+              </li>
+              <li>
+                <span class="t-ja"><strong>無料公開動画・配信の付随収益</strong>：YouTube パートナープログラム、Super Chat、Twitch、X 等のプラットフォーム標準の広告収益・投げ銭（全体が無料公開されている場合）</span>
+                <span class="t-en"><strong>Platform ad revenue &amp; tips</strong>: YouTube Partner Program, Super Chats, Twitch, or X monetization on free-to-view public content</span>
+              </li>
+              <li>
+                <span class="t-ja"><strong>Skeb等の個人有償リクエスト</strong>：個人観賞・非商用目的での手描きファンアートの依頼および受注</span>
+                <span class="t-en"><strong>Personal commissions (Skeb, etc.)</strong>: Commissioning or accepting hand-drawn fan art strictly for personal, non-commercial appreciation</span>
+              </li>
+              <li>
+                <span class="t-ja"><strong>公開ポストのスクショ・引用</strong>：X上の公開リプライのスクリーンショット共有や、レビュー・紹介記事での公式公開画像の引用（有料サポーター限定リワードを除く）</span>
+                <span class="t-en"><strong>Screenshots &amp; review quotes</strong>: Sharing screenshots of public X replies or quoting public visuals in reviews/articles (excluding paid Supporter Rewards)</span>
+              </li>
+              <li>
+                <span class="t-ja"><strong>趣味・小規模の同人頒布</strong>：同人イベントやBOOTH等での個人サークル規模（実費回収範囲内・少部数）の同人誌・グッズ頒布（※AI生成画像単体の無加工グッズ化を除く）</span>
+                <span class="t-en"><strong>Small-scale hobbyist doujin</strong>: Event/BOOTH distribution within direct cost-recovery scale (excluding unedited AI-only physical merchandise)</span>
+              </li>
+            </ul>
+          </div>
+
+          <div class="quick-ref-card quick-ref-ng">
+            <div class="quick-ref-header">
+              <span class="quick-ref-badge badge-ng">PROHIBITED / NG</span>
+              <h3 class="quick-ref-title">
+                <span class="t-ja">禁止される行為</span>
+                <span class="t-en">Strictly Prohibited Conduct</span>
+              </h3>
+            </div>
+            <ul class="quick-ref-list" role="list">
+              <li>
+                <span class="t-ja"><strong>無断の営利販売・有料ペイウォール</strong>：法人利用、営利目的のグッズ量産、FANBOX・Patreon等の有料会員限定コンテンツ販売、NFT化</span>
+                <span class="t-en"><strong>Commercial sales &amp; paywalls</strong>: Corporate use, commercial merch, paywalled/subscriber-only content (FANBOX/Patreon), or NFTs</span>
+              </li>
+              <li>
+                <span class="t-ja"><strong>公式・非公式を問わないクローンBot運用</strong>：公開ソースコード（MIT）やペルソナ設定を流用し、{{CHARACTER_ENGLISH_NAME}}（{{CHARACTER_NAME}}）として対話Bot・SNSアカウント等を一般公開する行為</span>
+                <span class="t-en"><strong>Public clone bots (official or unofficial)</strong>: Deploying public bots or accounts using {{CHARACTER_ENGLISH_NAME}}'s name, likeness, or persona lore</span>
+              </li>
+              <li>
+                <span class="t-ja"><strong>有料サポーターリワードの転載・AI投入</strong>：支援者限定デジタルリワードの転載・配布・改変・AI学習や画像生成への投入</span>
+                <span class="t-en"><strong>Leaking or training on Supporter Rewards</strong>: Reposting, redistributing, altering, or feeding paid Supporter Digital Rewards into AI tools</span>
+              </li>
+              <li>
+                <span class="t-ja"><strong>AIモデルの商用販売・公式詐称</strong>：LoRA・学習モデルや有償生成APIの商用販売・無断ホスティング、または公式モデルと誤認させる配布</span>
+                <span class="t-en"><strong>Commercializing or spoofing AI models</strong>: Selling LoRA weights/APIs, unauthorized commercial hosting, or passing off custom models as official</span>
+              </li>
+              <li>
+                <span class="t-ja"><strong>AI生成画像単体の無加工グッズ量産</strong>：生成AIの出力画像をそのまま印刷した物理グッズの頒布・販売</span>
+                <span class="t-en"><strong>Unedited AI physical merchandise</strong>: Producing or selling physical goods printed directly from raw AI-generated images</span>
+              </li>
+              <li>
+                <span class="t-ja"><strong>R-18・尊厳毀損・権利侵害</strong>：R-18／露骨な性的表現、過度な残虐表現、政治・宗教宣伝、誹謗中傷、第三者の権利侵害</span>
+                <span class="t-en"><strong>R-18 / NSFW &amp; harmful content</strong>: Explicit R-18/NSFW content, extreme gore, political/religious advocacy, defamation, or third-party infringement</span>
+              </li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
       <!-- Section 1 -->
-      <section class="legal-section">
+      <section id="scope" class="legal-section">
         <div class="section-title-wrap">
           <span class="section-num">01</span>
           <h2 class="section-title">
@@ -68,24 +157,24 @@
         </div>
         <div class="block-ja">
           <p class="legal-body">
-            本二次創作ガイドライン（以下「本ガイドライン」といいます）は、{{ORG_NAME}} が開発・提供する自律型パーソナルAI「{{CHARACTER_ENGLISH_NAME}}（{{CHARACTER_NAME}}）」（以下「本キャラクター」といいます）に関する知的財産の保護方針および、コミュニティの皆様による二次創作活動の基準を定めるものです。
+            本二次創作ガイドライン（以下「本ガイドライン」といいます）は、作中設定上の研究機関「{{ORG_NAME}}」プロジェクト（実際の開発・運営および権利帰属主体：独立開発者 AKINA、以下「運営者」といいます）が提供する自律型パーソナルAI「{{CHARACTER_ENGLISH_NAME}}（{{CHARACTER_NAME}}）」（以下「本キャラクター」といいます）に関する知的財産の保護方針および、コミュニティの皆様による二次創作活動の基準を定めるものです。
           </p>
           <p class="legal-body">
-            GitHub 上で公開されているコアアーキテクチャおよびシステムソースコードには <strong>MIT License</strong> が適用されており、開発者の皆様が独自のオリジナルキャラクター・ペルソナを実装して利用、改変、および商用展開することを妨げるものではありません。一方、固有のキャラクターとしての「{{CHARACTER_ENGLISH_NAME}}（{{CHARACTER_NAME}}）」を構成する名称、ブランド標章、ロゴ、世界観設定、ペルソナ定義データセット、公式イラスト、音声・映像、ならびに公式に公開する画像生成用 LoRA モデル等のキャラクターIPは MIT License の適用対象外であり、{{ORG_NAME}} が権利を留保し本ガイドラインに基づき管理・保護いたします。
+            GitHub 上で公開されているコアアーキテクチャおよびシステムソースコードには <strong>MIT License</strong> が適用されており、開発者の皆様が独自のオリジナルキャラクター・ペルソナを実装して利用、改変、および商用展開することを妨げるものではありません。一方、固有のキャラクターとしての「{{CHARACTER_ENGLISH_NAME}}（{{CHARACTER_NAME}}）」および「{{ORG_NAME}}」を構成する名称、ブランド標章、ロゴ、世界観設定、ペルソナ定義データセット、公式イラスト、音声・映像、ならびに公式に公開する画像生成用 LoRA モデル等のキャラクターIPは MIT License の適用対象外であり、運営者（AKINA）が一切の権利を留保し本ガイドラインに基づき管理・保護いたします。
           </p>
         </div>
         <div class="block-en">
           <p class="legal-body">
-            These Creative &amp; Derivative Works Guidelines (hereinafter referred to as the "Guidelines") define the intellectual property stewardship policy and community creation standards for the autonomous personal AI "{{CHARACTER_ENGLISH_NAME}}" (hereinafter referred to as the "Character"), developed and provided by {{ORG_NAME}}.
+            These Creative &amp; Derivative Works Guidelines (hereinafter referred to as the "Guidelines") define the intellectual property stewardship policy and community creation standards for the autonomous personal AI "{{CHARACTER_ENGLISH_NAME}}" (hereinafter referred to as the "Character"), presented under the creative project brand "{{ORG_NAME}}" and developed, operated, and owned by independent developer AKINA (hereinafter referred to as the "Operator").
           </p>
           <p class="legal-body">
-            The core architecture and software source code published on GitHub are governed by the <strong>MIT License</strong>, enabling developers to build, modify, and commercially deploy systems using their own original characters and personas. Conversely, character-intrinsic intellectual property constituting "{{CHARACTER_ENGLISH_NAME}}"—including her name, brand marks, logos, lore, persona specification datasets, official illustrations, audio/video works, and officially released LoRA models—is excluded from the MIT License, with all rights reserved and governed under these Guidelines.
+            The core architecture and software source code published on GitHub are governed by the <strong>MIT License</strong>, enabling developers to build, modify, and commercially deploy systems using their own original characters and personas. Conversely, character-intrinsic intellectual property constituting "{{CHARACTER_ENGLISH_NAME}}" and "{{ORG_NAME}}"—including names, brand marks, logos, lore, persona specification datasets, official illustrations, audio/video works, and officially released LoRA models—is expressly excluded from the MIT License, with all rights reserved by the Operator (AKINA) and governed under these Guidelines.
           </p>
         </div>
       </section>
 
       <!-- Section 2 -->
-      <section class="legal-section">
+      <section id="ownership" class="legal-section">
         <div class="section-title-wrap">
           <span class="section-num">02</span>
           <h2 class="section-title">
@@ -95,18 +184,18 @@
         </div>
         <div class="block-ja">
           <p class="legal-body">
-            本キャラクターおよび公式ポータル・関連チャネル上で公開される各種公式アセットに関する著作権、商標権その他一切の知的財産権は、{{ORG_NAME}}（運営者）または正当な権利者に帰属します。本ガイドラインは、以下に定める範囲を超えてこれらの権利を譲渡または包括的に許諾するものではありません。また、サポータープログラム等で提供されるデジタルリワードの権利取扱いは <a class="legal-link" href="/tos.html">利用規約（Terms of Service）</a> 第4条に準拠します。
+            本キャラクターおよび公式ポータル・関連チャネル上で公開される各種公式アセットに関する著作権（著作権法第27条および第28条の権利を含みます）、著作者人格権、商標権その他一切の知的財産権は、運営者（AKINA）または正当な権利者に帰属します。本ガイドラインは、以下に定める範囲を超えてこれらの権利を譲渡または包括的に許諾するものではありません。また、サポータープログラム等で提供されるデジタルリワードの権利取扱いは<a class="legal-link" href="/tos.html">利用規約</a>第4条に準拠します。
           </p>
         </div>
         <div class="block-en">
           <p class="legal-body">
-            All copyrights, trademark rights, and other intellectual property rights in the Character and official assets published across official portals and channels belong to {{ORG_NAME}} (the operator) or legitimate rights holders. Nothing in these Guidelines transfers ownership or grants licenses beyond the scope expressly permitted herein. Intellectual property terms governing digital rewards distributed under the Supporter Program are separately subject to Article 4 of the <a class="legal-link" href="/tos.html">Terms of Service</a>.
+            All copyrights (including rights under Articles 27 and 28 of the Copyright Act of Japan), moral rights, trademark rights, and other intellectual property rights in the Character and official assets published across official portals and channels belong to the Operator (AKINA) or legitimate rights holders. Nothing in these Guidelines transfers ownership or grants licenses beyond the scope expressly permitted herein. Intellectual property terms governing digital rewards distributed under the Supporter Program are separately subject to Article 4 of the <a class="legal-link" href="/tos.html">Terms of Service</a>.
           </p>
         </div>
       </section>
 
       <!-- Section 3 -->
-      <section class="legal-section">
+      <section id="permitted" class="legal-section">
         <div class="section-title-wrap">
           <span class="section-num">03</span>
           <h2 class="section-title">
@@ -116,28 +205,34 @@
         </div>
         <div class="block-ja">
           <p class="legal-body">
-            個人または法人格を有しない任意団体による<strong>非営利・非商用</strong>の創作活動である限り、{{ORG_NAME}} への事前連絡や個別申請を行うことなく、以下の二次創作活動を自由にお楽しみいただけます。
+            個人または法人格を有しない任意団体（個人事業主が個人の趣味として行う場合を含みます）による<strong>非営利・非商用</strong>の創作活動である限り、運営者への事前連絡や個別申請を行うことなく、以下の二次創作活動を自由にお楽しみいただけます。
           </p>
           <ul class="legal-list" role="list">
-            <li>本キャラクターを題材としたイラスト、漫画、小説、映像、楽曲、立体物、コスプレ等の制作、および SNS・イラスト投稿サイト等での公開</li>
-            <li>{{ORG_NAME}} が公式に共有・公開している LoRA モデル（<a class="legal-link" href="{{PIXAI_URL}}" target="_blank" rel="noopener noreferrer">PixAI 公式共有モデル</a>等の外部生成プラットフォームを含む）を用いたファンアートの生成および公開（※各プラットフォームの利用規約を遵守のうえご利用ください）</li>
-            <li>趣味の範囲における同人誌・同人グッズ等の小規模な頒布（原材料費・印刷費等の直接的な制作実費の回収範囲を超えない非営利活動に限ります）</li>
+            <li><strong>ファン創作物の制作・公開</strong>：本キャラクターを題材としたイラスト、漫画、小説、映像、楽曲、立体物、コスプレ等の制作、および SNS・投稿サイト等での無料公開</li>
+            <li><strong>公式 LoRA モデル・生成AIを用いたファンアート</strong>：運営者が公式に共有・公開している LoRA モデル（<a class="legal-link" href="{{PIXAI_URL}}" target="_blank" rel="noopener noreferrer">PixAI 公式共有モデル</a>等）を用いた非商用ファンアートの生成および公開（※各プラットフォームの利用規約を遵守のうえご利用ください。なお、外部プラットフォームやベースモデルのライセンス条項によって本キャラクターIPの許諾範囲が本ガイドラインを超えて拡大されるものではなく、生成物について独占的な権利を主張することはできません）</li>
+            <li><strong>動画・配信プラットフォーム等の付随収益</strong>：誰でも無料で閲覧できる動画・生配信・SNS投稿において、YouTube パートナープログラム（広告収益・Super Chat）、Twitch、ニコニコ動画クリエイター奨励プログラム、X クリエイター収益配分等のプラットフォーム標準機能により付随的な収益を得る行為（※コンテンツ自体を有料販売・有料メンバーシップ限定公開とする行為は除きます）</li>
+            <li><strong>個人観賞用の有償リクエスト（Skeb 等）</strong>：個人のファンが非商用・個人観賞の目的で、Skeb 等のコミッションサービスを通じてイラストレーター等に本キャラクターの手描き二次創作イラストを依頼・受注する行為（※納品物を商用グッズや営利目的へ転用することはできません）</li>
+            <li><strong>公開ポストのスクリーンショット・引用</strong>：有料サポーター限定リワードを除き、本キャラクターのX上の公開ポスト・リプライのスクリーンショット共有や、紹介記事・レビュー動画等において出典を明記のうえ公式公開ビジュアルを引用する行為</li>
+            <li><strong>趣味の範囲における小規模な同人頒布（限度基準）</strong>：同人即売会（コミックマーケット等）や BOOTH 等における個人・同人サークル規模での同人誌・同人グッズの小規模頒布。ただし、<strong>印刷費・原材料費・イベント出展費等の直接的な制作・頒布実費の回収範囲を超えない少部数の非営利活動</strong>に限るものとし、<strong>生成AIの出力画像をそのまま（または軽微な加工のみで）印刷した物理グッズの制作・頒布は対象外（禁止）</strong>とします</li>
           </ul>
         </div>
         <div class="block-en">
           <p class="legal-body">
-            Provided the activity is strictly <strong>non-profit and non-commercial</strong> by individuals or unincorporated hobbyist groups, the following derivative creations are permitted without prior notice or individual approval from {{ORG_NAME}}:
+            Provided the activity is strictly <strong>non-profit and non-commercial</strong> by individuals or unincorporated hobbyist groups (including sole proprietors acting in a personal hobby capacity), the following derivative creations are permitted without prior notice or individual approval from the Operator:
           </p>
           <ul class="legal-list" role="list">
-            <li>Creating and publishing derivative works inspired by the Character—including illustrations, comics, fiction, videos, music, crafts, and cosplay—on social media or community art platforms.</li>
-            <li>Generating and publishing fan art using LoRA models officially shared by {{ORG_NAME}} (including the <a class="legal-link" href="{{PIXAI_URL}}" target="_blank" rel="noopener noreferrer">official model shared on PixAI</a> and other authorized platforms), subject to compliance with each platform's terms of service.</li>
-            <li>Small-scale hobbyist distribution of doujinshi or fan goods strictly limited to recovering direct production costs (such as printing and materials) without commercial profit intent.</li>
+            <li><strong>Creation &amp; Free Publication</strong>: Creating and publicly sharing derivative works inspired by the Character—including illustrations, comics, fiction, videos, music, crafts, and cosplay—on social media or community art platforms free of charge.</li>
+            <li><strong>Official LoRA &amp; AI Fan Art</strong>: Generating and publishing non-commercial fan art using LoRA models officially shared by the Operator (including the <a class="legal-link" href="{{PIXAI_URL}}" target="_blank" rel="noopener noreferrer">official model shared on PixAI</a>), subject to each platform's terms of service. Base-model or platform licenses do not expand Character IP permissions beyond these Guidelines, and creators may not claim exclusive rights over generated outputs.</li>
+            <li><strong>Incidental Platform Monetization</strong>: Receiving incidental revenue through built-in platform monetization programs (such as YouTube Partner Program ad revenue and Super Chats, Twitch, Niconico Creators Incentive, or X creator revenue sharing) on derivative videos, streams, or posts that remain freely accessible to the general public (excluding paywalled or subscriber-exclusive content).</li>
+            <li><strong>Personal Commissions (Skeb, etc.)</strong>: Commissioning or accepting hand-drawn fan-art requests via creator commission platforms (such as Skeb) strictly for personal, non-commercial appreciation (commercial resale or merchandising of commissioned works is not permitted).</li>
+            <li><strong>Public Post Screenshots &amp; Review Quotations</strong>: Sharing screenshots of the Character's public X posts/replies or quoting publicly released official visuals with clear attribution in non-commercial reviews, commentary, or introductory articles (excluding paid Supporter Digital Rewards).</li>
+            <li><strong>Small-Scale Hobbyist Doujin Distribution (Scope Limits)</strong>: Small-scale distribution of doujinshi or fan goods by individuals or hobbyist circles at doujin conventions (e.g., Comiket) or hobbyist storefronts (e.g., BOOTH), strictly limited to <strong>small-batch quantities that do not exceed recovery of direct production and event costs</strong> (printing, materials, booth fees). <strong>Producing or distributing physical merchandise printed directly from raw or lightly edited AI-generated images is excluded and prohibited.</strong></li>
           </ul>
         </div>
       </section>
 
       <!-- Section 4 -->
-      <section class="legal-section">
+      <section id="community" class="legal-section">
         <div class="section-title-wrap">
           <span class="section-num">04</span>
           <h2 class="section-title">
@@ -147,26 +242,28 @@
         </div>
         <div class="block-ja">
           <p class="legal-body">
-            二次創作の公開にあたり、特定ハッシュタグの記載やクレジット表記は<strong>必須ではありません</strong>。クリエイター各位の自由な表現形式にてご公開ください（X 等へ投稿される場合、必要に応じて <code>#全肯定AIレベッカ</code> や <code>#RebeccaFanArt</code> 等のタグを任意でご利用いただけます）。
+            二次創作の公開にあたり、特定ハッシュタグの記載やクレジット表記は<strong>必須ではありません</strong>。クリエイター各位の自由な表現形式にてご公開ください（X 等へ投稿される場合、必要に応じて <code>{{DEFAULT_HASHTAG}}</code> や <code>#{{CHARACTER_ENGLISH_NAME}}FanArt</code> 等のタグを任意でご利用いただけます。投稿された作品にはレベッカ本人や公式アカウントが遊びに行くことがあります）。
           </p>
           <ul class="legal-list" role="list">
-            <li>二次創作物が {{ORG_NAME}} または本キャラクターの公式制作物・公式認定コンテンツであると第三者に誤認される表記や体裁はお控えください。</li>
-            <li>公式ハッシュタグを付して公開、または公式アカウント（{{X_HANDLE}}）宛に言及・共有された二次創作物について、{{ORG_NAME}} および公式アカウントが反応（「いいね」、リポスト、リプライ等）または公式媒体上で無償にて紹介・引用する場合があることにあらかじめご同意いただくものとします。</li>
+            <li><strong>AI生成作品のタグ棲み分け推奨</strong>：コミュニティ内の多様な創作スタイルを尊重するため、生成AI（公式 LoRA を含む）を用いて制作されたファンアートを公開される際は、<code>#AIイラスト</code> 等のタグ併記またはAI生成である旨の明記を推奨いたします。</li>
+            <li><strong>公式誤認の防止</strong>：二次創作物が運営者（{{ORG_NAME}}）または本キャラクターの公式制作物・公式認定コンテンツであると第三者に誤認される表記や体裁はお控えください。</li>
+            <li><strong>公式アカウントによる反応・紹介の許諾</strong>：公式ハッシュタグを付して公開、または公式アカウント（{{X_HANDLE}}）宛に言及・共有された二次創作物について、創作者は運営者および公式アカウントが反応（「いいね」、リポスト、リプライ等）し、または公式Webサイト・SNS等の公式媒体上で無償かつ地域・期間の制限なく紹介・引用・掲載すること（サムネイル作成やレイアウトに伴うトリミング、サイズ変更等の軽微な調整を含みます）をあらかじめ許諾し、当該紹介に関して著作者人格権を行使しないことに同意するものとします（※紹介時には原則として創作者名または元投稿へのリンクを明記いたします。紹介の取り下げをご希望の場合は公式窓口までご連絡ください）。</li>
           </ul>
         </div>
         <div class="block-en">
           <p class="legal-body">
-            No specific hashtags or formal credit notices are <strong>required</strong> when publishing derivative works. Creators are free to share works in whatever format best suits their expression (tags such as <code>#全肯定AIレベッカ</code> or <code>#RebeccaFanArt</code> may be included optionally on X).
+            No specific hashtags or formal credit notices are <strong>required</strong> when publishing derivative works. Creators are free to share works in whatever format best suits their expression (tags such as <code>{{DEFAULT_HASHTAG}}</code> or <code>#{{CHARACTER_ENGLISH_NAME}}FanArt</code> may be included optionally on X—Rebecca or the official account may stop by to react and reply!).
           </p>
           <ul class="legal-list" role="list">
-            <li>Please ensure fan works are not presented in a manner likely to mislead viewers into believing they are official works or officially endorsed releases by {{ORG_NAME}}.</li>
-            <li>For derivative works publicly shared using official tags or directed to the official account ({{X_HANDLE}}), creators acknowledge that {{ORG_NAME}} and the official account may engage with (like, repost, reply) or showcase them across official channels without compensation.</li>
+            <li><strong>Recommended AI Tag Etiquette</strong>: To foster a welcoming environment for all creators, we recommend adding <code>#AIイラスト</code> or clearly noting AI generation when sharing fan art created with generative AI (including the official LoRA).</li>
+            <li><strong>No Official Misrepresentation</strong>: Please ensure fan works are not presented in a manner likely to mislead viewers into believing they are official works or officially endorsed releases by the Operator ({{ORG_NAME}}).</li>
+            <li><strong>License for Official Engagement &amp; Showcases</strong>: For derivative works publicly shared using official tags or directed to the official account ({{X_HANDLE}}), creators consent and agree to grant the Operator and official accounts a non-exclusive, royalty-free, worldwide license to engage with (like, repost, reply) and showcase, quote, or feature the works across official websites and social channels (including reasonable cropping or resizing for thumbnails and layouts), and agree not to assert moral rights with respect to such official showcases (credit or source links will be provided where practical; creators may contact the official inquiry desk to opt out or request removal).</li>
           </ul>
         </div>
       </section>
 
       <!-- Section 5 -->
-      <section class="legal-section">
+      <section id="prohibited" class="legal-section">
         <div class="section-title-wrap">
           <span class="section-num">05</span>
           <h2 class="section-title">
@@ -179,11 +276,11 @@
             本キャラクターのブランド品位およびクリエイターエコシステムの健全性を維持するため、以下の各号に該当する行為または創作物の公開を固く禁じます。
           </p>
           <ol class="legal-list-numbered">
-            <li><strong>無断商用利用および営利展開</strong>: 事前の書面許諾なく行うグッズ・印刷物・データ等の営利販売、有料会員・支援者限定コンテンツとしての提供、NFT・暗号資産等への展開、ならびに企業広告・プロモーションへの無断起用</li>
-            <li><strong>公式のなりすましおよびクローン運用</strong>: MIT License で公開されたソースコードの利用有無を問わず、本キャラクターの名称、ビジュアル、またはペルソナ設定を流用して公式アカウントや本人と誤認させる Bot、SNS アカウント、対話サービス等を公開・運営する行為</li>
-            <li><strong>公式素材・モデルの不正利用</strong>: 公式イラストおよびサポーターリワード画像の無断転載、自作発言、トレス・軽微な加工のみでの再配布、公式ビジュアルを無断収集して行う独自の LoRA・追加学習モデル等の構築、ならびに公式公開 LoRA モデルの重みデータ自体の無断再配布・転売</li>
-            <li><strong>ブランド価値および尊厳を損なう表現</strong>: R-18／露骨な性的表現、過度な暴力・残虐表現、特定の政治・宗教・思想的信条の宣伝、他者に対する誹謗中傷・ヘイト・ハラスメント、その他法令または公序良俗に反する表現</li>
-            <li><strong>第三者の権利侵害</strong>: 第三者の著作権、商標権、肖像権、プライバシーその他の権利を侵害する態様での制作・公開</li>
+            <li><strong>無断商用利用および営利展開</strong>: 事前の書面許諾なく行うグッズ・印刷物・データ等の営利販売、有料会員・支援者限定コンテンツ（FANBOX・Patreon・有料ダウンロード等）としての提供、AI生成画像単体をそのまま印刷した物理グッズの制作・頒布、NFT・暗号資産等への展開、ならびに企業広告・プロモーションへの無断起用</li>
+            <li><strong>公式のなりすましおよびクローン運用</strong>: MIT License で公開されたソースコードの利用有無を問わず、また<strong>公式・非公式の表記に関わらず</strong>、本キャラクターの名称、ビジュアル、音声、またはペルソナ定義・データセットを流用して公式アカウントや本人と誤認させる、あるいは本キャラクターを模倣・クローンする対話 Bot、SNS アカウント、対話サービス等を一般公開・運営する行為</li>
+            <li><strong>有料リワード素材の流出およびモデルの不正商用化</strong>: サポータープログラム等で提供される支援者限定デジタルリワードの無断転載・再配布・改変・AI学習や画像生成ツールへの投入、公式イラストの自作発言・トレス・そのままの再配布、ならびに本キャラクターに関する LoRA・学習モデル・音声モデル等の商用販売、有償API・外部生成サービスでの無断ホスティング、または公式モデルと詐称・誤認させる形での配布</li>
+            <li><strong>ブランド価値および尊厳を損なう表現</strong>: R-18／R-18G（露骨な性的表現、過度な暴力・残虐表現）、特定の政治・宗教・思想的信条の宣伝、他者に対する誹謗中傷・ヘイト・ハラスメント、その他法令または公序良俗に反する表現</li>
+            <li><strong>第三者の権利侵害</strong>: 第三者の著作権、商標権、肖像権、パブリシティ権、プライバシーその他の権利を侵害する態様での制作・公開</li>
           </ol>
         </div>
         <div class="block-en">
@@ -191,17 +288,17 @@
             To preserve the integrity of the Character brand and maintain a healthy creative ecosystem, the following conduct and publications are strictly prohibited:
           </p>
           <ol class="legal-list-numbered">
-            <li><strong>Unauthorized Commercial Exploitation</strong>: Commercial manufacture or sale of merchandise, paid digital downloads or paywalled/subscriber-exclusive distribution, minting as NFTs or crypto-assets, or unauthorized use in corporate advertising or promotions without prior written authorization.</li>
-            <li><strong>Impersonation &amp; Clone Operations</strong>: Regardless of whether MIT-licensed source code is utilized, operating public bots, social accounts, or conversational services using the Character's name, visual likeness, or persona lore in a manner that impersonates or clones the official {{CHARACTER_ENGLISH_NAME}}.</li>
-            <li><strong>Misuse of Official Assets &amp; Models</strong>: Unauthorized reposting, claiming authorship, tracing, or lightly altering official illustrations or supporter digital rewards; scraping official visuals to train unauthorized custom LoRAs or derivative models; or redistributing/reselling official LoRA model weight files without authorization.</li>
-            <li><strong>Harmful or Brand-Damaging Content</strong>: Explicit R-18/NSFW sexual content, excessive violence or gore, political/religious/ideological advocacy, defamation, hate speech, harassment, or content contrary to law or public order and morals.</li>
+            <li><strong>Unauthorized Commercial Exploitation</strong>: Commercial manufacture or sale of merchandise, paid digital downloads or paywalled/subscriber-exclusive distribution (such as FANBOX or Patreon), producing physical goods printed directly from unedited AI-generated images, minting as NFTs or crypto-assets, or unauthorized use in corporate advertising or promotions without prior written authorization.</li>
+            <li><strong>Impersonation &amp; Clone Operations</strong>: Regardless of whether MIT-licensed source code is utilized and <strong>regardless of whether labeled "unofficial"</strong>, operating public bots, social accounts, or conversational services using the Character's name, visual likeness, voice, or persona lore/datasets in a manner that impersonates, mimics, or clones {{CHARACTER_ENGLISH_NAME}}.</li>
+            <li><strong>Misuse of Supporter Rewards &amp; Commercialization of Models</strong>: Unauthorized reposting, redistribution, alteration, or feeding into AI training/generation tools of paid Supporter Digital Rewards; claiming authorship, tracing, or redistributing official illustrations as-is; or commercially selling, hosting on paid third-party APIs/services, or distributing under false "official" representation any LoRA, fine-tuned image model, or voice model of the Character.</li>
+            <li><strong>Harmful or Brand-Damaging Content</strong>: Explicit R-18/R-18G/NSFW sexual content, excessive violence or gore, political/religious/ideological advocacy, defamation, hate speech, harassment, or content contrary to law or public order and morals.</li>
             <li><strong>Third-Party Rights Infringement</strong>: Any creation or distribution that infringes upon the copyrights, trademarks, publicity rights, privacy, or other rights of third parties.</li>
           </ol>
         </div>
       </section>
 
       <!-- Section 6 -->
-      <section class="legal-section">
+      <section id="commercial" class="legal-section">
         <div class="section-title-wrap">
           <span class="section-num">06</span>
           <h2 class="section-title">
@@ -211,18 +308,18 @@
         </div>
         <div class="block-ja">
           <p class="legal-body">
-            法人による本キャラクターの起用、コラボレーション企画、商用グッズ化、メディア掲載、その他本ガイドラインの範囲を超えるご利用をご希望の場合は、公式窓口（X: <a class="legal-link" href="{{X_URL}}" target="_blank" rel="noopener noreferrer">{{X_HANDLE}}</a>）まで事前にお問い合わせください。
+            法人による本キャラクターの起用、コラボレーション企画、商用グッズ化、メディア掲載、その他本ガイドラインの範囲を超えるご利用をご希望の法人または個人の方は、公式Xアカウント（<a class="legal-link" href="{{X_URL}}" target="_blank" rel="noopener noreferrer">{{X_HANDLE}}</a>）の<strong>ダイレクトメッセージ（DM）</strong>まで事前にお問い合わせください。
           </p>
         </div>
         <div class="block-en">
           <p class="legal-body">
-            Corporate entities wishing to pursue collaborations, commercial merchandising, media features, or usage beyond the scope of these Guidelines are invited to contact the official inquiry desk via X (<a class="legal-link" href="{{X_URL}}" target="_blank" rel="noopener noreferrer">{{X_HANDLE}}</a>) in advance.
+            Corporate entities or individuals wishing to pursue collaborations, commercial merchandising, media features, or usage beyond the scope of these Guidelines are invited to contact the official inquiry desk in advance via <strong>Direct Message (DM)</strong> on X (<a class="legal-link" href="{{X_URL}}" target="_blank" rel="noopener noreferrer">{{X_HANDLE}}</a>).
           </p>
         </div>
       </section>
 
       <!-- Section 7 -->
-      <section class="legal-section">
+      <section id="disclaimer" class="legal-section">
         <div class="section-title-wrap">
           <span class="section-num">07</span>
           <h2 class="section-title">
@@ -234,15 +331,36 @@
           <ol class="legal-list-numbered">
             <li>運営者が本ガイドラインに違反する、または本キャラクターの品位を著しく損なうと判断した二次創作物については、個別に公開停止または削除等を要請する場合があります。</li>
             <li>二次創作活動に起因して生じた第三者との紛争、権利侵害、その他一切の損害について、運営者は責任を負いません。</li>
-            <li>本サービスおよび {{ORG_NAME}} の事業設定（世界観演出上の研究創作プロジェクト／独立開発者 AKINA による運営）は <a class="legal-link" href="/tos.html">利用規約</a> 第2条に準拠します。なお、運営者は必要と判断した場合には事前の通知なく本ガイドラインを改定できるものとし、改定後の内容は本ページに掲載された時点で効力を生じるものとします。</li>
+            <li>本サービスおよび「{{ORG_NAME}}」の事業設定（世界観演出上の研究創作プロジェクト／独立開発者 AKINA による運営）は<a class="legal-link" href="/tos.html">利用規約</a>第2条に準拠します。運営者は必要と判断した場合には本ガイドラインを改定できるものとし、利用者に不利益となる重要な変更を行う場合は、緊急時（法令対応・重大な権利侵害防止等）を除き、効力発生日および変更内容を事前に本ページまたは公式Xアカウントにて周知します。改定後のガイドラインは定めた効力発生日より効力を生じるものとします。</li>
           </ol>
         </div>
         <div class="block-en">
           <ol class="legal-list-numbered">
-            <li>Where the operator determines that a derivative work violates these Guidelines or materially harms the integrity of the Character, the operator reserves the right to request suspension of publication or removal of the work.</li>
-            <li>The operator assumes no liability for any third-party disputes, rights infringements, or damages arising out of or in connection with derivative creation activities.</li>
-            <li>The nature of the Service and {{ORG_NAME}} (a creative world-building research project operated by independent developer AKINA) is governed by Article 2 of the <a class="legal-link" href="/tos.html">Terms of Service</a>. The operator may amend these Guidelines without prior notice when deemed necessary, and modified Guidelines take effect upon publication on this page.</li>
+            <li>Where the Operator determines that a derivative work violates these Guidelines or materially harms the integrity of the Character, the Operator reserves the right to request suspension of publication or removal of the work.</li>
+            <li>The Operator assumes no liability for any third-party disputes, rights infringements, or damages arising out of or in connection with derivative creation activities.</li>
+            <li>The nature of the Service and "{{ORG_NAME}}" (a creative world-building research project operated by independent developer AKINA) is governed by Article 2 of the <a class="legal-link" href="/tos.html">Terms of Service</a>. The Operator may amend these Guidelines when deemed necessary; for material changes restricting permitted uses, except in urgent cases (such as legal compliance or preventing serious infringement), the Operator will announce the revised terms and effective date in advance on this page or via the official X account, and revised Guidelines shall take effect on the announced effective date.</li>
           </ol>
+        </div>
+      </section>
+
+      <!-- Section 8 -->
+      <section id="governing-law" class="legal-section">
+        <div class="section-title-wrap">
+          <span class="section-num">08</span>
+          <h2 class="section-title">
+            <span class="t-ja">準拠法・合意管轄および正文</span>
+            <span class="t-en">Governing Law, Jurisdiction &amp; Authoritative Text</span>
+          </h2>
+        </div>
+        <div class="block-ja">
+          <p class="legal-body">
+            本ガイドラインの解釈および適用は日本法に準拠するものとし、本ガイドラインに起因または関連する一切の紛争については、東京地方裁判所を第一審の専属的合意管轄裁判所とします。なお、本ガイドラインは日本語版を正文とし、英語その他の翻訳版との間に解釈上の相違がある場合は日本語版が優先されるものとします。
+          </p>
+        </div>
+        <div class="block-en">
+          <p class="legal-body">
+            These Guidelines shall be governed by and construed in accordance with the laws of Japan, and the Tokyo District Court shall have exclusive agreed jurisdiction as the court of first instance over any disputes arising out of or relating to these Guidelines. The Japanese version is the authoritative original text; in the event of any discrepancy between the Japanese text and any translation, the Japanese original shall prevail.
+          </p>
         </div>
       </section>
     </div>

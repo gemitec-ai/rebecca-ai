@@ -55,6 +55,7 @@ function portalHtmlPlugin(): Plugin {
         .replace(/{{CANONICAL_URL}}/g, activePortalConfig.canonicalUrl)
         .replace(/{{X_URL}}/g, activePortalConfig.social.xUrl)
         .replace(/{{X_HANDLE}}/g, activePortalConfig.social.xHandle)
+        .replace(/{{DEFAULT_HASHTAG}}/g, activePortalConfig.defaultHashtag)
         .replace(/{{PIXAI_URL}}/g, activePortalConfig.social.pixaiUrl ?? '');
 
       return output;

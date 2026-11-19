@@ -81,6 +81,7 @@ describe('Portal HTML Template Components', () => {
       expect(html).toContain('href="/privacy.html"');
       expect(html).toContain('href="/legal.html" rel="nofollow"');
       expect(html).toContain('Gemitec Inc.');
+      expect(html).not.toContain('Gemitec Inc..');
       expect(html).toContain('All rights reserved.');
     });
 
