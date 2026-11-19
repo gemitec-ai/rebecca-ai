@@ -68,6 +68,8 @@ describe('Portal HTML Template Components', () => {
     it('should render governance links, copyright, and disclaimer', () => {
       const html = renderFooter(activePortalConfig);
       expect(html).toContain('href="/tos.html"');
+      expect(html).toContain('href="/guidelines.html"');
+      expect(html).toContain('https://pixai.art/model/2065444973255770138');
       expect(html).toContain('href="/privacy.html"');
       expect(html).toContain('href="/legal.html"');
       expect(html).toContain('Gemitec Inc.');
@@ -85,6 +87,7 @@ describe('Portal HTML Template Components', () => {
       const html = renderFooter(minimalConfig);
       expect(html).not.toContain('YouTube');
       expect(html).not.toContain('Pixiv');
+      expect(html).not.toContain('PixAI');
       expect(html).not.toContain('Repository (OSS)');
     });
   });

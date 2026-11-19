@@ -111,6 +111,16 @@
       <div class="news-box">
         <ul class="news-list">
           <li class="news-item">
+            <span class="news-date">2026.11.19</span>
+            <span class="news-tag tag-governance">GOVERNANCE</span>
+            <span class="news-text">
+              <a href="/guidelines.html">
+                <span class="t-ja">キャラクターIP保護および二次創作ガイドラインを策定・公開</span>
+                <span class="t-en">Published Official IP Governance &amp; Creative Guidelines</span>
+              </a>
+            </span>
+          </li>
+          <li class="news-item">
             <span class="news-date">2026.09.27</span>
             <span class="news-tag tag-media">MEDIA</span>
             <span class="news-text">
@@ -662,6 +672,82 @@
     </div>
   </section>
 
+  <!-- IP Governance & Creative Guidelines Section -->
+  <section id="guidelines" class="guidelines-section">
+    <div class="container">
+      <div class="guidelines-card-wrap">
+        <div class="guidelines-head">
+          <span class="section-category">IP GOVERNANCE &amp; CREATIVE ECOSYSTEM</span>
+          <h2 class="section-h2 guidelines-title">
+            <span class="t-ja">知的財産ポリシーおよび二次創作ガイドライン</span>
+            <span class="t-en">Intellectual Property &amp; Creative Guidelines</span>
+          </h2>
+          <p class="guidelines-lead">
+            <span class="t-ja">{{ORG_NAME}} は、オープンソースによる技術的透明性と、自律型パーソナルAI「{{CHARACTER_ENGLISH_NAME}}」のブランド価値保護の両立を重視しています。コアソフトウェア基盤を MIT License にて公開する一方、キャラクターIPについては明確な権利保護のもと、個人による非商用の創作活動を広く歓迎します。</span>
+            <span class="t-en">At {{ORG_NAME}}, we are committed to balancing open-source technical transparency with the stewardship of our character brand. While {{CHARACTER_ENGLISH_NAME}}'s core software architecture is released under the MIT License, the {{CHARACTER_ENGLISH_NAME}} character IP remains protected—and non-commercial fan creations by individuals are warmly welcomed within our official guidelines.</span>
+          </p>
+        </div>
+
+        <div class="guidelines-grid">
+          <article class="guidelines-card">
+            <span class="guidelines-card-num">01 / LICENSE SEPARATION</span>
+            <h3 class="guidelines-card-title">
+              <span class="t-ja">技術基盤とキャラクターIPの分離</span>
+              <span class="t-en">Software vs. Character IP</span>
+            </h3>
+            <p class="guidelines-card-desc">
+              <span class="t-ja">コアアーキテクチャのソースコードには MIT License が適用されます。名称・世界観・公式ビジュアル・公式 LoRA モデル等のキャラクターIPは {{ORG_NAME}} に帰属し、保護の対象となります。</span>
+              <span class="t-en">The MIT License governs the underlying software source code. Character names, persona lore, official visual assets, and official LoRA models remain the protected intellectual property of {{ORG_NAME}}.</span>
+            </p>
+          </article>
+
+          <article class="guidelines-card">
+            <span class="guidelines-card-num">02 / PERMITTED CREATIONS</span>
+            <h3 class="guidelines-card-title">
+              <span class="t-ja">非商用の二次創作・LoRA利用を歓迎</span>
+              <span class="t-en">Non-Commercial Fan Creations</span>
+            </h3>
+            <p class="guidelines-card-desc">
+              <span class="t-ja">個人による非商用の範囲において、イラスト・映像・小説等の制作や、公式に共有されている LoRA モデル（PixAI）を用いたファンアート生成を事前届出不要で許諾しています。</span>
+              <span class="t-en">No prior notification is required for personal, non-commercial fan works—including illustrations, stories, videos, and AI fan art generated via our officially shared LoRA model on PixAI.</span>
+            </p>
+          </article>
+
+          <article class="guidelines-card">
+            <span class="guidelines-card-num">03 / BRAND INTEGRITY</span>
+            <h3 class="guidelines-card-title">
+              <span class="t-ja">ブランド保護と禁止事項</span>
+              <span class="t-en">Brand Integrity Safeguards</span>
+            </h3>
+            <p class="guidelines-card-desc">
+              <span class="t-ja">無断の商用利用・グッズ化、公開コードを用いた {{CHARACTER_ENGLISH_NAME}} 名義でのなりすまし運用、公式素材の無断転載・独自再学習、および R-18 基準に反する表現は禁止します。</span>
+              <span class="t-en">Unauthorized commercial exploitation, operating impersonation or clone agents under {{CHARACTER_ENGLISH_NAME}}'s identity using open-source code, unauthorized redistribution or re-training of official assets, and R-18 content are prohibited.</span>
+            </p>
+          </article>
+        </div>
+
+        <div class="guidelines-actions">
+          <a href="/guidelines.html" class="btn btn-purple guidelines-btn">
+            <svg class="icon" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+              <polyline points="14 2 14 8 20 8" />
+              <line x1="16" y1="13" x2="8" y2="13" />
+              <line x1="16" y1="17" x2="8" y2="17" />
+            </svg>
+            <span class="t-ja">二次創作ガイドライン全文を見る</span>
+            <span class="t-en">Read Creative Guidelines</span>
+          </a>
+          <a href="{{PIXAI_URL}}" target="_blank" rel="noopener noreferrer" class="btn btn-outline guidelines-btn">
+            <svg class="icon" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M12 3l1.9 5.8H20l-4.9 3.6 1.9 5.8L12 14.6l-5 3.6 1.9-5.8L4 8.8h6.1z" />
+            </svg>
+            <span class="t-ja">公式 LoRA（PixAI / ファンアート向け）</span>
+            <span class="t-en">Official LoRA on PixAI (Fan Art)</span>
+          </a>
+        </div>
+      </div>
+    </div>
+  </section>
 
   <!-- @footer includeMobileDock="true" -->
   <script type="module" src="/src/scripts/main.ts"></script>

@@ -55,6 +55,7 @@ export function renderFooter(config: PortalBrandConfig, includeMobileDock = fals
           <ul>
             ${config.social.youtubeUrl ? `<li><a href="${config.social.youtubeUrl}" target="_blank" rel="noopener noreferrer">YouTube</a></li>` : ''}
             ${config.social.pixivUrl ? `<li><a href="${config.social.pixivUrl}" target="_blank" rel="noopener noreferrer">Pixiv</a></li>` : ''}
+            ${config.social.pixaiUrl ? `<li><a href="${config.social.pixaiUrl}" target="_blank" rel="noopener noreferrer">PixAI (Official LoRA)</a></li>` : ''}
             ${config.social.githubUrl ? `<li><a href="${config.social.githubUrl}" target="_blank" rel="noopener noreferrer">Repository (OSS)</a></li>` : ''}
             <li><a href="/supporters"><span class="t-ja">サポーター・スポンサー</span><span class="t-en">Supporters &amp; Sponsors</span></a></li>
           </ul>
@@ -64,6 +65,7 @@ export function renderFooter(config: PortalBrandConfig, includeMobileDock = fals
           <h4>Governance</h4>
           <ul>
             <li><a href="/tos.html">Terms of Service</a></li>
+            <li><a href="/guidelines.html"><span class="t-ja">二次創作ガイドライン</span><span class="t-en">Creative Guidelines</span></a></li>
             <li><a href="/privacy.html">Privacy Policy</a></li>
             <li><a href="/legal.html"><span class="t-ja">特定商取引法に基づく表記</span><span class="t-en">Commercial Transactions</span></a></li>
             <li><a href="/sitemap.xml">Sitemap (XML)</a></li>
@@ -78,6 +80,8 @@ export function renderFooter(config: PortalBrandConfig, includeMobileDock = fals
         </div>
         <div class="footer-legal-links">
           <a href="/tos.html"><span class="t-ja">利用規約</span><span class="t-en">Terms</span></a>
+          <span>&bull;</span>
+          <a href="/guidelines.html"><span class="t-ja">二次創作ガイドライン</span><span class="t-en">Creative Guidelines</span></a>
           <span>&bull;</span>
           <a href="/privacy.html"><span class="t-ja">プライバシーポリシー</span><span class="t-en">Privacy</span></a>
           <span>&bull;</span>
