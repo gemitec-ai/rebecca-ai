@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.44.2](https://github.com/gemitec-ai/rebecca-ai/compare/v1.44.1...v1.44.2) (2026-11-20)
+
+
+### Bug Fixes
+
+* **portal-web:** adjust favicon optical center to prevent circular mask clipping ([#503](https://github.com/gemitec-ai/rebecca-ai/issues/503)) ([c93a0a1](https://github.com/gemitec-ai/rebecca-ai/commit/c93a0a1c8307e8bfda7c3b6f8be9a77ca2368638))
+
 ## [1.44.1](https://github.com/gemitec-ai/rebecca-ai/compare/v1.44.0...v1.44.1) (2026-11-19)
 
 
