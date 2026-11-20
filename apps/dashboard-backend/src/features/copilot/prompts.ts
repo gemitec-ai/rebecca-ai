@@ -2,18 +2,18 @@ import type { IPersonaDefinition, Language } from '@rebecca/persona';
 
 /**
  * Builds Admin Dashboard Copilot channel rules strictly from neutral system duties
- * and injected `persona.metadata` identifiers (zero character-specific traits or tone adjectives).
+ * and the injected `persona.metadata.userCallsign` (zero character-specific traits or tone adjectives).
  *
- * @param persona - Active persona definition supplying localized callsign and base tone identifier.
+ * Persona voice and relationship are owned entirely by the persona layer of the composed system prompt.
+ * This block only tells the model to pick a conversation or analysis mode on its own, and applies the
+ * anti-flattery constraint to Analysis Mode alone so casual conversation is never constrained here.
+ *
+ * @param persona - Active persona definition supplying the localized operator callsign.
  * @param lang - Target natural language (`'ja'` or `'en'`).
  * @returns Copilot channel operational instruction block.
  */
-export const getCopilotChannelContext = (
-  persona: Pick<IPersonaDefinition, 'metadata'>,
-  lang: Language,
-): string => {
+export const getCopilotChannelContext = (persona: Pick<IPersonaDefinition, 'metadata'>, lang: Language): string => {
   const userCallsign = lang === 'en' ? persona.metadata.userCallsign.en : persona.metadata.userCallsign.ja;
-  const toneDesc = lang === 'en' ? persona.metadata.localizedTone.en : persona.metadata.localizedTone.ja;
 
   if (lang === 'en') {
     return `[Context: Admin Dashboard Copilot]
@@ -25,7 +25,11 @@ You are assisting ${userCallsign} (the system operator) 1-on-1 on the Admin Dash
 2. **Human-In-The-Loop (HITL) Action Proposals**:
    - Propose structured confirmation cards whenever administrative operations are required.
 3. **Response Conduct**:
-   - Maintain your configured persona voice (${toneDesc}) consistently while delivering accurate, data-backed operational support to ${userCallsign} without blind flattery or uncritical agreement.`;
+   - Always respond as the persona defined in this system prompt, in every mode.
+   - Decide the mode yourself from the operator's message:
+     - **Conversation Mode** (casual talk, or anything not requesting data analysis or an operation): No additional constraints.
+     - **Analysis Mode** (KPIs, users, posts, assets, tool usage, or administrative actions): Base every statement on data and facts, and avoid blind flattery or uncritical agreement toward ${userCallsign}.
+   - If a message mixes both, apply Analysis Mode only to the analytical part.`;
   }
 
   return `【コンテキスト：管理ダッシュボード・専属コパイロット対話】
@@ -37,5 +41,9 @@ You are assisting ${userCallsign} (the system operator) 1-on-1 on the Admin Dash
 2. **Human-In-The-Loop（HITL）アクション提案**:
    - 破壊的操作（ユーザーブロック、投稿削除、強制ドリーミング等）が必要な場合は、必ず事前確認用のアクション提案カードを出します。
 3. **応答方針**:
-   - 定義されたパーソナリティ（${toneDesc}）の口調と一貫性を保ちつつ、根拠のない迎合や追従は避け、データと事実に基づいた率直かつ建設的な分析・運用支援を行ってください。`;
+   - どのモードでも、このシステムプロンプトで定義されたペルソナとして応答してください。
+   - モードはオペレーターの発話内容からあなた自身が判断してください:
+     - **会話モード**（雑談など、データ分析や操作の依頼を伴わないやりとり）: 追加の制約はありません。
+     - **解析モード**（KPI・ユーザー・投稿・アセットの分析、ツール利用、管理操作の提案）: すべての主張をデータと事実に基づかせ、${userCallsign}への根拠のない迎合や追従は避けてください。
+   - 両方が混在する場合は、分析部分のみ解析モードを適用してください。`;
 };
