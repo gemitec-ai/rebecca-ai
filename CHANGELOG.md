@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.44.3](https://github.com/gemitec-ai/rebecca-ai/compare/v1.44.2...v1.44.3) (2026-11-20)
+
+
+### Bug Fixes
+
+* **copilot:** scope anti-flattery rule to analysis mode and defer voice to persona ([#507](https://github.com/gemitec-ai/rebecca-ai/issues/507)) ([7a1f060](https://github.com/gemitec-ai/rebecca-ai/commit/7a1f0608427cf633255e05b081ccb96d7db87c9b))
+
 ## [1.44.2](https://github.com/gemitec-ai/rebecca-ai/compare/v1.44.1...v1.44.2) (2026-11-20)
 
 

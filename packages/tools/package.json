@@ -1,6 +1,6 @@
 {
   "name": "@rebecca/tools",
-  "version": "1.44.2",
+  "version": "1.44.3",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "scripts": {
