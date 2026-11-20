@@ -19,12 +19,12 @@
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "@types/jest": "^30.0.0",
-    "@types/node": "^26.6.4",
-    "eslint": "^10.13.0",
+    "@types/node": "^26.6.6",
+    "eslint": "^10.15.0",
     "jest": "^30.5.2",
     "ts-jest": "^29.4.15",
     "typescript": "~6.0.3",
-    "typescript-eslint": "^8.71.2"
+    "typescript-eslint": "^8.73.0"
   },
   "license": "MIT",
   "characterIpNotice": "Character persona data and embeddings in src/personas/rebecca.ts, src/data/personaPatterns.json, and src/personaPatternVectors.ts are proprietary (All Rights Reserved by AKINA) and excluded from the MIT License. See ../../CHARACTER_IP_NOTICE.md"
