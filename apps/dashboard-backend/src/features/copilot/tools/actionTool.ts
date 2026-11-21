@@ -158,7 +158,7 @@ export class ProposeDestructiveActionTool implements CopilotTool {
             ? (userLabel ? `Block ${userLabel} from interacting with the bot or replying.` : 'Block user from interacting with the bot or replying.')
             : (userLabel ? `${userLabel} をブロックします。今後アカウントへのリプライや接触が遮断されます。` : '対象ユーザーをブロックします。今後アカウントへのリプライや接触が遮断されます。');
         } else {
-          impactLevel = 'warning';
+          impactLevel = 'info';
           title = isEn
             ? (userLabel ? `Unblock User ${userLabel}` : 'Unblock User')
             : (userLabel ? `ユーザー ${userLabel} のブロック解除` : 'ユーザーのブロック解除');

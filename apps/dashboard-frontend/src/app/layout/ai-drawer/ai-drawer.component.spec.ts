@@ -209,4 +209,70 @@ describe('AiDrawerComponent', () => {
     expect(bubbleText).toContain('マスター、今日もお疲れ様♡');
     expect(fullDomText).not.toContain('INTERNAL_SECRET_HONNE_MUST_NOT_APPEAR_IN_UI');
   });
+
+  it('should render unified bolt icon chip and confirmation pill only for danger/warning action cards', () => {
+    messagesSignal.set([
+      {
+        id: 'msg-act-danger',
+        role: 'model',
+        text: 'Danger card',
+        actionRequired: {
+          type: 'BLOCK_USER',
+          title: 'Block User',
+          description: 'Block target user',
+          impactLevel: 'danger',
+          requiresConfirmation: true,
+          payload: { userId: '123' }
+        },
+        actionStatus: 'pending'
+      },
+      {
+        id: 'msg-act-warning',
+        role: 'model',
+        text: 'Warning card',
+        actionRequired: {
+          type: 'TRIGGER_REPLY',
+          title: 'Trigger Reply',
+          description: 'Trigger mention batch',
+          impactLevel: 'warning',
+          requiresConfirmation: true,
+          payload: {}
+        },
+        actionStatus: 'cancelled'
+      },
+      {
+        id: 'msg-act-info',
+        role: 'model',
+        text: 'Info card',
+        actionRequired: {
+          type: 'SYNC_POSTS',
+          title: 'Sync Posts',
+          description: 'Sync timeline posts',
+          impactLevel: 'info',
+          requiresConfirmation: true,
+          payload: {}
+        },
+        actionStatus: 'pending'
+      }
+    ]);
+    fixture.detectChanges();
+
+    const cards = Array.from(fixture.nativeElement.querySelectorAll('.action-card')) as HTMLElement[];
+    expect(cards.length).toBe(3);
+
+    cards.forEach((card) => {
+      const chipIcon = card.querySelector('.action-card-icon-chip .material-icons')?.textContent?.trim();
+      expect(chipIcon).toBe('bolt');
+    });
+
+    expect(cards[0].classList.contains('danger')).toBeTrue();
+    expect(cards[0].querySelector('.action-card-level-pill.danger')).toBeTruthy();
+
+    expect(cards[1].classList.contains('warning')).toBeTrue();
+    expect(cards[1].querySelector('.action-card-level-pill.warning')).toBeTruthy();
+    expect(cards[1].querySelector('.action-status-badge.cancelled .material-icons')?.textContent?.trim()).toBe('cancel');
+
+    expect(cards[2].classList.contains('info')).toBeTrue();
+    expect(cards[2].querySelector('.action-card-level-pill')).toBeNull();
+  });
 });

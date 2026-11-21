@@ -301,7 +301,7 @@ describe('Copilot Autonomous Agent Suite (Redesign v3)', () => {
       // UNBLOCK_USER (ja & en)
       const unblockJa = await tool.execute({ actionType: 'UNBLOCK_USER', targetId: '@friendly' }, { isEn: false });
       expect(unblockJa.actionRequired?.title).toContain('ユーザー @friendly のブロック解除');
-      expect(unblockJa.actionRequired?.impactLevel).toBe('warning');
+      expect(unblockJa.actionRequired?.impactLevel).toBe('info');
 
       const unblockEnNoTarget = await tool.execute({ actionType: 'UNBLOCK_USER' }, { isEn: true });
       expect(unblockEnNoTarget.actionRequired?.title).toBe('Unblock User');
