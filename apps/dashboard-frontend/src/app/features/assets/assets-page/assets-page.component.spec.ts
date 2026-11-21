@@ -54,7 +54,7 @@ describe('AssetsPageComponent', () => {
   it('should handle load error gracefully', () => {
     assetsRepoSpy.getAll.and.returnValue(throwError(() => new Error('Error')));
     component.loadAssets();
-    expect(toastServiceSpy.show).toHaveBeenCalledWith('Failed to load assets', 'error');
+    expect(toastServiceSpy.show).toHaveBeenCalledWith('アセットの読み込みに失敗しました', 'error');
   });
 
   it('should toggle select all and individual row selection', () => {
@@ -88,7 +88,7 @@ describe('AssetsPageComponent', () => {
     component.onFilesSelected(mockEvent, mockInput);
 
     expect(assetsRepoSpy.upload).toHaveBeenCalled();
-    expect(toastServiceSpy.show).toHaveBeenCalledWith(jasmine.stringMatching(/Successfully uploaded/), 'success');
+    expect(toastServiceSpy.show).toHaveBeenCalledWith('アセットをアップロードしました', 'success');
     expect(component.isUploading()).toBeFalse();
     expect(component.isProcessing()).toBeFalse();
     expect(component.uploadProgress()).toBe(0);
@@ -96,7 +96,7 @@ describe('AssetsPageComponent', () => {
     // Error case
     assetsRepoSpy.upload.and.returnValue(throwError(() => new Error('Upload err')));
     component.onFilesSelected(mockEvent, mockInput);
-    expect(toastServiceSpy.show).toHaveBeenCalledWith(jasmine.stringMatching(/Failed to upload/), 'error');
+    expect(toastServiceSpy.show).toHaveBeenCalledWith('アセットのアップロードに失敗しました', 'error');
     expect(component.isUploading()).toBeFalse();
     expect(component.isProcessing()).toBeFalse();
     expect(component.uploadProgress()).toBe(0);
@@ -147,13 +147,13 @@ describe('AssetsPageComponent', () => {
     await component.executeBulkDelete();
 
     expect(assetsRepoSpy.deleteMany).toHaveBeenCalledWith(['asset_1']);
-    expect(toastServiceSpy.show).toHaveBeenCalledWith(jasmine.stringMatching(/Deleted 1 asset|Successfully deleted/), 'success');
+    expect(toastServiceSpy.show).toHaveBeenCalledWith('1 件のアセットを削除しました', 'success');
 
     // Error case
     component.selectedAssets.add('asset_1');
     assetsRepoSpy.deleteMany.and.returnValue(throwError(() => new Error('Delete err')));
     await component.executeBulkDelete();
-    expect(toastServiceSpy.show).toHaveBeenCalledWith('Failed to delete selected assets', 'error');
+    expect(toastServiceSpy.show).toHaveBeenCalledWith('選択したアセットの削除に失敗しました', 'error');
   });
 
   it('should execute bulk retry on selected assets and handle error', async () => {
@@ -164,13 +164,13 @@ describe('AssetsPageComponent', () => {
     await component.executeBulkRetry();
 
     expect(assetsRepoSpy.regenerateCaptions).toHaveBeenCalledWith(['asset_1']);
-    expect(toastServiceSpy.show).toHaveBeenCalledWith(jasmine.stringMatching(/Initiated AI regeneration|Successfully triggered AI regeneration/), 'success');
+    expect(toastServiceSpy.show).toHaveBeenCalledWith('1 件のアセットの AI キャプション再生成を開始しました', 'success');
 
     // Error case
     component.selectedAssets.add('asset_1');
     assetsRepoSpy.regenerateCaptions.and.returnValue(throwError(() => new Error('Retry err')));
     await component.executeBulkRetry();
-    expect(toastServiceSpy.show).toHaveBeenCalledWith('Failed to retry captions', 'error');
+    expect(toastServiceSpy.show).toHaveBeenCalledWith('キャプション再生成の開始に失敗しました', 'error');
   });
 
   it('should open lightbox on onOpenLightbox', () => {

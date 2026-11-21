@@ -88,7 +88,7 @@ describe('PostDrawerComponent', () => {
     component.postId = 'p_err';
     component.ngOnChanges();
 
-    expect(toastServiceSpy.show).toHaveBeenCalledWith(jasmine.stringMatching(/Failed to load/), 'error');
+    expect(toastServiceSpy.show).toHaveBeenCalledWith('投稿詳細の読み込みに失敗しました', 'error');
     expect(component.isLoading()).toBeFalse();
   });
 
@@ -110,7 +110,7 @@ describe('PostDrawerComponent', () => {
     component.onDelete();
 
     expect(dashboardRepoSpy.deletePosts).toHaveBeenCalledWith(['p123']);
-    expect(toastServiceSpy.show).toHaveBeenCalledWith(jasmine.stringMatching(/deleted successfully/), 'success');
+    expect(toastServiceSpy.show).toHaveBeenCalledWith('投稿を削除しました', 'success');
     expect(component.postDeleted.emit).toHaveBeenCalledWith('p123');
     expect(component.isDeleting()).toBeFalse();
   });
@@ -131,7 +131,7 @@ describe('PostDrawerComponent', () => {
 
     component.onDelete();
 
-    expect(toastServiceSpy.show).toHaveBeenCalledWith(jasmine.stringMatching(/Failed to delete/), 'error');
+    expect(toastServiceSpy.show).toHaveBeenCalledWith('投稿の削除に失敗しました', 'error');
     expect(component.isDeleting()).toBeFalse();
   });
 
@@ -163,7 +163,7 @@ describe('PostDrawerComponent', () => {
   it('should show toast notification when tweetId is missing on onViewOnX', () => {
     component.postData.set(null);
     component.onViewOnX();
-    expect(toastServiceSpy.show).toHaveBeenCalledWith(jasmine.stringMatching(/Tweet ID is not available/), 'info');
+    expect(toastServiceSpy.show).toHaveBeenCalledWith('この投稿のツイート ID は利用できません', 'info');
   });
 
   it('should compute poll vote totals, percentages, and leading option accurately', () => {

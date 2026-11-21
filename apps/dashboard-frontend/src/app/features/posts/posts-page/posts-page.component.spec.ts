@@ -108,7 +108,7 @@ describe('PostsPageComponent', () => {
     mockRepo.getTimelineHistory.and.returnValue(throwError(() => new Error('Network error')));
     component.loadTimeline(1);
     expect(component.isLoadingTimeline).toBeFalse();
-    expect(mockToast.show).toHaveBeenCalledWith('Failed to load timeline', 'error');
+    expect(mockToast.show).toHaveBeenCalledWith('タイムラインの読み込みに失敗しました', 'error');
   });
 
   it('should trigger manual post sync and reload timeline on success, and show error toast on failure', () => {
@@ -154,14 +154,14 @@ describe('PostsPageComponent', () => {
     await component.executeBulkDelete();
     expect(mockRepo.deletePosts).toHaveBeenCalledWith(['p2', 'p1']);
     expect(component.selectedRows.size).toBe(0);
-    expect(mockToast.show).toHaveBeenCalledWith('Successfully deleted 2 posts', 'success');
+    expect(mockToast.show).toHaveBeenCalledWith('2 件の投稿を削除しました', 'success');
 
     // Error branch
     component.selectedRows.add('p1');
     mockRepo.deletePosts.and.returnValue(throwError(() => new Error('Delete failed')));
     await component.executeBulkDelete();
     expect(component.isDeleting()).toBeFalse();
-    expect(mockToast.show).toHaveBeenCalledWith('Failed to delete posts', 'error');
+    expect(mockToast.show).toHaveBeenCalledWith('投稿の削除に失敗しました', 'error');
   });
 
   it('should format thumbnail URLs and open lightbox', () => {

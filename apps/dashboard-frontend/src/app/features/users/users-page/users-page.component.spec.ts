@@ -52,7 +52,7 @@ describe('UsersPageComponent', () => {
 
     component.loadUsers();
 
-    expect(toastServiceSpy.show).toHaveBeenCalledWith('Failed to load users', 'error');
+    expect(toastServiceSpy.show).toHaveBeenCalledWith('ユーザーの読み込みに失敗しました', 'error');
     expect(component.isLoading()).toBeFalse();
   });
 
@@ -103,13 +103,13 @@ describe('UsersPageComponent', () => {
     await component.executeBulkBlock();
 
     expect(usersRepoSpy.bulkUpdateStatus).toHaveBeenCalledWith(['spammer_bot'], UserStatus.BLOCKED);
-    expect(toastServiceSpy.show).toHaveBeenCalledWith(jasmine.stringMatching(/[Bb]locked 1 user/), 'success');
+    expect(toastServiceSpy.show).toHaveBeenCalledWith('1 人のユーザーをブロックしました', 'success');
 
     // Error case
     component.selectedUsers.add('spammer_bot');
     usersRepoSpy.bulkUpdateStatus.and.returnValue(throwError(() => new Error('Block failed')));
     await component.executeBulkBlock();
-    expect(toastServiceSpy.show).toHaveBeenCalledWith('Failed to block users', 'error');
+    expect(toastServiceSpy.show).toHaveBeenCalledWith('ユーザーのブロックに失敗しました', 'error');
   });
 
   it('should execute bulk unblock on selected users and handle error', async () => {
@@ -120,13 +120,13 @@ describe('UsersPageComponent', () => {
     await component.executeBulkUnblock();
 
     expect(usersRepoSpy.bulkUpdateStatus).toHaveBeenCalledWith(['rehabilitated_user'], UserStatus.ACTIVE);
-    expect(toastServiceSpy.show).toHaveBeenCalledWith(jasmine.stringMatching(/[Uu]nblocked 1 user/), 'success');
+    expect(toastServiceSpy.show).toHaveBeenCalledWith('1 人のブロックを解除しました', 'success');
 
     // Error case
     component.selectedUsers.add('rehabilitated_user');
     usersRepoSpy.bulkUpdateStatus.and.returnValue(throwError(() => new Error('Unblock failed')));
     await component.executeBulkUnblock();
-    expect(toastServiceSpy.show).toHaveBeenCalledWith('Failed to unblock users', 'error');
+    expect(toastServiceSpy.show).toHaveBeenCalledWith('ユーザーのブロック解除に失敗しました', 'error');
   });
 
   it('should handle search change and page change', () => {

@@ -160,14 +160,14 @@ describe('CampaignEditorComponent', () => {
     // Prevent removing the last slot
     expect(component.selectedCustomTimes).toHaveLength(1);
     component.toggleHourChip('08:00');
-    expect(mockToast.show).toHaveBeenCalledWith('At least one delivery slot is required', 'warning');
+    expect(mockToast.show).toHaveBeenCalledWith('配信スロットを少なくとも1つ設定してください', 'warning');
     expect(component.selectedCustomTimes).toContain('08:00');
 
     // Test max slots guard (8 slots)
     component.selectedCustomTimes = ['00:00', '03:00', '06:00', '09:00', '12:00', '15:00', '18:00', '21:00'];
     component.toggleHourChip('23:00');
     expect(mockToast.show).toHaveBeenCalledWith(
-      expect.stringContaining('Daily limit (8 slots) reached'),
+      'X API のレート制限保護のため、1日の上限（8 スロット）に達しました',
       'warning',
     );
     expect(component.selectedCustomTimes).not.toContain('23:00');
@@ -278,14 +278,14 @@ describe('CampaignEditorComponent', () => {
   it('should validate title and dates on save', () => {
     component.title = '';
     component.save('draft');
-    expect(mockToast.show).toHaveBeenCalledWith('Title is required', 'warning');
+    expect(mockToast.show).toHaveBeenCalledWith('タイトルは必須です', 'warning');
     expect(mockRepo.update).not.toHaveBeenCalled();
 
     component.title = 'Valid Title';
     component.startDate = '2026-12-05';
     component.endDate = '2026-12-01';
     component.save('draft');
-    expect(mockToast.show).toHaveBeenCalledWith('Valid start date and end date are required', 'warning');
+    expect(mockToast.show).toHaveBeenCalledWith('有効な開始日と終了日を指定してください', 'warning');
     expect(mockRepo.update).not.toHaveBeenCalled();
   });
 
@@ -302,7 +302,7 @@ describe('CampaignEditorComponent', () => {
         status: 'scheduled',
       }),
     );
-    expect(mockToast.show).toHaveBeenCalledWith('Campaign saved successfully', 'success');
+    expect(mockToast.show).toHaveBeenCalledWith('キャンペーンを保存しました', 'success');
     expect(mockRouter.navigate).toHaveBeenCalledWith(['/campaigns']);
   });
 
@@ -324,7 +324,7 @@ describe('CampaignEditorComponent', () => {
       }),
     );
     expect(mockToast.show).toHaveBeenCalledWith(
-      'Campaign draft created. Please configure detailed settings.',
+      'キャンペーンの下書きを作成しました。詳細設定を行ってください。',
       'success',
     );
     expect(mockRouter.navigate).toHaveBeenCalledWith(['/campaigns', 'camp_new']);
@@ -337,12 +337,12 @@ describe('CampaignEditorComponent', () => {
 
     expect(mockRepo.pause).toHaveBeenCalledWith('camp_edit_1');
     expect(component.isPaused).toBe(true);
-    expect(mockToast.show).toHaveBeenCalledWith('Campaign paused successfully', 'success');
+    expect(mockToast.show).toHaveBeenCalledWith('キャンペーンを一時停止しました', 'success');
 
     component.togglePause();
     expect(mockRepo.resume).toHaveBeenCalledWith('camp_edit_1');
     expect(component.isPaused).toBe(false);
-    expect(mockToast.show).toHaveBeenCalledWith('Campaign resumed successfully', 'success');
+    expect(mockToast.show).toHaveBeenCalledWith('キャンペーンを再開しました', 'success');
   });
 
   it('should open delete modal, confirm delete and navigate to /campaigns', () => {
@@ -360,7 +360,7 @@ describe('CampaignEditorComponent', () => {
 
     expect(mockRepo.delete).toHaveBeenCalledWith('camp_edit_1');
     expect(component.isDeleteModalOpen()).toBe(false);
-    expect(mockToast.show).toHaveBeenCalledWith('Campaign deleted successfully', 'success');
+    expect(mockToast.show).toHaveBeenCalledWith('キャンペーンを削除しました', 'success');
     expect(mockRouter.navigate).toHaveBeenCalledWith(['/campaigns']);
   });
 
@@ -391,7 +391,7 @@ describe('CampaignEditorComponent', () => {
         status: 'draft',
       }),
     );
-    expect(mockToast.show).toHaveBeenCalledWith('Campaign saved successfully', 'success');
+    expect(mockToast.show).toHaveBeenCalledWith('キャンペーンを保存しました', 'success');
   });
 
   it('should prevent asset upload if campaignId is null', () => {
@@ -400,7 +400,7 @@ describe('CampaignEditorComponent', () => {
     component.onUploadMedia({ slot: component.slots[0], file });
 
     expect(mockToast.show).toHaveBeenCalledWith(
-      'Please save campaign before uploading images',
+      '画像をアップロードする前にキャンペーンを保存してください',
       'warning',
     );
     expect(mockRepo.uploadSlotImage).not.toHaveBeenCalled();
@@ -411,7 +411,7 @@ describe('CampaignEditorComponent', () => {
     const file = new File(['test'], 'dummy.png', { type: 'image/png' });
     component.onUploadMedia({ slot: component.slots[0], file });
 
-    expect(mockToast.show).toHaveBeenCalledWith('Failed to upload image', 'error');
+    expect(mockToast.show).toHaveBeenCalledWith('画像のアップロードに失敗しました', 'error');
   });
 
   it('should load campaign with custom time slots and nullable fields properly', () => {
@@ -435,7 +435,7 @@ describe('CampaignEditorComponent', () => {
     mockRepo.getById.mockReturnValue(throwError(() => new Error('Not found')));
     component.loadCampaign('camp_invalid');
 
-    expect(mockToast.show).toHaveBeenCalledWith('Failed to load campaign', 'error');
+    expect(mockToast.show).toHaveBeenCalledWith('キャンペーンの読み込みに失敗しました', 'error');
     expect(mockRouter.navigate).toHaveBeenCalledWith(['/campaigns']);
   });
 
@@ -444,7 +444,7 @@ describe('CampaignEditorComponent', () => {
     component.startDate = '2026-12-05';
     component.endDate = '2026-12-01';
     component.autoGenerateSlots(true);
-    expect(mockToast.show).toHaveBeenCalledWith('Invalid start or end date', 'warning');
+    expect(mockToast.show).toHaveBeenCalledWith('開始日または終了日が正しくありません', 'warning');
 
     // Empty slot times
     component.startDate = '2026-12-01';
@@ -452,7 +452,7 @@ describe('CampaignEditorComponent', () => {
     component.presetMode = 'custom';
     component.selectedCustomTimes = [];
     component.autoGenerateSlots(true);
-    expect(mockToast.show).toHaveBeenCalledWith('Please provide valid daily slot times', 'warning');
+    expect(mockToast.show).toHaveBeenCalledWith('有効な配信時刻を入力してください', 'warning');
 
     // Valid slots regenerated with notification
     component.selectedCustomTimes = ['08:00', '12:00', '19:00'];
@@ -473,7 +473,7 @@ describe('CampaignEditorComponent', () => {
     // Missing master context
     component.save('scheduled');
     expect(mockToast.show).toHaveBeenCalledWith(
-      'Master context is required for scheduled campaigns',
+      '予約キャンペーンにはマスターコンテキストが必要です',
       'warning',
     );
     expect(mockRepo.update).not.toHaveBeenCalled();
@@ -482,7 +482,7 @@ describe('CampaignEditorComponent', () => {
     component.masterContext = 'Valid Master Context';
     component.save('scheduled');
     expect(mockToast.show).toHaveBeenCalledWith(
-      'Reply context summary is required for scheduled campaigns',
+      '予約キャンペーンには返信コンテキスト要約が必要です',
       'warning',
     );
     expect(mockRepo.update).not.toHaveBeenCalled();
@@ -503,14 +503,14 @@ describe('CampaignEditorComponent', () => {
     // Empty title
     component.title = '';
     component.createDraftAndProceed();
-    expect(mockToast.show).toHaveBeenCalledWith('Title is required', 'warning');
+    expect(mockToast.show).toHaveBeenCalledWith('タイトルは必須です', 'warning');
 
     // Invalid dates
     component.title = 'Valid Title';
     component.startDate = '2026-12-05';
     component.endDate = '2026-12-01';
     component.createDraftAndProceed();
-    expect(mockToast.show).toHaveBeenCalledWith('Valid start date and end date are required', 'warning');
+    expect(mockToast.show).toHaveBeenCalledWith('有効な開始日と終了日を指定してください', 'warning');
 
     // API error
     component.startDate = '2026-12-01';
@@ -538,12 +538,12 @@ describe('CampaignEditorComponent', () => {
     mockRepo.pause.mockReturnValue(throwError(() => new Error('Pause failed')));
     component.isPaused = false;
     component.togglePause();
-    expect(mockToast.show).toHaveBeenCalledWith('Failed to toggle pause status', 'error');
+    expect(mockToast.show).toHaveBeenCalledWith('一時停止状態の切り替えに失敗しました', 'error');
     expect(component.isTogglingPause()).toBe(false);
 
     mockRepo.delete.mockReturnValue(throwError(() => new Error('Delete failed')));
     component.confirmDelete();
-    expect(mockToast.show).toHaveBeenCalledWith('Failed to delete campaign', 'error');
+    expect(mockToast.show).toHaveBeenCalledWith('キャンペーンの削除に失敗しました', 'error');
     expect(component.isDeleting()).toBe(false);
   });
 
@@ -560,7 +560,7 @@ describe('CampaignEditorComponent', () => {
     const targetSlot = component.slots[0];
     component.campaignId = null;
     component.onUploadMedia({ slot: targetSlot, file: mockFile });
-    expect(mockToast.show).toHaveBeenCalledWith('Please save campaign before uploading images', 'warning');
+    expect(mockToast.show).toHaveBeenCalledWith('画像をアップロードする前にキャンペーンを保存してください', 'warning');
   });
 
   it('should delete illustration media and physically delete from repo', () => {
