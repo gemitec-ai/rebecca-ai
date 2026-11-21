@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.44.4](https://github.com/gemitec-ai/rebecca-ai/compare/v1.44.3...v1.44.4) (2026-11-21)
+
+
+### Bug Fixes
+
+* **copilot:** unify action card UI, add info styling, and guard premature card claims ([#512](https://github.com/gemitec-ai/rebecca-ai/issues/512)) ([c953279](https://github.com/gemitec-ai/rebecca-ai/commit/c9532790116514beb9c0017432badc46ee7f4a96))
+
 ## [1.44.3](https://github.com/gemitec-ai/rebecca-ai/compare/v1.44.2...v1.44.3) (2026-11-20)
 
 
