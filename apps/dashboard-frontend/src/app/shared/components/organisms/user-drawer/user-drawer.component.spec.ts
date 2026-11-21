@@ -100,7 +100,7 @@ describe('UserDrawerComponent (White-box Coverage)', () => {
   it('should toggle user status between Active and Blocked', () => {
     component.onBlockUser();
     expect(mockUsersRepo.bulkUpdateStatus).toHaveBeenCalledWith(['user_123'], UserStatus.BLOCKED);
-    expect(mockToastService.show).toHaveBeenCalledWith(jasmine.stringMatching(/blocked/i), 'success');
+    expect(mockToastService.show).toHaveBeenCalledWith('ユーザー user_123 をブロックしました', 'success');
 
     // Unblock branch
     component.isBlocked.set(true);
@@ -118,7 +118,7 @@ describe('UserDrawerComponent (White-box Coverage)', () => {
     component.onSaveProfile();
     const expectedJson = JSON.stringify(component.parsedProfile(), null, 2);
     expect(mockUsersRepo.updateMemory).toHaveBeenCalledWith('user_123', expectedJson);
-    expect(mockToastService.show).toHaveBeenCalledWith(jasmine.stringMatching(/saved core profile/i), 'success');
+    expect(mockToastService.show).toHaveBeenCalledWith('user_123 の基本プロフィールを保存しました', 'success');
 
     // Error branch
     mockUsersRepo.updateMemory.and.returnValue(throwError(() => new Error('Err')));

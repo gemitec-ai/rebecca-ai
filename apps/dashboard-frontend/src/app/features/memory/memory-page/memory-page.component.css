@@ -1,16 +1,24 @@
+.view-header h2 {
+  font-size: 1.1rem;
+  font-weight: 500;
+  color: var(--text-main);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+}
+
+.view-header h2 .material-icons {
+  font-size: 1.2rem;
+  color: var(--color-primary);
+}
+
 @media (max-width: 1024px) {
   .view-header {
     flex-direction: column;
     align-items: stretch !important;
     gap: 0.75rem;
     margin-bottom: 1.25rem !important;
-  }
-
-  .view-header h2 {
-    font-size: 1.2rem;
-    display: flex;
-    align-items: center;
-    gap: 8px;
   }
 
   .view-header .btn {

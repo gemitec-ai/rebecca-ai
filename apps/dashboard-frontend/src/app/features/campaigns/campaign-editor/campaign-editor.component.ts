@@ -177,7 +177,7 @@ export class CampaignEditorComponent implements OnInit {
       },
       error: (err) => {
         console.error('[CampaignEditor] Failed to load campaign:', err);
-        this.toastService.show('Failed to load campaign', 'error');
+        this.toastService.show(this.translation.t('toast.campaign_load_failed'), 'error');
         this.isLoading.set(false);
         this.cdr.markForCheck();
         this.router.navigate(['/campaigns']);
@@ -219,14 +219,14 @@ export class CampaignEditorComponent implements OnInit {
     const idx = this.selectedCustomTimes.indexOf(hour);
     if (idx !== -1) {
       if (this.selectedCustomTimes.length <= 1) {
-        this.toastService.show('At least one delivery slot is required', 'warning');
+        this.toastService.show(this.translation.t('toast.campaign_slot_required'), 'warning');
         return;
       }
       this.selectedCustomTimes.splice(idx, 1);
     } else {
       if (this.selectedCustomTimes.length >= this.maxCustomSlots) {
         this.toastService.show(
-          `Daily limit (${this.maxCustomSlots} slots) reached to protect X API rate limits`,
+          this.translation.t('toast.campaign_slot_daily_limit', { limit: this.maxCustomSlots }),
           'warning',
         );
         return;
@@ -311,7 +311,7 @@ export class CampaignEditorComponent implements OnInit {
   autoGenerateSlots(notifyOnValidationError = false): void {
     if (!this.startDate || !this.endDate || this.startDate > this.endDate) {
       if (notifyOnValidationError) {
-        this.toastService.show('Invalid start or end date', 'warning');
+        this.toastService.show(this.translation.t('toast.campaign_invalid_dates'), 'warning');
       }
       return;
     }
@@ -319,7 +319,7 @@ export class CampaignEditorComponent implements OnInit {
     const times = this.parsedSlotTimes;
     if (times.length === 0) {
       if (notifyOnValidationError) {
-        this.toastService.show('Please provide valid daily slot times', 'warning');
+        this.toastService.show(this.translation.t('toast.campaign_invalid_slot_times'), 'warning');
       }
       return;
     }
@@ -406,7 +406,7 @@ export class CampaignEditorComponent implements OnInit {
   onUploadMedia(event: { slot: CampaignSlot; file: File }): void {
     const campaignId = this.campaignId;
     if (!campaignId) {
-      this.toastService.show('Please save campaign before uploading images', 'warning');
+      this.toastService.show(this.translation.t('toast.campaign_save_before_upload'), 'warning');
       return;
     }
 
@@ -419,12 +419,12 @@ export class CampaignEditorComponent implements OnInit {
           mediaUrl: res.mediaUrl,
         };
         this.onSlotChange(updatedSlot);
-        this.toastService.show(this.translation.translate('campaign.slot_image') + ' uploaded', 'success');
+        this.toastService.show(this.translation.t('toast.campaign_slot_image_uploaded'), 'success');
         this.cdr.detectChanges();
       },
       error: (err) => {
         console.error('[CampaignEditor] Slot upload failed:', err);
-        this.toastService.show('Failed to upload image', 'error');
+        this.toastService.show(this.translation.t('toast.campaign_slot_image_upload_failed'), 'error');
         this.cdr.detectChanges();
       },
     });
@@ -451,7 +451,7 @@ export class CampaignEditorComponent implements OnInit {
       },
       error: (err) => {
         console.error('[CampaignEditor] Slot delete failed:', err);
-        this.toastService.show('Failed to delete image', 'error');
+        this.toastService.show(this.translation.t('toast.campaign_slot_image_delete_failed'), 'error');
         // Rollback: ensure slot card retains original mediaUrl on failure
         this.onSlotChange({
           ...event.slot,
@@ -500,27 +500,27 @@ export class CampaignEditorComponent implements OnInit {
   save(targetStatus: CampaignStatus): void {
     const trimmedTitle = this.title.trim();
     if (!trimmedTitle) {
-      this.toastService.show('Title is required', 'warning');
+      this.toastService.show(this.translation.t('toast.campaign_title_required'), 'warning');
       return;
     }
 
     if (!this.startDate || !this.endDate || this.startDate > this.endDate) {
-      this.toastService.show('Valid start date and end date are required', 'warning');
+      this.toastService.show(this.translation.t('toast.campaign_valid_dates_required'), 'warning');
       return;
     }
 
     if (this.parsedSlotTimes.length === 0) {
-      this.toastService.show('At least one valid daily slot time (HH:mm) is required', 'warning');
+      this.toastService.show(this.translation.t('toast.campaign_valid_slot_time_required'), 'warning');
       return;
     }
 
     if (targetStatus === 'scheduled' || targetStatus === 'active') {
       if (!this.masterContext.trim()) {
-        this.toastService.show('Master context is required for scheduled campaigns', 'warning');
+        this.toastService.show(this.translation.t('toast.campaign_master_context_required'), 'warning');
         return;
       }
       if (!this.replyContextSummary.trim()) {
-        this.toastService.show('Reply context summary is required for scheduled campaigns', 'warning');
+        this.toastService.show(this.translation.t('toast.campaign_reply_context_required'), 'warning');
         return;
       }
     }
@@ -551,12 +551,12 @@ export class CampaignEditorComponent implements OnInit {
     action$.subscribe({
       next: () => {
         this.isSaving.set(false);
-        this.toastService.show('Campaign saved successfully', 'success');
+        this.toastService.show(this.translation.t('toast.campaign_save_success'), 'success');
         this.router.navigate(['/campaigns']);
       },
       error: (err) => {
         console.error('[CampaignEditor] Save failed:', err);
-        const msg = err.error?.error || 'Failed to save campaign';
+        const msg = err.error?.error || this.translation.t('toast.campaign_save_failed');
         this.toastService.show(msg, 'error');
         this.isSaving.set(false);
       },
@@ -571,17 +571,17 @@ export class CampaignEditorComponent implements OnInit {
   createDraftAndProceed(): void {
     const trimmedTitle = this.title.trim();
     if (!trimmedTitle) {
-      this.toastService.show('Title is required', 'warning');
+      this.toastService.show(this.translation.t('toast.campaign_title_required'), 'warning');
       return;
     }
 
     if (!this.startDate || !this.endDate || this.startDate > this.endDate) {
-      this.toastService.show('Valid start date and end date are required', 'warning');
+      this.toastService.show(this.translation.t('toast.campaign_valid_dates_required'), 'warning');
       return;
     }
 
     if (this.parsedSlotTimes.length === 0) {
-      this.toastService.show('At least one delivery slot is required', 'warning');
+      this.toastService.show(this.translation.t('toast.campaign_slot_required'), 'warning');
       return;
     }
 
@@ -607,12 +607,12 @@ export class CampaignEditorComponent implements OnInit {
     this.repo.create(payload).subscribe({
       next: (created: CampaignDocWithId) => {
         this.isSaving.set(false);
-        this.toastService.show('Campaign draft created. Please configure detailed settings.', 'success');
+        this.toastService.show(this.translation.t('toast.campaign_draft_created'), 'success');
         this.router.navigate(['/campaigns', created.id]);
       },
       error: (err) => {
         console.error('[CampaignEditor] Create draft failed:', err);
-        const msg = err.error?.error || 'Failed to create campaign draft';
+        const msg = err.error?.error || this.translation.t('toast.campaign_draft_failed');
         this.toastService.show(msg, 'error');
         this.isSaving.set(false);
       },
@@ -634,15 +634,15 @@ export class CampaignEditorComponent implements OnInit {
         this.isPaused = updated.isPaused;
         this.isTogglingPause.set(false);
         const msg = updated.isPaused
-          ? 'Campaign paused successfully'
-          : 'Campaign resumed successfully';
+          ? this.translation.t('toast.campaign_paused_success')
+          : this.translation.t('toast.campaign_resumed_success');
         this.toastService.show(msg, 'success');
         this.cdr.markForCheck();
       },
       error: (err) => {
         console.error('[CampaignEditor] Toggle pause failed:', err);
         this.isTogglingPause.set(false);
-        this.toastService.show('Failed to toggle pause status', 'error');
+        this.toastService.show(this.translation.t('toast.campaign_toggle_pause_failed'), 'error');
       },
     });
   }
@@ -671,13 +671,13 @@ export class CampaignEditorComponent implements OnInit {
       next: () => {
         this.isDeleting.set(false);
         this.closeDeleteModal();
-        this.toastService.show('Campaign deleted successfully', 'success');
+        this.toastService.show(this.translation.t('toast.campaign_delete_success'), 'success');
         this.router.navigate(['/campaigns']);
       },
       error: (err) => {
         console.error('[CampaignEditor] Delete failed:', err);
         this.isDeleting.set(false);
-        this.toastService.show('Failed to delete campaign', 'error');
+        this.toastService.show(this.translation.t('toast.campaign_delete_failed'), 'error');
       },
     });
   }

@@ -9,6 +9,7 @@ import { PaginationComponent } from '../../../shared/components/molecules/pagina
 import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
 import { AuthUrlPipe } from '../../../shared/pipes/auth-url.pipe';
 import { ToastService } from '../../../shared/services/toast.service';
+import { TranslationService } from '../../../core/services/translation.service';
 import { ASSETS_REPOSITORY } from '../../../core/ports/assets.repository';
 import { Asset, AssetStatus, PaginatedResponse } from '@rebecca/types';
 
@@ -56,6 +57,7 @@ export class AssetsPageComponent implements OnInit, OnDestroy {
   private uploadProgressTimer: ReturnType<typeof setInterval> | null = null;
 
   toastService = inject(ToastService);
+  private readonly translationService = inject(TranslationService);
   private readonly assetsRepo = inject(ASSETS_REPOSITORY);
   private readonly route = inject(ActivatedRoute);
 
@@ -101,7 +103,7 @@ export class AssetsPageComponent implements OnInit, OnDestroy {
         this.isLoading.set(false);
       },
       error: () => {
-        this.toastService.show('Failed to load assets', 'error');
+        this.toastService.show(this.translationService.t('toast.assets_load_failed'), 'error');
         this.isLoading.set(false);
       }
     });
@@ -210,7 +212,7 @@ export class AssetsPageComponent implements OnInit, OnDestroy {
         this.clearUploadTimer();
         this.isProcessing.set(false);
         this.uploadProgress.set(100);
-        this.toastService.show(`Successfully uploaded asset(s)`, 'success');
+        this.toastService.show(this.translationService.t('toast.assets_upload_success'), 'success');
         this.isUploading.set(false);
         this.uploadProgress.set(0);
         fileInput.value = '';
@@ -219,7 +221,7 @@ export class AssetsPageComponent implements OnInit, OnDestroy {
       error: () => {
         this.clearUploadTimer();
         this.isProcessing.set(false);
-        this.toastService.show('Failed to upload assets', 'error');
+        this.toastService.show(this.translationService.t('toast.assets_upload_failed'), 'error');
         this.isUploading.set(false);
         this.uploadProgress.set(0);
         fileInput.value = '';
@@ -234,12 +236,12 @@ export class AssetsPageComponent implements OnInit, OnDestroy {
 
     this.assetsRepo.deleteMany(ids).subscribe({
       next: () => {
-        this.toastService.show(`Deleted ${ids.length} asset(s)`, 'success');
+        this.toastService.show(this.translationService.t('toast.assets_delete_success', { count: ids.length }), 'success');
         this.isDeletingBulk = false;
         this.loadAssets(this.currentPage);
       },
       error: () => {
-        this.toastService.show('Failed to delete selected assets', 'error');
+        this.toastService.show(this.translationService.t('toast.assets_delete_failed'), 'error');
         this.isDeletingBulk = false;
       }
     });
@@ -252,12 +254,12 @@ export class AssetsPageComponent implements OnInit, OnDestroy {
 
     this.assetsRepo.regenerateCaptions(ids).subscribe({
       next: () => {
-        this.toastService.show(`Initiated AI regeneration retry for ${ids.length} asset(s)`, 'success');
+        this.toastService.show(this.translationService.t('toast.assets_retry_success', { count: ids.length }), 'success');
         this.isRetryingBulk = false;
         this.loadAssets(this.currentPage);
       },
       error: () => {
-        this.toastService.show('Failed to retry captions', 'error');
+        this.toastService.show(this.translationService.t('toast.assets_retry_failed'), 'error');
         this.isRetryingBulk = false;
       }
     });
