@@ -39,6 +39,12 @@
     box-shadow: none;
 }
 
+.drawer-body {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+}
+
 @media (max-width: 1300px) {
     .right-drawer.open.shifted {
         right: 0;
@@ -88,5 +94,13 @@
     .right-drawer.open.shifted {
         bottom: 0;
         right: 0;
+    }
+
+    .close-btn {
+        min-width: 44px;
+        min-height: 44px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
     }
 }

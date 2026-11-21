@@ -1,4 +1,23 @@
+:host {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+}
+
 .drawer-content {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+.drawer-content.chat-mode {
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+}
+
+.profile-panel {
     display: flex;
     flex-direction: column;
     gap: 20px;
@@ -13,14 +32,13 @@
     display: flex;
     align-items: center;
     gap: 15px;
-    margin-bottom: 15px;
 }
 
 .avatar-placeholder {
     width: 60px;
     height: 60px;
     border-radius: 50%;
-    background: rgba(138, 43, 226, 0.2);
+    background: rgba(168, 85, 247, 0.2);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -82,7 +100,7 @@
 
 .stat-box {
     padding: 20px;
-    background: rgba(138, 43, 226, 0.05);
+    background: rgba(168, 85, 247, 0.05);
 }
 
 .timeline-stat {
@@ -138,12 +156,13 @@
     gap: 6px;
     padding: 4px;
     border-radius: 10px;
-    background: rgba(255, 255, 255, 0.05);
+    background: rgba(20, 15, 25, 0.85);
     border: 1px solid var(--border-color);
     position: sticky;
     top: 0;
     z-index: 5;
     backdrop-filter: blur(12px);
+    flex-shrink: 0;
 }
 
 .drawer-tab-btn {
@@ -153,7 +172,7 @@
     gap: 6px;
     min-height: 38px;
     padding: 6px 10px;
-    border: none;
+    border: 1px solid transparent;
     border-radius: 7px;
     background: transparent;
     color: var(--text-muted);
@@ -177,6 +196,8 @@
     display: flex;
     flex-direction: column;
     gap: 12px;
+    flex: 1;
+    min-height: 0;
 }
 
 .conversations-toolbar {
@@ -184,6 +205,7 @@
     align-items: center;
     justify-content: space-between;
     gap: 8px;
+    flex-shrink: 0;
 }
 
 .conversations-count {
@@ -211,11 +233,18 @@
 
 .chat-history-wrapper {
     position: relative;
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
 }
 
 .chat-history-full {
-    max-height: calc(100vh - 250px);
-    min-height: 320px;
+    flex: 1;
+    min-height: 0;
+    max-height: none;
+    overflow-y: auto;
+    overscroll-behavior: contain;
 }
 
 .chat-status-note {
@@ -281,8 +310,8 @@
 }
 
 .user-bubble {
-    background: rgba(138, 43, 226, 0.2);
-    border: 1px solid rgba(138, 43, 226, 0.4);
+    background: rgba(168, 85, 247, 0.2);
+    border: 1px solid rgba(168, 85, 247, 0.4);
     color: var(--text-main);
     border-bottom-right-radius: 4px;
 }
@@ -298,7 +327,7 @@
     margin-top: 6px;
     padding: 6px 10px;
     background: rgba(10, 10, 20, 0.45);
-    border-left: 2px solid #00f2fe;
+    border-left: 2px solid var(--accent-thought, #00f2fe);
     border-radius: 4px;
     display: flex;
     flex-direction: column;
@@ -309,7 +338,7 @@
     font-size: 0.65rem;
     font-weight: 700;
     letter-spacing: 0.06em;
-    color: #00f2fe;
+    color: var(--accent-thought, #00f2fe);
     width: fit-content;
 }
 
@@ -389,8 +418,8 @@
     display: flex;
     align-items: center;
     gap: 6px;
-    background: rgba(138, 43, 226, 0.2);
-    border: 1px solid rgba(138, 43, 226, 0.4);
+    background: rgba(168, 85, 247, 0.2);
+    border: 1px solid rgba(168, 85, 247, 0.4);
     color: var(--text-main);
     padding: 4px 10px;
     border-radius: 16px;
@@ -399,7 +428,7 @@
 }
 
 .profile-tag:hover {
-    background: rgba(138, 43, 226, 0.4);
+    background: rgba(168, 85, 247, 0.4);
 }
 
 .tag-close {
@@ -436,8 +465,20 @@
 }
 
 @media (max-width: 1024px) {
-    .drawer-content {
+    .drawer-content,
+    .profile-panel {
         gap: 14px;
+    }
+    .drawer-tab-btn {
+        min-height: 44px;
+    }
+    .sort-toggle-btn {
+        min-height: 44px;
+        padding: 6px 12px;
+    }
+    .jump-latest-btn {
+        min-height: 44px;
+        padding: 8px 16px;
     }
     .profile-box,
     .stat-box {
@@ -464,9 +505,7 @@
     .chat-history {
         max-height: 280px;
     }
-
     .chat-history-full {
-        max-height: calc(100dvh - 240px);
-        min-height: 260px;
+        max-height: none;
     }
 }
