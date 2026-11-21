@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.44.5](https://github.com/gemitec-ai/rebecca-ai/compare/v1.44.4...v1.44.5) (2026-11-21)
+
+
+### Bug Fixes
+
+* **dashboard:** localize toast notifications (ja/en) and unify page header styles ([#514](https://github.com/gemitec-ai/rebecca-ai/issues/514)) ([edc4a0c](https://github.com/gemitec-ai/rebecca-ai/commit/edc4a0c6ce1cf2d22ea8df224ebc5e178efa8e46))
+
 ## [1.44.4](https://github.com/gemitec-ai/rebecca-ai/compare/v1.44.3...v1.44.4) (2026-11-21)
 
 
