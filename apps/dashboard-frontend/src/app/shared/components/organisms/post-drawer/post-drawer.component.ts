@@ -3,6 +3,7 @@ import { PollData } from '@rebecca/types';
 
 import { DrawerService } from '../../../../core/services/drawer.service';
 import { ToastService } from '../../../services/toast.service';
+import { TranslationService } from '../../../../core/services/translation.service';
 import { DASHBOARD_REPOSITORY } from '../../../../core/ports/dashboard.repository';
 import { CopilotContextService } from '../../../../core/services/copilot-context.service';
 import { TzDatePipe } from '../../../pipes/tz-date.pipe';
@@ -34,6 +35,7 @@ interface PostDataModel {
 export class PostDrawerComponent implements OnChanges {
   drawerService = inject(DrawerService);
   toastService = inject(ToastService);
+  private readonly translationService = inject(TranslationService);
   contextService = inject(CopilotContextService);
 
   @Input() postId: string | null = null;
@@ -82,7 +84,7 @@ export class PostDrawerComponent implements OnChanges {
         this.isLoading.set(false);
       },
       error: () => {
-        this.toastService.show('Failed to load post details', 'error');
+        this.toastService.show(this.translationService.t('toast.post_load_failed'), 'error');
         this.isLoading.set(false);
       }
     });
@@ -140,12 +142,12 @@ export class PostDrawerComponent implements OnChanges {
     this.isDeleting.set(true);
     this.dashboardRepo.deletePosts([data.id]).subscribe({
       next: () => {
-        this.toastService.show('Post deleted successfully', 'success');
+        this.toastService.show(this.translationService.t('toast.post_delete_success'), 'success');
         this.isDeleting.set(false);
         this.postDeleted.emit(data.id);
       },
       error: () => {
-        this.toastService.show('Failed to delete post', 'error');
+        this.toastService.show(this.translationService.t('toast.post_delete_failed'), 'error');
         this.isDeleting.set(false);
       }
     });
@@ -154,7 +156,7 @@ export class PostDrawerComponent implements OnChanges {
   onViewOnX(): void {
     const tweetId = this.postData()?.tweetId;
     if (!tweetId) {
-      this.toastService.show('Tweet ID is not available for this post', 'info');
+      this.toastService.show(this.translationService.t('toast.post_tweet_id_unavailable'), 'info');
       return;
     }
     const url = `https://x.com/i/status/${tweetId}`;

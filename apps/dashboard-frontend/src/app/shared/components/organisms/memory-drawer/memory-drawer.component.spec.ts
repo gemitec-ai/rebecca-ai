@@ -75,7 +75,7 @@ describe('MemoryDrawerComponent', () => {
     component.onSavePrompt();
 
     expect(memoryRepoSpy.updateExtendedMemory).toHaveBeenCalledWith('New Persona Tuning');
-    expect(toastServiceSpy.show).toHaveBeenCalledWith(jasmine.stringMatching(/saved Extended/), 'success');
+    expect(toastServiceSpy.show).toHaveBeenCalledWith('拡張ペルソナチューニングを保存しました', 'success');
   });
 
   it('should save Layer 2 summary on onSaveSummary', () => {
@@ -85,7 +85,7 @@ describe('MemoryDrawerComponent', () => {
     component.onSaveSummary();
 
     expect(memoryRepoSpy.updateGlobalMemory).toHaveBeenCalledWith('New Global Timeline Summary');
-    expect(toastServiceSpy.show).toHaveBeenCalledWith(jasmine.stringMatching(/saved Global/), 'success');
+    expect(toastServiceSpy.show).toHaveBeenCalledWith('タイムライン全体要約を保存しました', 'success');
   });
 
   it('should handle errors when loading memory fails', () => {
@@ -94,18 +94,18 @@ describe('MemoryDrawerComponent', () => {
     component.level = 0;
     component.ngOnChanges();
 
-    expect(toastServiceSpy.show).toHaveBeenCalledWith('Failed to load Persona Core Prompt', 'error');
+    expect(toastServiceSpy.show).toHaveBeenCalledWith('コアプロンプトの読み込みに失敗しました', 'error');
     expect(component.isLoading()).toBeFalse();
 
     memoryRepoSpy.getExtendedMemory.and.returnValue(throwError(() => new Error('Load failed')));
     component.level = 1;
     component.ngOnChanges();
-    expect(toastServiceSpy.show).toHaveBeenCalledWith('Failed to load Extended Tuning Prompt', 'error');
+    expect(toastServiceSpy.show).toHaveBeenCalledWith('拡張チューニングプロンプトの読み込みに失敗しました', 'error');
 
     memoryRepoSpy.getGlobalMemory.and.returnValue(throwError(() => new Error('Load failed')));
     component.level = 2;
     component.ngOnChanges();
-    expect(toastServiceSpy.show).toHaveBeenCalledWith('Failed to load Global Timeline Summary', 'error');
+    expect(toastServiceSpy.show).toHaveBeenCalledWith('タイムライン全体要約の読み込みに失敗しました', 'error');
   });
 
   it('should handle empty data content across all levels', () => {
@@ -128,10 +128,10 @@ describe('MemoryDrawerComponent', () => {
   it('should handle save prompt and summary errors', () => {
     memoryRepoSpy.updateExtendedMemory.and.returnValue(throwError(() => new Error('Save err')));
     component.onSavePrompt();
-    expect(toastServiceSpy.show).toHaveBeenCalledWith('Failed to save Extended Persona Tuning', 'error');
+    expect(toastServiceSpy.show).toHaveBeenCalledWith('拡張ペルソナチューニングの保存に失敗しました', 'error');
 
     memoryRepoSpy.updateGlobalMemory.and.returnValue(throwError(() => new Error('Save err')));
     component.onSaveSummary();
-    expect(toastServiceSpy.show).toHaveBeenCalledWith('Failed to save Global Timeline Summary', 'error');
+    expect(toastServiceSpy.show).toHaveBeenCalledWith('タイムライン全体要約の保存に失敗しました', 'error');
   });
 });

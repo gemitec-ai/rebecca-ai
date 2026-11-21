@@ -1,6 +1,6 @@
 <div class="view-section active">
   <div class="view-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;">
-    <h2><span class="material-icons">dns</span> {{ 'memory.title' | translate }}</h2>
+    <h2><span class="material-icons" aria-hidden="true">dns</span> {{ 'memory.title' | translate }}</h2>
     <button class="btn btn-primary" (click)="forceDreaming()" [disabled]="isDreaming" style="display: flex; align-items: center; gap: 8px; min-width: 180px; width: auto; padding: 0.6rem 1.2rem; justify-content: center; overflow: hidden; white-space: nowrap;">
       <span class="material-icons" [class.spinning]="isDreaming" style="flex-shrink:0;">{{ isDreaming ? 'sync' : 'auto_awesome' }}</span>
       {{ isDreaming ? ('memory.processing' | translate) : ('memory.force_dreaming' | translate) }}

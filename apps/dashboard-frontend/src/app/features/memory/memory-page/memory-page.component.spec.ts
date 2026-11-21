@@ -50,7 +50,7 @@ describe('MemoryPageComponent', () => {
 
     component.loadLayers();
 
-    expect(toastServiceSpy.show).toHaveBeenCalledWith('Failed to load memory layers', 'error');
+    expect(toastServiceSpy.show).toHaveBeenCalledWith('メモリレイヤーの読み込みに失敗しました', 'error');
     expect(component.isLoading()).toBeFalse();
   });
 
@@ -81,12 +81,12 @@ describe('MemoryPageComponent', () => {
     await component.forceDreaming();
 
     expect(memoryRepoSpy.triggerDreaming).toHaveBeenCalled();
-    expect(toastServiceSpy.show).toHaveBeenCalledWith(jasmine.stringMatching(/Force Dreaming completed/), 'success');
+    expect(toastServiceSpy.show).toHaveBeenCalledWith('強制ドリーミングが完了し、記憶が統合されました。', 'success');
     expect(component.isDreaming).toBeFalse();
 
     // Error case
     memoryRepoSpy.triggerDreaming.and.returnValue(throwError(() => new Error('Dreaming error')));
     await component.forceDreaming();
-    expect(toastServiceSpy.show).toHaveBeenCalledWith('Force Dreaming failed.', 'error');
+    expect(toastServiceSpy.show).toHaveBeenCalledWith('強制ドリーミングに失敗しました。', 'error');
   });
 });

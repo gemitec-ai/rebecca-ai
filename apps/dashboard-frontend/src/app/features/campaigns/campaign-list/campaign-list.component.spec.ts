@@ -122,7 +122,7 @@ describe('CampaignListComponent', () => {
     component.confirmDelete();
     expect(mockRepo.delete).toHaveBeenCalledWith('camp_1');
     expect(component.isDeleteModalOpen()).toBe(false);
-    expect(mockToast.show).toHaveBeenCalledWith('Campaign deleted successfully', 'success');
+    expect(mockToast.show).toHaveBeenCalledWith('キャンペーンを削除しました', 'success');
   });
 
   it('should compute progress percentage correctly', () => {
@@ -155,7 +155,7 @@ describe('CampaignListComponent', () => {
     mockRepo.getAll.mockReturnValue(throwError(() => new Error('Network error')));
     component.loadCampaigns(1);
 
-    expect(mockToast.show).toHaveBeenCalledWith('Failed to load campaigns', 'error');
+    expect(mockToast.show).toHaveBeenCalledWith('キャンペーン一覧の読み込みに失敗しました', 'error');
     expect(component.isLoading()).toBe(false);
   });
 
@@ -163,7 +163,7 @@ describe('CampaignListComponent', () => {
     mockRepo.pause.mockReturnValue(throwError(() => new Error('Server error')));
     component.togglePause(mockCampaign);
 
-    expect(mockToast.show).toHaveBeenCalledWith('Failed to toggle pause status', 'error');
+    expect(mockToast.show).toHaveBeenCalledWith('一時停止状態の切り替えに失敗しました', 'error');
   });
 
   it('should close clone modal and reset target', () => {
@@ -193,7 +193,7 @@ describe('CampaignListComponent', () => {
     // Fallback error message if err.error is empty
     mockRepo.clone.mockReturnValue(throwError(() => new Error('Generic error')));
     component.submitClone();
-    expect(mockToast.show).toHaveBeenCalledWith('Failed to clone campaign', 'error');
+    expect(mockToast.show).toHaveBeenCalledWith('キャンペーンの複製に失敗しました', 'error');
     expect(component.isCloning()).toBe(false);
   });
 
@@ -218,7 +218,7 @@ describe('CampaignListComponent', () => {
     mockRepo.delete.mockReturnValue(throwError(() => new Error('Delete failed')));
 
     component.confirmDelete();
-    expect(mockToast.show).toHaveBeenCalledWith('Failed to delete campaign', 'error');
+    expect(mockToast.show).toHaveBeenCalledWith('キャンペーンの削除に失敗しました', 'error');
     expect(component.isDeleting()).toBe(false);
   });
 });

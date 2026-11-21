@@ -451,7 +451,67 @@ const TRANSLATIONS: Record<'ja' | 'en', Record<string, string>> = {
     'toast.sync_posts_success': 'タイムラインのポスト同期が完了しました。',
     'toast.sync_posts_failed': 'ポスト同期に失敗しました。',
     'toast.trigger_reply_success': 'リプライ処理の実行を開始しました。',
-    'toast.trigger_reply_failed': 'リプライ実行に失敗しました。'
+    'toast.trigger_reply_failed': 'リプライ実行に失敗しました。',
+    'toast.assets_load_failed': 'アセットの読み込みに失敗しました',
+    'toast.assets_upload_success': 'アセットをアップロードしました',
+    'toast.assets_upload_failed': 'アセットのアップロードに失敗しました',
+    'toast.assets_delete_success': '{count} 件のアセットを削除しました',
+    'toast.assets_delete_failed': '選択したアセットの削除に失敗しました',
+    'toast.assets_retry_success': '{count} 件のアセットの AI キャプション再生成を開始しました',
+    'toast.assets_retry_failed': 'キャプション再生成の開始に失敗しました',
+    'toast.campaign_load_failed': 'キャンペーンの読み込みに失敗しました',
+    'toast.campaigns_load_failed': 'キャンペーン一覧の読み込みに失敗しました',
+    'toast.campaign_slot_required': '配信スロットを少なくとも1つ設定してください',
+    'toast.campaign_slot_daily_limit': 'X API のレート制限保護のため、1日の上限（{limit} スロット）に達しました',
+    'toast.campaign_invalid_dates': '開始日または終了日が正しくありません',
+    'toast.campaign_invalid_slot_times': '有効な配信時刻を入力してください',
+    'toast.campaign_save_before_upload': '画像をアップロードする前にキャンペーンを保存してください',
+    'toast.campaign_slot_image_uploaded': 'スロット画像をアップロードしました',
+    'toast.campaign_slot_image_upload_failed': '画像のアップロードに失敗しました',
+    'toast.campaign_slot_image_delete_failed': '画像の削除に失敗しました',
+    'toast.campaign_title_required': 'タイトルは必須です',
+    'toast.campaign_valid_dates_required': '有効な開始日と終了日を指定してください',
+    'toast.campaign_valid_slot_time_required': '有効な配信時刻（HH:mm）を少なくとも1つ指定してください',
+    'toast.campaign_master_context_required': '予約キャンペーンにはマスターコンテキストが必要です',
+    'toast.campaign_reply_context_required': '予約キャンペーンには返信コンテキスト要約が必要です',
+    'toast.campaign_save_success': 'キャンペーンを保存しました',
+    'toast.campaign_save_failed': 'キャンペーンの保存に失敗しました',
+    'toast.campaign_draft_created': 'キャンペーンの下書きを作成しました。詳細設定を行ってください。',
+    'toast.campaign_draft_failed': 'キャンペーンの下書き作成に失敗しました',
+    'toast.campaign_paused_success': 'キャンペーンを一時停止しました',
+    'toast.campaign_resumed_success': 'キャンペーンを再開しました',
+    'toast.campaign_toggle_pause_failed': '一時停止状態の切り替えに失敗しました',
+    'toast.campaign_clone_success': 'キャンペーンを複製しました',
+    'toast.campaign_clone_failed': 'キャンペーンの複製に失敗しました',
+    'toast.campaign_delete_success': 'キャンペーンを削除しました',
+    'toast.campaign_delete_failed': 'キャンペーンの削除に失敗しました',
+    'toast.memory_load_failed': 'メモリレイヤーの読み込みに失敗しました',
+    'toast.memory_dreaming_success': '強制ドリーミングが完了し、記憶が統合されました。',
+    'toast.memory_dreaming_failed': '強制ドリーミングに失敗しました。',
+    'toast.memory_core_load_failed': 'コアプロンプトの読み込みに失敗しました',
+    'toast.memory_extended_load_failed': '拡張チューニングプロンプトの読み込みに失敗しました',
+    'toast.memory_summary_load_failed': 'タイムライン全体要約の読み込みに失敗しました',
+    'toast.memory_extended_save_success': '拡張ペルソナチューニングを保存しました',
+    'toast.memory_extended_save_failed': '拡張ペルソナチューニングの保存に失敗しました',
+    'toast.memory_summary_save_success': 'タイムライン全体要約を保存しました',
+    'toast.memory_summary_save_failed': 'タイムライン全体要約の保存に失敗しました',
+    'toast.posts_load_failed': 'タイムラインの読み込みに失敗しました',
+    'toast.posts_bulk_delete_success': '{count} 件の投稿を削除しました',
+    'toast.posts_bulk_delete_failed': '投稿の削除に失敗しました',
+    'toast.post_load_failed': '投稿詳細の読み込みに失敗しました',
+    'toast.post_delete_success': '投稿を削除しました',
+    'toast.post_delete_failed': '投稿の削除に失敗しました',
+    'toast.post_tweet_id_unavailable': 'この投稿のツイート ID は利用できません',
+    'toast.users_load_failed': 'ユーザーの読み込みに失敗しました',
+    'toast.users_block_success': '{count} 人のユーザーをブロックしました',
+    'toast.users_block_failed': 'ユーザーのブロックに失敗しました',
+    'toast.users_unblock_success': '{count} 人のブロックを解除しました',
+    'toast.users_unblock_failed': 'ユーザーのブロック解除に失敗しました',
+    'toast.user_profile_save_success': '{id} の基本プロフィールを保存しました',
+    'toast.user_profile_save_failed': '基本プロフィールの保存に失敗しました',
+    'toast.user_blocked_success': 'ユーザー {id} をブロックしました',
+    'toast.user_unblocked_success': 'ユーザー {id} のブロックを解除しました',
+    'toast.user_status_update_failed': 'ユーザーステータスの更新に失敗しました',
   },
   en: {
     // Navigation & Global
@@ -898,7 +958,67 @@ const TRANSLATIONS: Record<'ja' | 'en', Record<string, string>> = {
     'toast.sync_posts_success': 'Timeline post synchronization completed.',
     'toast.sync_posts_failed': 'Failed to synchronize timeline posts.',
     'toast.trigger_reply_success': 'Reply batch execution triggered.',
-    'toast.trigger_reply_failed': 'Failed to trigger reply execution.'
+    'toast.trigger_reply_failed': 'Failed to trigger reply execution.',
+    'toast.assets_load_failed': 'Failed to load assets',
+    'toast.assets_upload_success': 'Successfully uploaded asset(s)',
+    'toast.assets_upload_failed': 'Failed to upload assets',
+    'toast.assets_delete_success': 'Deleted {count} asset(s)',
+    'toast.assets_delete_failed': 'Failed to delete selected assets',
+    'toast.assets_retry_success': 'Initiated AI regeneration retry for {count} asset(s)',
+    'toast.assets_retry_failed': 'Failed to retry captions',
+    'toast.campaign_load_failed': 'Failed to load campaign',
+    'toast.campaigns_load_failed': 'Failed to load campaigns',
+    'toast.campaign_slot_required': 'At least one delivery slot is required',
+    'toast.campaign_slot_daily_limit': 'Daily limit ({limit} slots) reached to protect X API rate limits',
+    'toast.campaign_invalid_dates': 'Invalid start or end date',
+    'toast.campaign_invalid_slot_times': 'Please provide valid daily slot times',
+    'toast.campaign_save_before_upload': 'Please save campaign before uploading images',
+    'toast.campaign_slot_image_uploaded': 'Slot image uploaded',
+    'toast.campaign_slot_image_upload_failed': 'Failed to upload image',
+    'toast.campaign_slot_image_delete_failed': 'Failed to delete image',
+    'toast.campaign_title_required': 'Title is required',
+    'toast.campaign_valid_dates_required': 'Valid start date and end date are required',
+    'toast.campaign_valid_slot_time_required': 'At least one valid daily slot time (HH:mm) is required',
+    'toast.campaign_master_context_required': 'Master context is required for scheduled campaigns',
+    'toast.campaign_reply_context_required': 'Reply context summary is required for scheduled campaigns',
+    'toast.campaign_save_success': 'Campaign saved successfully',
+    'toast.campaign_save_failed': 'Failed to save campaign',
+    'toast.campaign_draft_created': 'Campaign draft created. Please configure detailed settings.',
+    'toast.campaign_draft_failed': 'Failed to create campaign draft',
+    'toast.campaign_paused_success': 'Campaign paused successfully',
+    'toast.campaign_resumed_success': 'Campaign resumed successfully',
+    'toast.campaign_toggle_pause_failed': 'Failed to toggle pause status',
+    'toast.campaign_clone_success': 'Campaign cloned successfully',
+    'toast.campaign_clone_failed': 'Failed to clone campaign',
+    'toast.campaign_delete_success': 'Campaign deleted successfully',
+    'toast.campaign_delete_failed': 'Failed to delete campaign',
+    'toast.memory_load_failed': 'Failed to load memory layers',
+    'toast.memory_dreaming_success': 'Force Dreaming completed successfully. Memory aligned.',
+    'toast.memory_dreaming_failed': 'Force Dreaming failed.',
+    'toast.memory_core_load_failed': 'Failed to load Persona Core Prompt',
+    'toast.memory_extended_load_failed': 'Failed to load Extended Tuning Prompt',
+    'toast.memory_summary_load_failed': 'Failed to load Global Timeline Summary',
+    'toast.memory_extended_save_success': 'Successfully saved Extended Persona Tuning',
+    'toast.memory_extended_save_failed': 'Failed to save Extended Persona Tuning',
+    'toast.memory_summary_save_success': 'Successfully saved Global Timeline Summary',
+    'toast.memory_summary_save_failed': 'Failed to save Global Timeline Summary',
+    'toast.posts_load_failed': 'Failed to load timeline',
+    'toast.posts_bulk_delete_success': 'Successfully deleted {count} posts',
+    'toast.posts_bulk_delete_failed': 'Failed to delete posts',
+    'toast.post_load_failed': 'Failed to load post details',
+    'toast.post_delete_success': 'Post deleted successfully',
+    'toast.post_delete_failed': 'Failed to delete post',
+    'toast.post_tweet_id_unavailable': 'Tweet ID is not available for this post',
+    'toast.users_load_failed': 'Failed to load users',
+    'toast.users_block_success': 'Blocked {count} user(s)',
+    'toast.users_block_failed': 'Failed to block users',
+    'toast.users_unblock_success': 'Unblocked {count} user(s)',
+    'toast.users_unblock_failed': 'Failed to unblock users',
+    'toast.user_profile_save_success': 'Successfully saved core profile for {id}',
+    'toast.user_profile_save_failed': 'Failed to save core profile',
+    'toast.user_blocked_success': 'Successfully blocked user {id}',
+    'toast.user_unblocked_success': 'Successfully unblocked user {id}',
+    'toast.user_status_update_failed': 'Failed to update user status',
   }
 };
 
@@ -924,20 +1044,27 @@ export class TranslationService {
    * @param key - The dictionary key (e.g. 'nav.dashboard').
    * @returns The localized text string.
    */
-  translate(key: string): string {
+  translate(key: string, params?: Readonly<Record<string, string | number>>): string {
     const lang = this.currentLang();
     const table = TRANSLATIONS[lang] || TRANSLATIONS['ja'];
-    if (table[key]) return table[key];
-    
-    // Fallback to English
-    if (TRANSLATIONS['en'][key]) return TRANSLATIONS['en'][key];
-    return key;
+    let template = table[key];
+    if (!template) {
+      // Fallback to English
+      template = TRANSLATIONS['en'][key] ?? key;
+    }
+    if (!params) {
+      return template;
+    }
+    return Object.entries(params).reduce(
+      (acc, [paramKey, paramValue]) => acc.replaceAll(`{${paramKey}}`, String(paramValue)),
+      template,
+    );
   }
 
   /**
    * Shorthand helper for translation.
    */
-  t(key: string): string {
-    return this.translate(key);
+  t(key: string, params?: Readonly<Record<string, string | number>>): string {
+    return this.translate(key, params);
   }
 }

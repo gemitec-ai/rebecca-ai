@@ -42,7 +42,7 @@ export class MemoryPageComponent implements OnInit {
         this.isLoading.set(false);
       },
       error: () => {
-        this.toastService.show('Failed to load memory layers', 'error');
+        this.toastService.show(this.translationService.t('toast.memory_load_failed'), 'error');
         this.isLoading.set(false);
       }
     });
@@ -61,12 +61,12 @@ export class MemoryPageComponent implements OnInit {
     this.isDreaming = true;
     this.memoryRepo.triggerDreaming().subscribe({
       next: () => {
-        this.toastService.show('Force Dreaming completed successfully. Memory aligned.', 'success');
+        this.toastService.show(this.translationService.t('toast.memory_dreaming_success'), 'success');
         this.isDreaming = false;
         this.loadLayers();
       },
       error: () => {
-        this.toastService.show('Force Dreaming failed.', 'error');
+        this.toastService.show(this.translationService.t('toast.memory_dreaming_failed'), 'error');
         this.isDreaming = false;
       }
     });

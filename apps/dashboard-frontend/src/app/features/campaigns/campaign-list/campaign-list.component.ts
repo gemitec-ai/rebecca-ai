@@ -79,7 +79,7 @@ export class CampaignListComponent implements OnInit {
         },
         error: (err) => {
           console.error('[CampaignList] Failed to load campaigns:', err);
-          this.toastService.show('Failed to load campaigns', 'error');
+          this.toastService.show(this.translationService.t('toast.campaigns_load_failed'), 'error');
           this.isLoading.set(false);
         },
       });
@@ -131,7 +131,7 @@ export class CampaignListComponent implements OnInit {
       },
       error: (err) => {
         console.error('[CampaignList] Toggle pause failed:', err);
-        this.toastService.show('Failed to toggle pause status', 'error');
+        this.toastService.show(this.translationService.t('toast.campaign_toggle_pause_failed'), 'error');
       },
     });
   }
@@ -169,12 +169,14 @@ export class CampaignListComponent implements OnInit {
       next: (cloned) => {
         this.isCloning.set(false);
         this.closeCloneModal();
-        this.toastService.show('Campaign cloned successfully', 'success');
+        this.toastService.show(this.translationService.t('toast.campaign_clone_success'), 'success');
         this.router.navigate(['/campaigns', cloned.id]);
       },
       error: (err) => {
         console.error('[CampaignList] Clone failed:', err);
-        const msg = typeof err.error?.error === 'string' ? err.error.error : 'Failed to clone campaign';
+        const msg = typeof err.error?.error === 'string'
+          ? err.error.error
+          : this.translationService.t('toast.campaign_clone_failed');
         this.toastService.show(msg, 'error');
         this.isCloning.set(false);
       },
@@ -209,12 +211,12 @@ export class CampaignListComponent implements OnInit {
       next: () => {
         this.isDeleting.set(false);
         this.closeDeleteModal();
-        this.toastService.show('Campaign deleted successfully', 'success');
+        this.toastService.show(this.translationService.t('toast.campaign_delete_success'), 'success');
         this.loadCampaigns(this.currentPage);
       },
       error: (err) => {
         console.error('[CampaignList] Delete failed:', err);
-        this.toastService.show('Failed to delete campaign', 'error');
+        this.toastService.show(this.translationService.t('toast.campaign_delete_failed'), 'error');
         this.isDeleting.set(false);
       },
     });
