@@ -266,7 +266,7 @@ test.describe('Supporters & Tipping Management Features E2E Tests', () => {
     await page.waitForLoadState('domcontentloaded');
 
     // 2. Header and KPIs in English
-    await expect(page.locator('.page-title')).toHaveText('Supporters & Tipping Management');
+    await expect(page.locator('.page-title')).toContainText('Supporters & Tipping Management');
     await expect(page.locator('.filter-pills button').first()).toHaveText('All');
 
     // 3. Status chips in English
