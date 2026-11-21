@@ -10,6 +10,7 @@ import { TranslatePipe } from '../../../shared/pipes/translate.pipe';
 import { USERS_REPOSITORY } from '../../../core/ports/users.repository';
 import { UserDetail, UserStatus } from '@rebecca/types';
 import { ToastService } from '../../../shared/services/toast.service';
+import { TranslationService } from '../../../core/services/translation.service';
 
 @Component({
   selector: 'app-users-page',
@@ -43,6 +44,7 @@ export class UsersPageComponent implements OnInit {
   readonly isLoading = signal<boolean>(false);
 
   toastService = inject(ToastService);
+  private readonly translationService = inject(TranslationService);
   private readonly usersRepo = inject(USERS_REPOSITORY);
   private readonly route = inject(ActivatedRoute);
 
@@ -78,7 +80,7 @@ export class UsersPageComponent implements OnInit {
         this.isLoading.set(false);
       },
       error: () => {
-        this.toastService.show('Failed to load users', 'error');
+        this.toastService.show(this.translationService.t('toast.users_load_failed'), 'error');
         this.isLoading.set(false);
       }
     });
@@ -154,12 +156,12 @@ export class UsersPageComponent implements OnInit {
 
     this.usersRepo.bulkUpdateStatus(ids, UserStatus.BLOCKED).subscribe({
       next: () => {
-        this.toastService.show(`Blocked ${ids.length} user(s)`, 'success');
+        this.toastService.show(this.translationService.t('toast.users_block_success', { count: ids.length }), 'success');
         this.isBlocking = false;
         this.loadUsers(this.currentPage);
       },
       error: () => {
-        this.toastService.show('Failed to block users', 'error');
+        this.toastService.show(this.translationService.t('toast.users_block_failed'), 'error');
         this.isBlocking = false;
       }
     });
@@ -172,12 +174,12 @@ export class UsersPageComponent implements OnInit {
 
     this.usersRepo.bulkUpdateStatus(ids, UserStatus.ACTIVE).subscribe({
       next: () => {
-        this.toastService.show(`Unblocked ${ids.length} user(s)`, 'success');
+        this.toastService.show(this.translationService.t('toast.users_unblock_success', { count: ids.length }), 'success');
         this.isUnblocking = false;
         this.loadUsers(this.currentPage);
       },
       error: () => {
-        this.toastService.show('Failed to unblock users', 'error');
+        this.toastService.show(this.translationService.t('toast.users_unblock_failed'), 'error');
         this.isUnblocking = false;
       }
     });

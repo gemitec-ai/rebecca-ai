@@ -2,6 +2,7 @@ import { Component, Input, inject, OnChanges, signal } from '@angular/core';
 
 import { FormsModule } from '@angular/forms';
 import { ToastService } from '../../../services/toast.service';
+import { TranslationService } from '../../../../core/services/translation.service';
 import { MEMORY_REPOSITORY } from '../../../../core/ports/memory.repository';
 import { TranslatePipe } from '../../../pipes/translate.pipe';
 
@@ -73,6 +74,7 @@ import { TranslatePipe } from '../../../pipes/translate.pipe';
 })
 export class MemoryDrawerComponent implements OnChanges {
   toastService = inject(ToastService);
+  private readonly translationService = inject(TranslationService);
   memoryRepo = inject(MEMORY_REPOSITORY);
 
   @Input() level = 0;
@@ -98,7 +100,7 @@ export class MemoryDrawerComponent implements OnChanges {
           this.isLoading.set(false);
         },
         error: () => {
-          this.toastService.show('Failed to load Persona Core Prompt', 'error');
+          this.toastService.show(this.translationService.t('toast.memory_core_load_failed'), 'error');
           this.isLoading.set(false);
         }
       });
@@ -109,7 +111,7 @@ export class MemoryDrawerComponent implements OnChanges {
           this.isLoading.set(false);
         },
         error: () => {
-          this.toastService.show('Failed to load Extended Tuning Prompt', 'error');
+          this.toastService.show(this.translationService.t('toast.memory_extended_load_failed'), 'error');
           this.isLoading.set(false);
         }
       });
@@ -120,7 +122,7 @@ export class MemoryDrawerComponent implements OnChanges {
           this.isLoading.set(false);
         },
         error: () => {
-          this.toastService.show('Failed to load Global Timeline Summary', 'error');
+          this.toastService.show(this.translationService.t('toast.memory_summary_load_failed'), 'error');
           this.isLoading.set(false);
         }
       });
@@ -131,11 +133,11 @@ export class MemoryDrawerComponent implements OnChanges {
     this.isSavingPrompt.set(true);
     this.memoryRepo.updateExtendedMemory(this.extendedPrompt()).subscribe({
       next: () => {
-        this.toastService.show('Successfully saved Extended Persona Tuning', 'success');
+        this.toastService.show(this.translationService.t('toast.memory_extended_save_success'), 'success');
         this.isSavingPrompt.set(false);
       },
       error: () => {
-        this.toastService.show('Failed to save Extended Persona Tuning', 'error');
+        this.toastService.show(this.translationService.t('toast.memory_extended_save_failed'), 'error');
         this.isSavingPrompt.set(false);
       }
     });
@@ -145,11 +147,11 @@ export class MemoryDrawerComponent implements OnChanges {
     this.isSavingSummary.set(true);
     this.memoryRepo.updateGlobalMemory(this.timelineSummary()).subscribe({
       next: () => {
-        this.toastService.show('Successfully saved Global Timeline Summary', 'success');
+        this.toastService.show(this.translationService.t('toast.memory_summary_save_success'), 'success');
         this.isSavingSummary.set(false);
       },
       error: () => {
-        this.toastService.show('Failed to save Global Timeline Summary', 'error');
+        this.toastService.show(this.translationService.t('toast.memory_summary_save_failed'), 'error');
         this.isSavingSummary.set(false);
       }
     });

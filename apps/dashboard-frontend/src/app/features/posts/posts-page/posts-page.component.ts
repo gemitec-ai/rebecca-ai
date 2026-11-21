@@ -123,7 +123,7 @@ export class PostsPageComponent implements OnInit {
         },
         error: () => {
           this.isLoadingTimeline = false;
-          this.toastService.show('Failed to load timeline', 'error');
+          this.toastService.show(this.translationService.t('toast.posts_load_failed'), 'error');
         },
       });
   }
@@ -278,14 +278,14 @@ export class PostsPageComponent implements OnInit {
     const ids = Array.from(this.selectedRows);
     this.dashboardRepo.deletePosts(ids).subscribe({
       next: () => {
-        this.toastService.show(`Successfully deleted ${ids.length} posts`, 'success');
+        this.toastService.show(this.translationService.t('toast.posts_bulk_delete_success', { count: ids.length }), 'success');
         this.isDeleting.set(false);
         this.selectedRows.clear();
         this.selectAll = false;
         this.loadTimeline(1);
       },
       error: () => {
-        this.toastService.show('Failed to delete posts', 'error');
+        this.toastService.show(this.translationService.t('toast.posts_bulk_delete_failed'), 'error');
         this.isDeleting.set(false);
       },
     });

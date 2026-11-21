@@ -3,6 +3,7 @@ import { Component, Input, OnChanges, inject, signal, effect } from '@angular/co
 import { FormsModule } from '@angular/forms';
 import { DrawerService } from '../../../../core/services/drawer.service';
 import { ToastService } from '../../../services/toast.service';
+import { TranslationService } from '../../../../core/services/translation.service';
 import { USERS_REPOSITORY } from '../../../../core/ports/users.repository';
 import { UserDetail, UserStatus } from '@rebecca/types';
 import { TzDatePipe } from '../../../pipes/tz-date.pipe';
@@ -29,6 +30,7 @@ export class UserDrawerComponent implements OnChanges {
   
   /** Injected service for displaying toast notifications. */
   toastService = inject(ToastService);
+  private readonly translationService = inject(TranslationService);
 
   /** Injected context service for AI copilot context tracking. */
   contextService = inject(CopilotContextService);
@@ -158,12 +160,15 @@ export class UserDrawerComponent implements OnChanges {
     this.usersRepo.updateMemory(this.userId, updatedProfile).subscribe({
       next: () => {
         this.user.set({ ...u, coreProfile: updatedProfile });
-        this.toastService.show(`Successfully saved core profile for ${this.userId}`, 'success');
+        this.toastService.show(
+          this.translationService.t('toast.user_profile_save_success', { id: this.userId ?? '' }),
+          'success',
+        );
         this.isSavingProfile.set(false);
       },
       error: (err) => {
         console.error('Failed to save core profile:', err);
-        this.toastService.show('Failed to save core profile', 'error');
+        this.toastService.show(this.translationService.t('toast.user_profile_save_failed'), 'error');
         this.isSavingProfile.set(false);
       }
     });
@@ -191,11 +196,15 @@ export class UserDrawerComponent implements OnChanges {
           details: { interactions: u.interactions, status: targetStatus, firstSeen: u.firstSeen, lastSeen: u.lastSeen }
         });
         this.isActionLoading.set(false);
-        this.toastService.show(`Successfully ${targetStatus === UserStatus.BLOCKED ? 'blocked' : 'unblocked'} user ${targetId}`, 'success');
+        const toastKey =
+          targetStatus === UserStatus.BLOCKED
+            ? 'toast.user_blocked_success'
+            : 'toast.user_unblocked_success';
+        this.toastService.show(this.translationService.t(toastKey, { id: targetId }), 'success');
       },
       error: (err) => {
         console.error('Failed to update user status:', err);
-        this.toastService.show('Failed to update user status', 'error');
+        this.toastService.show(this.translationService.t('toast.user_status_update_failed'), 'error');
         this.isActionLoading.set(false);
       }
     });
