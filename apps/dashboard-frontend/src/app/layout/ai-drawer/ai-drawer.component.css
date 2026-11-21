@@ -319,20 +319,57 @@
 }
 
 .action-card.danger { 
-  border-color: rgba(239, 68, 68, 0.6); 
+  border-color: rgba(239, 68, 68, 0.5); 
+  border-left: 4px solid var(--danger-solid);
   background: rgba(239, 68, 68, 0.08); 
 }
 
 .action-card.warning { 
-  border-color: rgba(245, 158, 11, 0.6); 
+  border-color: rgba(245, 158, 11, 0.5); 
   background: rgba(245, 158, 11, 0.08); 
+}
+
+.action-card.info {
+  border-color: rgba(168, 85, 247, 0.5);
+  background: rgba(168, 85, 247, 0.08);
 }
 
 .action-card-header { 
   display: flex; 
   align-items: center; 
-  gap: 6px; 
-  margin-bottom: 4px; 
+  flex-wrap: wrap;
+  gap: 8px; 
+  margin-bottom: 6px; 
+}
+
+.action-card-icon-chip {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+}
+
+.action-card-icon-chip .material-icons {
+  font-size: 14px;
+  line-height: 1;
+}
+
+.action-card.danger .action-card-icon-chip {
+  background: var(--danger-solid);
+  color: #fff;
+}
+
+.action-card.warning .action-card-icon-chip {
+  background: var(--warning);
+  color: #1f1300;
+}
+
+.action-card.info .action-card-icon-chip {
+  background: #7c3aed;
+  color: #fff;
 }
 
 .action-card-title { 
@@ -341,8 +378,28 @@
   color: #fff; 
 }
 
+.action-card-level-pill {
+  font-size: 0.7rem;
+  font-weight: 600;
+  padding: 1px 8px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  margin-left: auto;
+  white-space: nowrap;
+}
+
+.action-card-level-pill.danger {
+  color: #fca5a5;
+  border-color: rgba(252, 165, 165, 0.5);
+}
+
+.action-card-level-pill.warning {
+  color: #fcd34d;
+  border-color: rgba(252, 211, 77, 0.5);
+}
+
 .action-card-desc { 
-  margin: 0 0 8px 0; 
+  margin: 0 0 10px 0; 
   font-size: 0.8rem; 
   color: var(--text-muted); 
   line-height: 1.4; 
@@ -350,7 +407,7 @@
 
 .action-buttons-wrap { 
   display: flex; 
-  gap: 6px; 
+  gap: 8px; 
   width: 100%;
   box-sizing: border-box;
 }
@@ -358,21 +415,52 @@
 .action-btn { 
   flex: 1;
   min-width: 0;
-  padding: 6px 8px; 
-  border-radius: 6px; 
-  font-size: 0.76rem; 
+  min-height: 44px;
+  padding: 10px 14px; 
+  border-radius: 8px; 
+  font-size: 0.85rem; 
   font-weight: 600; 
   cursor: pointer; 
   border: none; 
-  transition: 0.2s; 
+  transition: background-color 0.2s, transform 0.1s, opacity 0.2s; 
   display: inline-flex; 
   align-items: center; 
   justify-content: center;
-  gap: 4px; 
+  gap: 6px; 
   white-space: nowrap;
   box-sizing: border-box;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+@media (min-width: 769px) {
+  .action-btn {
+    min-height: 36px;
+    padding: 8px 12px;
+  }
+}
+
+.action-btn:focus-visible {
+  outline: 2px solid #fff;
+  outline-offset: 2px;
+}
+
+.action-btn:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+.action-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .action-btn {
+    transition: none;
+  }
+  .action-btn:active:not(:disabled) {
+    transform: none;
+  }
 }
 
 .action-btn.approve-btn {
@@ -384,30 +472,39 @@
 }
 
 .approve-btn.danger { 
-  background: #ef4444; 
+  background: var(--danger-solid); 
   color: #fff; 
 }
 
-.approve-btn.danger:hover { 
-  background: #dc2626; 
+.approve-btn.danger:hover:not(:disabled) { 
+  background: var(--danger-solid-hover); 
 }
 
 .approve-btn.warning { 
-  background: #f59e0b; 
-  color: #000; 
+  background: var(--warning); 
+  color: #1f1300; 
 }
 
-.approve-btn.warning:hover { 
+.approve-btn.warning:hover:not(:disabled) { 
   background: #d97706; 
+}
+
+.approve-btn.info {
+  background: linear-gradient(135deg, #7c3aed, var(--color-secondary));
+  color: #fff;
+}
+
+.approve-btn.info:hover:not(:disabled) {
+  background: linear-gradient(135deg, #6d28d9, #7e22ce);
 }
 
 .cancel-btn { 
   background: rgba(255, 255, 255, 0.08); 
-  color: var(--text-muted); 
-  border: 1px solid rgba(255, 255, 255, 0.15); 
+  color: #cbd5e1; 
+  border: 1px solid rgba(255, 255, 255, 0.28); 
 }
 
-.cancel-btn:hover { 
+.cancel-btn:hover:not(:disabled) { 
   background: rgba(255, 255, 255, 0.15); 
   color: #fff; 
 }

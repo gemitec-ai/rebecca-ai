@@ -102,23 +102,30 @@
             @if (msg.actionRequired) {
               <div class="action-card" [ngClass]="msg.actionRequired.impactLevel">
                 <div class="action-card-header">
-                  <span class="material-icons" style="font-size: 1rem;" [style.color]="msg.actionRequired.impactLevel === 'danger' ? '#f87171' : '#fbbf24'">
-                    {{ msg.actionRequired.impactLevel === 'danger' ? 'warning' : 'bolt' }}
+                  <span class="action-card-icon-chip" aria-hidden="true">
+                    <span class="material-icons">bolt</span>
                   </span>
                   <span class="action-card-title">{{ msg.actionRequired.title }}</span>
+                  @if (msg.actionRequired.impactLevel === 'danger' || msg.actionRequired.impactLevel === 'warning') {
+                    <span class="action-card-level-pill" [ngClass]="msg.actionRequired.impactLevel">
+                      {{ 'copilot.level_confirm_required' | translate }}
+                    </span>
+                  }
                 </div>
                 <p class="action-card-desc">{{ msg.actionRequired.description }}</p>
 
                 @if (msg.actionStatus === 'pending' || !msg.actionStatus) {
                   <div class="action-buttons-wrap">
-                    <button 
+                    <button
+                      type="button"
                       class="action-btn approve-btn" 
                       [ngClass]="msg.actionRequired.impactLevel"
                       (click)="onApproveAction(i, msg.actionRequired)">
-                      <span class="material-icons" style="font-size: 0.9rem;">check_circle</span>
+                      <span class="material-icons" aria-hidden="true" style="font-size: 1.05rem;">check_circle</span>
                       <span>{{ 'copilot.approve' | translate }}</span>
                     </button>
-                    <button 
+                    <button
+                      type="button"
                       class="action-btn cancel-btn"
                       (click)="onCancelAction(i)">
                       <span>{{ 'copilot.cancel' | translate }}</span>
@@ -128,14 +135,14 @@
 
                 @if (msg.actionStatus === 'executed') {
                   <div class="action-status-badge executed">
-                    <span class="material-icons" style="font-size: 0.9rem;">task_alt</span>
+                    <span class="material-icons" aria-hidden="true" style="font-size: 0.95rem;">task_alt</span>
                     <span>{{ 'copilot.status_executed' | translate }}</span>
                   </div>
                 }
 
                 @if (msg.actionStatus === 'cancelled') {
                   <div class="action-status-badge cancelled">
-                    <span class="material-icons" style="font-size: 0.9rem;">block</span>
+                    <span class="material-icons" aria-hidden="true" style="font-size: 0.95rem;">cancel</span>
                     <span>{{ 'copilot.status_cancelled' | translate }}</span>
                   </div>
                 }
