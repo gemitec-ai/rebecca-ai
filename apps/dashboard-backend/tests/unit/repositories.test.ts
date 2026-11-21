@@ -219,7 +219,7 @@ describe('Dashboard Backend Repositories Unit Tests', () => {
 
     it('getById should return user details with chat history or null', async () => {
       (usersRepo as any).collections.users.doc = jest.fn().mockReturnValue({
-        get: jest.fn().mockResolvedValueOnce({
+        get: jest.fn().mockResolvedValue({
           exists: true,
           id: 'u1',
           data: () => ({
@@ -250,8 +250,20 @@ describe('Dashboard Backend Repositories Unit Tests', () => {
       const user = await usersRepo.getById('u1');
       expect(user).not.toBeNull();
       expect(user?.name).toBe('Alice');
-      expect(user?.chatHistory).toHaveLength(2); // user message + model message
-      expect(user?.chatHistory[0].text).toBe('Hello!');
+      expect(user?.interactions).toBe(5);
+
+      (usersRepo as any).collections.conversationLogs.where = jest.fn().mockReturnValue({
+        orderBy: jest.fn().mockReturnThis(),
+        limit: jest.fn().mockReturnThis(),
+        get: jest.fn().mockResolvedValueOnce({ docs: [mockLogDoc], size: 1 })
+      });
+
+      const convs = await usersRepo.getConversations('u1', { page: 1, limit: 20, sortOrder: 'desc' });
+      expect(convs).not.toBeNull();
+      expect(convs?.data).toHaveLength(2); // user message + model message
+      expect(convs?.data[0].text).toBe('Hello!');
+      expect(convs?.meta.totalItems).toBe(1);
+      expect(convs?.meta.currentPage).toBe(1);
     });
 
     it('updateMemory and updateStatusBulk should execute write operations', async () => {

@@ -71,6 +71,7 @@ describe('Dashboard Backend UseCases Unit Tests', () => {
       repo = {
         getAll: jest.fn(),
         getById: jest.fn(),
+        getConversations: jest.fn(),
         updateMemory: jest.fn(),
         updateStatusBulk: jest.fn()
       } as unknown as jest.Mocked<UsersRepository>;
@@ -86,7 +87,6 @@ describe('Dashboard Backend UseCases Unit Tests', () => {
         firstSeen: '2026-08-01',
         lastSeen: '2026-08-18',
         coreProfile: '{}',
-        chatHistory: [],
         status: UserStatus.ACTIVE
       };
       const mockResult = {
@@ -109,7 +109,6 @@ describe('Dashboard Backend UseCases Unit Tests', () => {
         firstSeen: '2026-08-01',
         lastSeen: '2026-08-18',
         coreProfile: '{}',
-        chatHistory: [],
         status: UserStatus.ACTIVE
       };
       repo.getById.mockResolvedValueOnce(mockUser);
@@ -117,6 +116,18 @@ describe('Dashboard Backend UseCases Unit Tests', () => {
       const res = await useCase.getUserById('u1');
       expect(repo.getById).toHaveBeenCalledWith('u1');
       expect(res).toEqual(mockUser);
+    });
+
+    it('getUserConversations should delegate pagination and sortOrder to repository', async () => {
+      const mockConvs = {
+        data: [{ role: 'user' as const, text: 'Hi', time: '2026-11-20T00:00:00Z' }],
+        meta: { totalItems: 1, totalPages: 1, currentPage: 1, limit: 20 }
+      };
+      repo.getConversations.mockResolvedValueOnce(mockConvs);
+
+      const res = await useCase.getUserConversations('u1', { page: 1, limit: 20, sortOrder: 'desc' });
+      expect(repo.getConversations).toHaveBeenCalledWith('u1', { page: 1, limit: 20, sortOrder: 'desc' });
+      expect(res).toEqual(mockConvs);
     });
 
     it('updateUserMemory should delegate to repository', async () => {

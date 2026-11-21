@@ -456,7 +456,6 @@ export interface UserDetail {
   firstSeen: string;
   lastSeen: string;
   coreProfile: string; // JSON string
-  chatHistory: ChatMessage[];
   status: UserStatus;
   ragMemoriesStatus?: string;
   ragMemoriesCount?: number;

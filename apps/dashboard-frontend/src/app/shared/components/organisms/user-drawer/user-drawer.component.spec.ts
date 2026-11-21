@@ -27,15 +27,26 @@ describe('UserDrawerComponent (White-box Coverage)', () => {
       preferences: ['Late night anime'],
       concerns: [],
       important_memories: []
-    }),
-    chatHistory: []
+    })
   };
 
   beforeEach(async () => {
-    mockUsersRepo = jasmine.createSpyObj('UsersRepository', ['getById', 'bulkUpdateStatus', 'updateMemory']);
+    mockUsersRepo = jasmine.createSpyObj('UsersRepository', [
+      'getById',
+      'getConversations',
+      'bulkUpdateStatus',
+      'updateMemory'
+    ]);
     mockToastService = jasmine.createSpyObj('ToastService', ['show']);
 
     mockUsersRepo.getById.and.callFake(() => of({ ...mockUserDetail }));
+    mockUsersRepo.getConversations.and.returnValue(of({
+      data: [
+        { role: 'user', text: 'Hi', time: '2026-11-20T00:00:00Z' },
+        { role: 'model', text: 'Hey!', time: '2026-11-20T00:00:01Z' }
+      ],
+      meta: { totalItems: 2, totalPages: 2, currentPage: 1, limit: 20 }
+    }));
     mockUsersRepo.bulkUpdateStatus.and.returnValue(of(void 0));
     mockUsersRepo.updateMemory.and.returnValue(of(void 0));
 
@@ -62,6 +73,27 @@ describe('UserDrawerComponent (White-box Coverage)', () => {
     expect(component.user()).toEqual(mockUserDetail);
     expect(component.isBlocked()).toBeFalse();
     expect(component.parsedProfile()['attributes']).toContain('Gyaru lover');
+    expect(mockUsersRepo.getConversations).not.toHaveBeenCalled();
+  });
+
+  it('should lazy-load paginated conversations when switching to conversations tab and support sortOrder toggle', () => {
+    component.setTab('conversations');
+    expect(component.activeTab()).toBe('conversations');
+    expect(mockUsersRepo.getConversations).toHaveBeenCalledWith('user_123', {
+      page: 1,
+      limit: 20,
+      sortOrder: 'desc'
+    });
+    expect(component.conversations().length).toBe(2);
+
+    // Toggle to oldest-first ('asc')
+    component.toggleSortOrder();
+    expect(component.conversationsSortOrder()).toBe('asc');
+    expect(mockUsersRepo.getConversations).toHaveBeenCalledWith('user_123', {
+      page: 1,
+      limit: 20,
+      sortOrder: 'asc'
+    });
   });
 
   it('should handle fetch user error gracefully', () => {
