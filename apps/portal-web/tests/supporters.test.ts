@@ -10,7 +10,6 @@ import {
   closeSupporterModal,
   onBackdropClick,
   renderPagination,
-  goToPage,
   initSupportersModalEvents,
   supportPlansMap,
 } from '../src/scripts/supporters';

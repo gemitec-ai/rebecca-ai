@@ -1,7 +1,6 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { HttpClientTestingModule } from '@angular/common/http/testing';
 import { Router } from '@angular/router';
-import { RouterTestingModule } from '@angular/router/testing';
 import { signal } from '@angular/core';
 import { AiDrawerComponent } from './ai-drawer.component';
 import { DrawerService } from '../../core/services/drawer.service';
