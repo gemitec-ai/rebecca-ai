@@ -1,6 +1,6 @@
 {
   "name": "bot-backend",
-  "version": "1.44.4",
+  "version": "1.44.5",
   "description": "",
   "main": "dist/index.js",
   "scripts": {
