@@ -240,7 +240,7 @@ All collections are mapped to constants in `COLLECTIONS` (`packages/db/src/index
 | `COLLECTIONS.LOUNGE_SESSIONS` | `/lounge_sessions` | Isolated Private Lounge conversation threads | None |
 | `COLLECTIONS.LOUNGE_MESSAGES` | `/lounge_messages` | Isolated Private Lounge turn logs & token metering | None |
 | `COLLECTIONS.LOUNGE_RAG_MEMORIES` | `/lounge_rag_memories` | Isolated Private Lounge episodic memories (no X write-back) | None |
-| `COLLECTIONS.LOUNGE_REWARDS` | `/lounge_rewards` | Isolated Private Lounge unlockable illustration rewards | None |
+| `COLLECTIONS.LOUNGE_GALLERY` | `/lounge_gallery` | Isolated Private Lounge unlocked Bot illustration gallery | None |
 
 ---
 
@@ -610,24 +610,30 @@ Synthesized by `@rebecca/memory` (`DreamingConsolidationEngine`) and orchestrate
 
 ### 4.18 Isolated Private Lounge Collections (`lounge_*`)
 
-The **Gemitec Private Lounge** stores all end-user profiles, scroll-verified legal consent records, subscription quotas, private chat threads, turn logs, episodic RAG memories, and illustration rewards inside six dedicated collections completely isolated from the Public X Bot (`users`, `conversation_logs`, `rag_memories`) and Admin Dashboard (`admin_users`):
+The **Gemitec Private Lounge** enforces a strict **1 X account = 1 Private Lounge account = 1 continuous conversation session** architecture inside six dedicated collections completely isolated from the Public X Bot (`users`, `conversation_logs`, `rag_memories`, `system/persona`, `timeline_history`) and Admin Dashboard (`admin_users`):
 
-- **Strict One-Way Memory Isolation Invariant**:
-  - The Lounge BFF (`apps/lounge-backend`) reads Public X user memory **exclusively via `IPublicXMemoryReadPort` (read-only)** so the active AI persona recalls shared Public X context.
-  - Lounge interactions, prompts, and memories write strictly to `lounge_*` collections and **NEVER** mutate `users`, `conversation_logs`, or `rag_memories`.
+- **Two-Layer Cognitive Memory Architecture**:
+  - *Independent Private Lounge Memory (`lounge_*`)*: Stores per-user Dreaming structured profiles (`lounge_users.coreProfile`), sliding episodic turns (`lounge_users.episodicBuffer`), vectorized episodic semantic memories (`lounge_rag_memories.embedding`), and raw turns (`lounge_messages`) completely separate from Public X.
+  - *Read-Only Public X Bot Injection*: On reply generation, the Lounge BFF reads (never mutates) the user's Public X structured `coreProfile`, vectorized `rag_memories`, recent `conversation_logs`, and the AI persona's Layer 1 Global Evolution (`extended_prompt`), Layer 2 Self-Reflection (`timeline_summary`), and Layer 3 recent X posts (`timeline_history`) via `IPublicXMemoryReadPort`.
+- **Irreversible Account Withdrawal**: Deleting a user account cascades across `lounge_users`, `lounge_subscriptions`, `lounge_sessions`, `lounge_messages`, `lounge_rag_memories`, and `lounge_gallery` without affecting Public X records.
 
 #### `lounge_users` (`COLLECTIONS.LOUNGE_USERS`)
-Document ID = Firebase Auth `uid`.
+Document ID = Firebase Auth `uid`. Unique index invariant: `xUserId` is 1:1 (duplicate X account sign-up is rejected with HTTP 409).
 
 | Field Name | Type | Description |
 | :--- | :--- | :--- |
 | `uid` | `string` (Doc ID) | Firebase Authentication UID linked to verified X OAuth identity. |
-| `xUserId` | `string` | Immutable X user identifier used solely for read-only Public X memory lookup. |
+| `xUserId` | `string` | Immutable X user identifier (1:1 uniqueness + read-only Public X memory lookup). |
 | `xHandle` | `string` | Sanitized X handle (`@username`). |
 | `displayName` | `string` | Display nickname shown in the Lounge UI. |
 | `avatarUrl` | `string` | Profile avatar path or HTTPS URL. |
 | `status` | `'ACTIVE' \| 'SUSPENDED'` | Lounge account status. |
+| `language` | `LoungeLanguage` | Selected UI & AI reply language (`ja \| en \| de \| pt \| es \| zh-HK \| vi \| th`). |
+| `timezone` | `string` | User's IANA timezone identifier (e.g. `Asia/Tokyo`) for day/night time-of-day awareness. |
 | `disclaimerConsent` | `LoungeUserDisclaimerConsent` | Scroll-verified sign-up consent (`disclaimerVersion`, `agreedToGeminiTrainingUsage`, `agreedToZeroPiiProhibition`, `agreedToOneWayMemoryIsolation`, `scrolledToBottomAt`, `consentedAt`). |
+| `coreProfile` | `UserCoreProfile \| undefined` | Structured user profile consolidated independently via Private Lounge Dreaming. |
+| `episodicBuffer` | `ConversationLogEntry[] \| undefined` | Recent private raw turn sliding buffer for Dreaming consolidation. |
+| `lastDreamedAt` | `Timestamp \| undefined` | Last completed Private Lounge Dreaming consolidation timestamp. |
 | `createdAt` | `Timestamp` (ISO 8601) | Account registration timestamp. |
 | `updatedAt` | `Timestamp` (ISO 8601) | Last profile update timestamp. |
 | `lastLoginAt` | `Timestamp` (ISO 8601) | Most recent authenticated login timestamp. |
@@ -648,7 +654,7 @@ Document ID = Firebase Auth `uid`.
 | `updatedAt` | `Timestamp` (ISO 8601) | Last quota or subscription update timestamp. |
 
 #### `lounge_sessions` (`COLLECTIONS.LOUNGE_SESSIONS`)
-Document ID = Session UUID. Composite index: `uid ASC, updatedAt DESC`.
+Document ID = Firebase Auth `uid` (each user owns one continuous conversation session). Composite index: `uid ASC, updatedAt DESC`.
 
 | Field Name | Type | Description |
 | :--- | :--- | :--- |
@@ -656,7 +662,7 @@ Document ID = Session UUID. Composite index: `uid ASC, updatedAt DESC`.
 | `uid` | `string` | Owning Lounge user UID. |
 | `title` | `string` | Conversation thread title. |
 | `messageCount` | `number` | Number of persisted messages in `lounge_messages`. |
-| `currentEmotion` | `LoungeEmotionState` | Latest persona emotion state (`NEUTRAL \| HAPPY \| TEASING \| SHY \| EXCITED \| THOUGHTFUL`). |
+| `currentEmotion` | `LoungeEmotionState` | Latest persona emotion state (`NEUTRAL \| HAPPY \| TEASING \| SHY \| EXCITED \| THOUGHTFUL \| SURPRISED`). |
 | `publicXMemorySyncedAt` | `Timestamp` (ISO 8601) | Last read-only sync snapshot timestamp from `IPublicXMemoryReadPort`. |
 | `lastMessagePreview` | `string` | Short preview snippet of the latest turn. |
 | `createdAt` | `Timestamp` (ISO 8601) | Session creation timestamp. |
@@ -674,12 +680,13 @@ Document ID = Message UUID. Composite indexes: `sessionId ASC, createdAt ASC` an
 | `role` | `'USER' \| 'ASSISTANT' \| 'SYSTEM'` | Turn speaker role. |
 | `content` | `string` | Message text content. |
 | `emotion` | `LoungeEmotionState` | Emotion tag active for this turn. |
-| `unlockedRewardId` | `string \| undefined` | Optional reward illustration unlocked during this reply. |
+| `imageAssetId` | `string \| undefined` | Optional Bot illustration asset ID matched to the assistant reply. |
+| `imageUrl` | `string \| undefined` | Optional Bot illustration URL or asset path displayed in the chat turn. |
 | `tokenUsage` | `LoungeTokenUsage \| undefined` | Optional Gemini token usage breakdown (`promptTokens`, `candidatesTokens`, `totalTokens`). |
 | `createdAt` | `Timestamp` (ISO 8601) | Turn creation timestamp. |
 
 #### `lounge_rag_memories` (`COLLECTIONS.LOUNGE_RAG_MEMORIES`)
-Document ID = Memory UUID. Composite index: `uid ASC, updatedAt DESC`. Isolated from Public Bot `rag_memories`.
+Document ID = Memory UUID. Composite index: `uid ASC, updatedAt DESC`; Vector index: `uid ASC, embedding` (768 dimensions, Cosine). Isolated from Public Bot `rag_memories`.
 
 | Field Name | Type | Description |
 | :--- | :--- | :--- |
@@ -688,26 +695,23 @@ Document ID = Memory UUID. Composite index: `uid ASC, updatedAt DESC`. Isolated 
 | `sessionId` | `string` | Source Private Lounge session ID. |
 | `category` | `'EPISODE' \| 'PREFERENCE' \| 'PROMISE' \| 'NICKNAME'` | Private memory taxonomy category. |
 | `summary` | `string` | Consolidated private memory summary (never exported to Public X). |
+| `embedding` | `number[]` (Vector 768) | Dense vector embedding for semantic cosine similarity search. |
 | `salienceScore` | `number` | Retrieval importance weight (`0.0 - 1.0`). |
 | `createdAt` | `Timestamp` (ISO 8601) | Creation timestamp. |
 | `updatedAt` | `Timestamp` (ISO 8601) | Last salience/summary update timestamp. |
 
-#### `lounge_rewards` (`COLLECTIONS.LOUNGE_REWARDS`)
-Document ID = `<uid>_<rewardCode>`. Composite index: `uid ASC, unlocked DESC`.
+#### `lounge_gallery` (`COLLECTIONS.LOUNGE_GALLERY`)
+Document ID = `<uid>_<assetId>`. Composite index: `uid ASC, unlocked DESC`.
 
 | Field Name | Type | Description |
 | :--- | :--- | :--- |
-| `id` | `string` (Doc ID) | Unique reward document identifier. |
+| `id` | `string` (Doc ID) | Unique gallery document identifier. |
 | `uid` | `string` | Owning Lounge user UID. |
-| `code` | `string` | Stable catalog code (e.g., `RW-01`). |
-| `titleJa` / `titleEn` | `string` | Bilingual reward title. |
-| `descriptionJa` / `descriptionEn` | `string` | Bilingual unlock condition or caption. |
-| `emotionTag` | `LoungeEmotionState` | Associated emotional state. |
-| `rarity` | `'SR' \| 'SSR' \| 'UR'` | Collectible illustration rarity badge. |
-| `previewAssetPath` | `string` | Static or signed illustration preview asset path. |
-| `unlocked` | `boolean` | Whether unlocked for this user. |
+| `assetId` | `string` | Matched Bot illustration asset ID (`images` catalog reference). |
+| `imageUrl` | `string` | Static or signed Bot illustration image path/URL. |
+| `unlocked` | `boolean` | Whether unlocked by appearing at least once in a chat reply for this user. |
 | `unlockedAt` | `Timestamp \| undefined` | Unlock timestamp when `unlocked === true`. |
-| `sourceSessionId` | `string \| undefined` | Session ID in which this illustration was shared. |
+| `sourceSessionId` | `string \| undefined` | Session ID in which this illustration was first displayed. |
 
 ---
 
@@ -716,6 +720,7 @@ Document ID = `<uid>_<rewardCode>`. Composite index: `uid ASC, unlocked DESC`.
 1. **Vector Indexes**:
    - `rag_memories`: Vector index on `embedding` (768 dimensions, Cosine) composite with `userId` (ASC).
    - `images`: Vector index on `embedding` (768 dimensions, Cosine).
+   - `lounge_rag_memories`: Vector index on `embedding` (768 dimensions, Cosine) composite with `uid` (ASC).
 2. **Composite Indexes**:
    - `rag_memories`: `userId` ASC + `timestamp` ASC (enables FIFO memory pruning).
    - `processed_followers`: `listStatus` ASC + `timestamp` ASC (enables self-healing retries).
@@ -726,7 +731,7 @@ Document ID = `<uid>_<rewardCode>`. Composite index: `uid ASC, unlocked DESC`.
    - `lounge_messages`: `sessionId` ASC + `createdAt` ASC (enables paginated chronological chat retrieval).
    - `lounge_messages`: `sessionId` ASC + `createdAt` DESC (enables latest-turn context window fetches).
    - `lounge_rag_memories`: `uid` ASC + `updatedAt` DESC (enables ordered private RAG memory lookup).
-   - `lounge_rewards`: `uid` ASC + `unlocked` DESC (enables unlocked-first paginated illustration gallery).
+   - `lounge_gallery`: `uid` ASC + `unlocked` DESC (enables unlocked-first paginated illustration gallery).
 3. **TTL Policies**:
    - `conversation_logs.expireAt`: Enabled (5-year automatic expiration).
    - `timeline_history.expireAt`: Enabled (5-year automatic expiration).

@@ -18,7 +18,7 @@ import {
   loungeSessionConverter,
   loungeMessageConverter,
   loungeRagMemoryConverter,
-  loungeRewardConverter,
+  loungeGalleryConverter,
 } from '../../src/index';
 import {
   UserStatus,
@@ -34,7 +34,7 @@ import {
   LoungeSessionDoc,
   LoungeMessageDoc,
   LoungeRagMemoryDoc,
-  LoungeRewardDoc,
+  LoungeGalleryItemDoc,
 } from '@rebecca/types';
 
 describe('@rebecca/db Unit Tests', () => {
@@ -597,24 +597,20 @@ describe('@rebecca/db Unit Tests', () => {
       expect(mockCollection).toHaveBeenCalledWith(COLLECTIONS.PROCESSED_MENTIONS);
       expect(mockCollection).toHaveBeenCalledWith(COLLECTIONS.CAMPAIGNS);
 
-      expect(collections.users).toBeDefined();
-      expect(collections.conversationLogs).toBeDefined();
-      expect(collections.timelineHistory).toBeDefined();
-      expect(collections.ragMemories).toBeDefined();
-      expect(collections.images).toBeDefined();
-      expect(collections.processedFollowers).toBeDefined();
-      expect(collections.listInteractionHistory).toBeDefined();
-      expect(collections.rateLimits).toBeDefined();
-      expect(collections.system).toBeDefined();
-      expect(collections.systemStats).toBeDefined();
-      expect(collections.processedMentions).toBeDefined();
-      expect(collections.campaigns).toBeDefined();
-      expect(collections.loungeUsers).toBeDefined();
-      expect(collections.loungeSubscriptions).toBeDefined();
-      expect(collections.loungeSessions).toBeDefined();
-      expect(collections.loungeMessages).toBeDefined();
-      expect(collections.loungeRagMemories).toBeDefined();
-      expect(collections.loungeRewards).toBeDefined();
+      expect(mockCollection).toHaveBeenCalledWith(COLLECTIONS.LOUNGE_USERS);
+      expect(mockCollection).toHaveBeenCalledWith(COLLECTIONS.LOUNGE_SUBSCRIPTIONS);
+      expect(mockCollection).toHaveBeenCalledWith(COLLECTIONS.LOUNGE_SESSIONS);
+      expect(mockCollection).toHaveBeenCalledWith(COLLECTIONS.LOUNGE_MESSAGES);
+      expect(mockCollection).toHaveBeenCalledWith(COLLECTIONS.LOUNGE_RAG_MEMORIES);
+      expect(mockCollection).toHaveBeenCalledWith(COLLECTIONS.LOUNGE_GALLERY);
+
+      expect(collections.users).toEqual({ converter: userConverter });
+      expect(collections.loungeUsers).toEqual({ converter: loungeUserConverter });
+      expect(collections.loungeSubscriptions).toEqual({ converter: loungeSubscriptionConverter });
+      expect(collections.loungeSessions).toEqual({ converter: loungeSessionConverter });
+      expect(collections.loungeMessages).toEqual({ converter: loungeMessageConverter });
+      expect(collections.loungeRagMemories).toEqual({ converter: loungeRagMemoryConverter });
+      expect(collections.loungeGallery).toEqual({ converter: loungeGalleryConverter });
     });
   });
 
@@ -625,12 +621,12 @@ describe('@rebecca/db Unit Tests', () => {
       expect(COLLECTIONS.LOUNGE_SESSIONS).toBe('lounge_sessions');
       expect(COLLECTIONS.LOUNGE_MESSAGES).toBe('lounge_messages');
       expect(COLLECTIONS.LOUNGE_RAG_MEMORIES).toBe('lounge_rag_memories');
-      expect(COLLECTIONS.LOUNGE_REWARDS).toBe('lounge_rewards');
+      expect(COLLECTIONS.LOUNGE_GALLERY).toBe('lounge_gallery');
       expect(COLLECTIONS.LOUNGE_USERS).not.toBe(COLLECTIONS.USERS);
       expect(COLLECTIONS.LOUNGE_RAG_MEMORIES).not.toBe(COLLECTIONS.RAG_MEMORIES);
     });
 
-    it('serializes and deserializes loungeUserConverter with scroll-verified consent', () => {
+    it('serializes and deserializes loungeUserConverter with scroll-verified consent, language, and timezone', () => {
       const user: LoungeUserDoc = {
         uid: 'uid_lounge_001',
         xUserId: '100020003000',
@@ -638,6 +634,8 @@ describe('@rebecca/db Unit Tests', () => {
         displayName: 'Cyber Runner 01',
         avatarUrl: 'https://example.com/avatar.png',
         status: 'ACTIVE',
+        language: 'zh-HK',
+        timezone: 'Asia/Hong_Kong',
         disclaimerConsent: {
           disclaimerVersion: '2026-11-22',
           agreedToGeminiTrainingUsage: true,
@@ -660,6 +658,58 @@ describe('@rebecca/db Unit Tests', () => {
         data: () => raw,
       } as any);
       expect(roundTrip).toEqual(user);
+
+      const userWithDreamingMemory: LoungeUserDoc = {
+        ...user,
+        coreProfile: { hobbies: ['Synthwave'] },
+        episodicBuffer: [
+          {
+            role: 'user',
+            content: 'コーヒーが好き',
+            timestamp: '2026-11-22T12:01:00.000Z',
+          },
+          {
+            role: 'model',
+            content: 'ブラック派なんだ！',
+            thought: '覚えておこう',
+            timestamp: '2026-11-22T12:02:00.000Z',
+          },
+        ],
+        lastDreamedAt: '2026-11-22T13:00:00.000Z',
+      };
+      const rawDream = loungeUserConverter.toFirestore(userWithDreamingMemory);
+      expect(rawDream['lastDreamedAt']).toBeInstanceOf(Timestamp);
+      expect(
+        loungeUserConverter.fromFirestore({ id: 'uid_lounge_001', data: () => rawDream } as any),
+      ).toEqual(userWithDreamingMemory);
+
+      expect(() =>
+        loungeUserConverter.fromFirestore({
+          id: 'bad_core',
+          data: () => ({ ...raw, coreProfile: ['not-object'] }),
+        } as any),
+      ).toThrow(/Invalid non-object field "coreProfile"/);
+
+      expect(() =>
+        loungeUserConverter.fromFirestore({
+          id: 'bad_buf',
+          data: () => ({ ...raw, episodicBuffer: 'not-array' }),
+        } as any),
+      ).toThrow(/Invalid non-array field "episodicBuffer"/);
+
+      expect(() =>
+        loungeUserConverter.fromFirestore({
+          id: 'bad_buf_null',
+          data: () => ({ ...raw, episodicBuffer: [null] }),
+        } as any),
+      ).toThrow(/Corrupted episodicBuffer entry at index 0/);
+
+      expect(() =>
+        loungeUserConverter.fromFirestore({
+          id: 'bad_buf_role',
+          data: () => ({ ...raw, episodicBuffer: [{ role: 'admin', content: 'hi' }] }),
+        } as any),
+      ).toThrow(/Corrupted episodicBuffer entry at index 0/);
 
       expect(() =>
         loungeUserConverter.toFirestore({ ...user, createdAt: 'not-a-date' }),
@@ -706,6 +756,23 @@ describe('@rebecca/db Unit Tests', () => {
 
       expect(() =>
         loungeUserConverter.fromFirestore({
+          id: 'uid_bad_lang',
+          data: () => ({ ...raw, language: 'fr' }),
+        } as any),
+      ).toThrow(/Invalid enum value "fr" for "language"/);
+
+      const legacyRaw = { ...raw };
+      delete legacyRaw['language'];
+      delete legacyRaw['timezone'];
+      const legacyRoundTrip = loungeUserConverter.fromFirestore({
+        id: 'uid_legacy',
+        data: () => legacyRaw,
+      } as any);
+      expect(legacyRoundTrip.language).toBe('ja');
+      expect(legacyRoundTrip.timezone).toBe('Asia/Tokyo');
+
+      expect(() =>
+        loungeUserConverter.fromFirestore({
           id: 'uid_bad_iso',
           data: () => ({ ...raw, lastLoginAt: 'not-a-valid-date' }),
         } as any),
@@ -744,13 +811,13 @@ describe('@rebecca/db Unit Tests', () => {
       ).toThrow(/Invalid or missing numeric field "dailyTurnQuota"/);
     });
 
-    it('serializes and deserializes loungeSessionConverter, loungeMessageConverter, loungeRagMemoryConverter, and loungeRewardConverter', () => {
+    it('serializes and deserializes loungeSessionConverter, loungeMessageConverter, loungeRagMemoryConverter, and loungeGalleryConverter', () => {
       const session: LoungeSessionDoc = {
         id: 'sess_001',
         uid: 'uid_lounge_001',
         title: 'Midnight Cyber Lounge',
         messageCount: 4,
-        currentEmotion: 'TEASING',
+        currentEmotion: 'SURPRISED',
         publicXMemorySyncedAt: '2026-11-22T12:00:00.000Z',
         lastMessagePreview: 'テスト',
         createdAt: '2026-11-22T12:00:00.000Z',
@@ -770,7 +837,8 @@ describe('@rebecca/db Unit Tests', () => {
         role: 'ASSISTANT',
         content: 'こんにちは',
         emotion: 'HAPPY',
-        unlockedRewardId: 'rw_01',
+        imageAssetId: 'img_asset_01',
+        imageUrl: 'assets/gallery_morning.webp',
         tokenUsage: { promptTokens: 120, candidatesTokens: 60, totalTokens: 180 },
         createdAt: '2026-11-22T12:02:00.000Z',
       };
@@ -790,6 +858,8 @@ describe('@rebecca/db Unit Tests', () => {
       };
       const rawMinimalMsg = loungeMessageConverter.toFirestore(minimalMsg);
       expect('tokenUsage' in rawMinimalMsg).toBe(false);
+      expect('imageAssetId' in rawMinimalMsg).toBe(false);
+      expect('imageUrl' in rawMinimalMsg).toBe(false);
       expect(
         loungeMessageConverter.fromFirestore({ id: 'msg_002', data: () => rawMinimalMsg } as any),
       ).toEqual(minimalMsg);
@@ -800,6 +870,7 @@ describe('@rebecca/db Unit Tests', () => {
         sessionId: 'sess_001',
         category: 'PROMISE',
         summary: 'Prefers dark roast coffee',
+        embedding: [0.12, 0.34, 0.56],
         salienceScore: 0.92,
         createdAt: '2026-11-22T12:03:00.000Z',
         updatedAt: '2026-11-22T12:03:00.000Z',
@@ -809,26 +880,49 @@ describe('@rebecca/db Unit Tests', () => {
         loungeRagMemoryConverter.fromFirestore({ id: 'mem_001', data: () => rawRag } as any),
       ).toEqual(rag);
 
-      const reward: LoungeRewardDoc = {
-        id: 'uid_lounge_001_RW-01',
+      // VectorValue with toArray() and empty embedding fallback are decoded cleanly
+      expect(
+        loungeRagMemoryConverter.fromFirestore({
+          id: 'mem_vec',
+          data: () => ({ ...rawRag, embedding: { toArray: () => [0.5, 0.25] } }),
+        } as any).embedding,
+      ).toEqual([0.5, 0.25]);
+      expect(
+        loungeRagMemoryConverter.fromFirestore({
+          id: 'mem_legacy',
+          data: () => ({ ...rawRag, embedding: undefined }),
+        } as any).embedding,
+      ).toEqual([]);
+      expect(() =>
+        loungeRagMemoryConverter.fromFirestore({
+          id: 'mem_bad_vec',
+          data: () => ({ ...rawRag, embedding: 'invalid' }),
+        } as any),
+      ).toThrow(/Invalid non-array field "embedding"/);
+      expect(() =>
+        loungeRagMemoryConverter.fromFirestore({
+          id: 'mem_nan_vec',
+          data: () => ({ ...rawRag, embedding: [Number.NaN] }),
+        } as any),
+      ).toThrow(/Invalid non-numeric embedding element/);
+
+      const galleryItem: LoungeGalleryItemDoc = {
+        id: 'uid_lounge_001_img_asset_01',
         uid: 'uid_lounge_001',
-        code: 'RW-01',
-        titleJa: '朝の光とコーヒー',
-        titleEn: 'Morning Glow',
-        descriptionJa: '最初の対話記念',
-        descriptionEn: 'First session milestone',
-        emotionTag: 'HAPPY',
-        rarity: 'SSR',
-        previewAssetPath: 'assets/gallery_morning.webp',
+        assetId: 'img_asset_01',
+        imageUrl: 'assets/gallery_morning.webp',
         unlocked: true,
         unlockedAt: '2026-11-22T12:05:00.000Z',
         sourceSessionId: 'sess_001',
       };
-      const rawReward = loungeRewardConverter.toFirestore(reward);
-      expect(rawReward['unlockedAt']).toBeInstanceOf(Timestamp);
+      const rawGallery = loungeGalleryConverter.toFirestore(galleryItem);
+      expect(rawGallery['unlockedAt']).toBeInstanceOf(Timestamp);
       expect(
-        loungeRewardConverter.fromFirestore({ id: 'uid_lounge_001_RW-01', data: () => rawReward } as any),
-      ).toEqual(reward);
+        loungeGalleryConverter.fromFirestore({
+          id: 'uid_lounge_001_img_asset_01',
+          data: () => rawGallery,
+        } as any),
+      ).toEqual(galleryItem);
 
       expect(() =>
         loungeRagMemoryConverter.fromFirestore({
@@ -857,31 +951,25 @@ describe('@rebecca/db Unit Tests', () => {
         } as any),
       ).toThrow(/Invalid non-string field "lastMessagePreview"/);
 
-      const lockedReward: LoungeRewardDoc = {
-        id: 'uid_lounge_001_RW-02',
+      const lockedGallery: LoungeGalleryItemDoc = {
+        id: 'uid_lounge_001_img_asset_02',
         uid: 'uid_lounge_001',
-        code: 'RW-02',
-        titleJa: 'ロック中',
-        titleEn: 'Locked',
-        descriptionJa: '',
-        descriptionEn: '',
-        emotionTag: 'SHY',
-        rarity: 'UR',
-        previewAssetPath: '',
+        assetId: 'img_asset_02',
+        imageUrl: '',
         unlocked: false,
       };
-      const rawLocked = loungeRewardConverter.toFirestore(lockedReward);
+      const rawLocked = loungeGalleryConverter.toFirestore(lockedGallery);
       expect('unlockedAt' in rawLocked).toBe(false);
       expect('sourceSessionId' in rawLocked).toBe(false);
       expect(
-        loungeRewardConverter.fromFirestore({
-          id: 'uid_lounge_001_RW-02',
+        loungeGalleryConverter.fromFirestore({
+          id: 'uid_lounge_001_img_asset_02',
           data: () => rawLocked,
         } as any),
-      ).toEqual(lockedReward);
+      ).toEqual(lockedGallery);
 
       expect(() =>
-        loungeRewardConverter.fromFirestore({
+        loungeGalleryConverter.fromFirestore({
           id: 'uid_bad_unlock',
           data: () => ({ ...rawLocked, unlocked: 'false' }),
         } as any),

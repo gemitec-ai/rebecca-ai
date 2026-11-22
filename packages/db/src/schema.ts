@@ -106,8 +106,8 @@ export const COLLECTIONS = {
   LOUNGE_SUBSCRIPTIONS: 'lounge_subscriptions',
 
   /**
-   * Isolated Private Lounge conversation sessions.
-   * Doc ID = Session UUID.
+   * Isolated Private Lounge single persistent conversation session per user.
+   * Doc ID = Firebase Auth UID (`uid`, 1 persistent 1-on-1 session per registered Lounge user).
    */
   LOUNGE_SESSIONS: 'lounge_sessions',
 
@@ -124,13 +124,13 @@ export const COLLECTIONS = {
   LOUNGE_RAG_MEMORIES: 'lounge_rag_memories',
 
   /**
-   * Isolated Private Lounge unlockable reward illustration records per user.
-   * Doc ID = `<uid>_<rewardCode>`.
+   * Isolated Private Lounge gallery items unlocked during chat sessions.
+   * Doc ID = `<uid>_<assetId>`.
    */
-  LOUNGE_REWARDS: 'lounge_rewards',
+  LOUNGE_GALLERY: 'lounge_gallery',
 } as const;
 
-// Derive a union type for all collection name values.
+/** Union type of all canonical Firestore collection names managed by `@rebecca/db`. */
 export type CollectionName = (typeof COLLECTIONS)[keyof typeof COLLECTIONS];
 
 // ---------------------------------------------------------------------------
@@ -252,13 +252,18 @@ export interface ListInteraction {
 }
 
 export type {
+  ConversationLogEntry,
+  UserCoreProfile,
   LoungeAccountStatus,
+  LoungeDeleteAccountRequestDto,
   LoungeEmotionState,
+  LoungeGalleryItemDoc,
+  LoungeLanguage,
   LoungeMemoryCategory,
   LoungeMessageDoc,
+  LoungePrivateMemorySnapshot,
+  LoungePublicXMemorySnapshot,
   LoungeRagMemoryDoc,
-  LoungeRewardDoc,
-  LoungeRewardRarity,
   LoungeSenderRole,
   LoungeSessionDoc,
   LoungeSubscriptionDoc,

@@ -25,6 +25,8 @@ import {
 
 import {
   COLLECTIONS,
+  type ConversationLogEntry,
+  type UserCoreProfile,
   type FirestoreUser,
   type RawConversationLog,
   type TimelinePost,
@@ -44,11 +46,11 @@ import {
   type SupportTransactionDoc,
   type LoungeAccountStatus,
   type LoungeEmotionState,
+  type LoungeGalleryItemDoc,
+  type LoungeLanguage,
   type LoungeMemoryCategory,
   type LoungeMessageDoc,
   type LoungeRagMemoryDoc,
-  type LoungeRewardDoc,
-  type LoungeRewardRarity,
   type LoungeSenderRole,
   type LoungeSessionDoc,
   type LoungeSubscriptionDoc,
@@ -467,6 +469,7 @@ const campaignDocConverter: FirestoreDataConverter<CampaignDoc> = {
 // ---------------------------------------------------------------------------
 
 const LOUNGE_ACCOUNT_STATUSES: readonly LoungeAccountStatus[] = ['ACTIVE', 'SUSPENDED'];
+const LOUNGE_LANGUAGES: readonly LoungeLanguage[] = ['ja', 'en', 'de', 'pt', 'es', 'zh-HK', 'vi', 'th'];
 const LOUNGE_SUBSCRIPTION_TIERS: readonly LoungeSubscriptionTier[] = ['FREE', 'SUPPORTER', 'VIP'];
 const LOUNGE_SUBSCRIPTION_STATUSES: readonly LoungeSubscriptionStatus[] = [
   'ACTIVE',
@@ -480,6 +483,7 @@ const LOUNGE_EMOTION_STATES: readonly LoungeEmotionState[] = [
   'SHY',
   'EXCITED',
   'THOUGHTFUL',
+  'SURPRISED',
 ];
 const LOUNGE_SENDER_ROLES: readonly LoungeSenderRole[] = ['USER', 'ASSISTANT', 'SYSTEM'];
 const LOUNGE_MEMORY_CATEGORIES: readonly LoungeMemoryCategory[] = [
@@ -488,7 +492,6 @@ const LOUNGE_MEMORY_CATEGORIES: readonly LoungeMemoryCategory[] = [
   'PROMISE',
   'NICKNAME',
 ];
-const LOUNGE_REWARD_RARITIES: readonly LoungeRewardRarity[] = ['SR', 'SSR', 'UR'];
 
 function toRequiredFirestoreTimestamp(iso: string, fieldName: string): Timestamp {
   const parsed = new Date(iso);
@@ -626,17 +629,93 @@ function parseDisclaimerConsent(
   };
 }
 
+function parseOptionalCoreProfile(raw: unknown, docId: string): UserCoreProfile | undefined {
+  if (raw === undefined || raw === null) {
+    return undefined;
+  }
+  if (typeof raw !== 'object' || Array.isArray(raw)) {
+    throw new Error(`Invalid non-object field "coreProfile" in ${COLLECTIONS.LOUNGE_USERS} doc "${docId}"`);
+  }
+  return { ...(raw as Record<string, unknown>) };
+}
+
+function parseOptionalEpisodicBuffer(
+  raw: unknown,
+  docId: string,
+): ConversationLogEntry[] | undefined {
+  if (raw === undefined || raw === null) {
+    return undefined;
+  }
+  if (!Array.isArray(raw)) {
+    throw new Error(
+      `Invalid non-array field "episodicBuffer" in ${COLLECTIONS.LOUNGE_USERS} doc "${docId}"`,
+    );
+  }
+  return raw.map((entry, idx): ConversationLogEntry => {
+    if (typeof entry !== 'object' || entry === null) {
+      throw new Error(
+        `Corrupted episodicBuffer entry at index ${idx} in ${COLLECTIONS.LOUNGE_USERS} doc "${docId}"`,
+      );
+    }
+    const item = entry as Record<string, unknown>;
+    const role = item['role'] === 'user' || item['role'] === 'model' ? item['role'] : null;
+    if (!role || typeof item['content'] !== 'string') {
+      throw new Error(
+        `Corrupted episodicBuffer entry at index ${idx} in ${COLLECTIONS.LOUNGE_USERS} doc "${docId}"`,
+      );
+    }
+    const normalized: ConversationLogEntry = {
+      role,
+      content: item['content'],
+    };
+    if (typeof item['thought'] === 'string') {
+      normalized.thought = item['thought'];
+    }
+    if (typeof item['timestamp'] === 'string') {
+      normalized.timestamp = item['timestamp'];
+    }
+    return normalized;
+  });
+}
+
+function parseEmbeddingVector(raw: unknown, collectionName: string, docId: string): number[] {
+  if (raw === undefined || raw === null) {
+    return [];
+  }
+  let candidate: unknown = raw;
+  if (
+    typeof raw === 'object' &&
+    'toArray' in raw &&
+    typeof (raw as { toArray?: unknown }).toArray === 'function'
+  ) {
+    candidate = (raw as { toArray(): unknown[] }).toArray();
+  }
+  if (!Array.isArray(candidate)) {
+    throw new Error(`Invalid non-array field "embedding" in ${collectionName} doc "${docId}"`);
+  }
+  return candidate.map((val, idx) => {
+    if (typeof val !== 'number' || !Number.isFinite(val)) {
+      throw new Error(
+        `Invalid non-numeric embedding element at index ${idx} in ${collectionName} doc "${docId}"`,
+      );
+    }
+    return val;
+  });
+}
+
 /**
- * Converter for isolated `lounge_users` profiles and scroll-verified consent records.
+ * Converter for isolated `lounge_users` profiles, consent records, and independent Dreaming memory state.
  */
 const loungeUserConverter: FirestoreDataConverter<LoungeUserDoc> = {
   toFirestore(user: LoungeUserDoc): DocumentData {
-    return {
+    const data: DocumentData = {
       xUserId: user.xUserId,
       xHandle: user.xHandle,
       displayName: user.displayName,
       avatarUrl: user.avatarUrl,
       status: user.status,
+      language: user.language,
+      timezone: user.timezone,
       disclaimerConsent: {
         disclaimerVersion: user.disclaimerConsent.disclaimerVersion,
         agreedToGeminiTrainingUsage: user.disclaimerConsent.agreedToGeminiTrainingUsage,
@@ -655,10 +734,28 @@ const loungeUserConverter: FirestoreDataConverter<LoungeUserDoc> = {
       updatedAt: toRequiredFirestoreTimestamp(user.updatedAt, 'updatedAt'),
       lastLoginAt: toRequiredFirestoreTimestamp(user.lastLoginAt, 'lastLoginAt'),
     };
+    if (user.coreProfile !== undefined) {
+      data['coreProfile'] = user.coreProfile;
+    }
+    if (user.episodicBuffer !== undefined) {
+      data['episodicBuffer'] = user.episodicBuffer;
+    }
+    if (user.lastDreamedAt !== undefined) {
+      data['lastDreamedAt'] = toRequiredFirestoreTimestamp(user.lastDreamedAt, 'lastDreamedAt');
+    }
+    return data;
   },
   fromFirestore(snapshot: QueryDocumentSnapshot): LoungeUserDoc {
     const data = snapshot.data();
     const id = snapshot.id;
+    const coreProfile = parseOptionalCoreProfile(data['coreProfile'], id);
+    const episodicBuffer = parseOptionalEpisodicBuffer(data['episodicBuffer'], id);
+    const lastDreamedAt = toOptionalLoungeIso(
+      data['lastDreamedAt'],
+      COLLECTIONS.LOUNGE_USERS,
+      id,
+      'lastDreamedAt',
+    );
     return {
       uid: id,
       xUserId: toRequiredString(data['xUserId'], COLLECTIONS.LOUNGE_USERS, id, 'xUserId'),
@@ -666,7 +763,18 @@ const loungeUserConverter: FirestoreDataConverter<LoungeUserDoc> = {
       displayName: toRequiredString(data['displayName'], COLLECTIONS.LOUNGE_USERS, id, 'displayName'),
       avatarUrl: toValidatedString(data['avatarUrl'], COLLECTIONS.LOUNGE_USERS, id, 'avatarUrl'),
       status: toRequiredEnum(data['status'], LOUNGE_ACCOUNT_STATUSES, COLLECTIONS.LOUNGE_USERS, id, 'status'),
+      language:
+        data['language'] === undefined
+          ? 'ja'
+          : toRequiredEnum(data['language'], LOUNGE_LANGUAGES, COLLECTIONS.LOUNGE_USERS, id, 'language'),
+      timezone:
+        data['timezone'] === undefined
+          ? 'Asia/Tokyo'
+          : toRequiredString(data['timezone'], COLLECTIONS.LOUNGE_USERS, id, 'timezone'),
       disclaimerConsent: parseDisclaimerConsent(data['disclaimerConsent'], id),
+      ...(coreProfile !== undefined ? { coreProfile } : {}),
+      ...(episodicBuffer !== undefined ? { episodicBuffer } : {}),
+      ...(lastDreamedAt !== undefined ? { lastDreamedAt } : {}),
       createdAt: toRequiredLoungeIso(data['createdAt'], COLLECTIONS.LOUNGE_USERS, id, 'createdAt'),
       updatedAt: toRequiredLoungeIso(data['updatedAt'], COLLECTIONS.LOUNGE_USERS, id, 'updatedAt'),
       lastLoginAt: toRequiredLoungeIso(data['lastLoginAt'], COLLECTIONS.LOUNGE_USERS, id, 'lastLoginAt'),
@@ -769,8 +877,11 @@ const loungeMessageConverter: FirestoreDataConverter<LoungeMessageDoc> = {
       emotion: message.emotion,
       createdAt: toRequiredFirestoreTimestamp(message.createdAt, 'createdAt'),
     };
-    if (message.unlockedRewardId !== undefined) {
-      data['unlockedRewardId'] = message.unlockedRewardId;
+    if (message.imageAssetId !== undefined) {
+      data['imageAssetId'] = message.imageAssetId;
+    }
+    if (message.imageUrl !== undefined) {
+      data['imageUrl'] = message.imageUrl;
     }
     if (message.tokenUsage !== undefined) {
       data['tokenUsage'] = message.tokenUsage;
@@ -797,7 +908,8 @@ const loungeMessageConverter: FirestoreDataConverter<LoungeMessageDoc> = {
       role: toRequiredEnum(data['role'], LOUNGE_SENDER_ROLES, COLLECTIONS.LOUNGE_MESSAGES, id, 'role'),
       content: toValidatedString(data['content'], COLLECTIONS.LOUNGE_MESSAGES, id, 'content'),
       emotion: toRequiredEnum(data['emotion'], LOUNGE_EMOTION_STATES, COLLECTIONS.LOUNGE_MESSAGES, id, 'emotion'),
-      unlockedRewardId: typeof data['unlockedRewardId'] === 'string' ? data['unlockedRewardId'] : undefined,
+      imageAssetId: typeof data['imageAssetId'] === 'string' ? data['imageAssetId'] : undefined,
+      imageUrl: typeof data['imageUrl'] === 'string' ? data['imageUrl'] : undefined,
       tokenUsage,
       createdAt: toRequiredLoungeIso(data['createdAt'], COLLECTIONS.LOUNGE_MESSAGES, id, 'createdAt'),
     };
@@ -814,6 +926,7 @@ const loungeRagMemoryConverter: FirestoreDataConverter<LoungeRagMemoryDoc> = {
       sessionId: memory.sessionId,
       category: memory.category,
       summary: memory.summary,
+      embedding: memory.embedding,
       salienceScore: memory.salienceScore,
       createdAt: toRequiredFirestoreTimestamp(memory.createdAt, 'createdAt'),
       updatedAt: toRequiredFirestoreTimestamp(memory.updatedAt, 'updatedAt'),
@@ -828,6 +941,7 @@ const loungeRagMemoryConverter: FirestoreDataConverter<LoungeRagMemoryDoc> = {
       sessionId: toRequiredString(data['sessionId'], COLLECTIONS.LOUNGE_RAG_MEMORIES, id, 'sessionId'),
       category: toRequiredEnum(data['category'], LOUNGE_MEMORY_CATEGORIES, COLLECTIONS.LOUNGE_RAG_MEMORIES, id, 'category'),
       summary: toRequiredString(data['summary'], COLLECTIONS.LOUNGE_RAG_MEMORIES, id, 'summary'),
+      embedding: parseEmbeddingVector(data['embedding'], COLLECTIONS.LOUNGE_RAG_MEMORIES, id),
       salienceScore: toRequiredNumber(data['salienceScore'], COLLECTIONS.LOUNGE_RAG_MEMORIES, id, 'salienceScore'),
       createdAt: toRequiredLoungeIso(data['createdAt'], COLLECTIONS.LOUNGE_RAG_MEMORIES, id, 'createdAt'),
       updatedAt: toRequiredLoungeIso(data['updatedAt'], COLLECTIONS.LOUNGE_RAG_MEMORIES, id, 'updatedAt'),
@@ -836,46 +950,34 @@ const loungeRagMemoryConverter: FirestoreDataConverter<LoungeRagMemoryDoc> = {
 };
 
 /**
- * Converter for isolated `lounge_rewards` user illustration unlock records.
+ * Converter for isolated `lounge_gallery` user illustration unlock records.
  */
-const loungeRewardConverter: FirestoreDataConverter<LoungeRewardDoc> = {
-  toFirestore(reward: LoungeRewardDoc): DocumentData {
+const loungeGalleryConverter: FirestoreDataConverter<LoungeGalleryItemDoc> = {
+  toFirestore(item: LoungeGalleryItemDoc): DocumentData {
     const data: DocumentData = {
-      uid: reward.uid,
-      code: reward.code,
-      titleJa: reward.titleJa,
-      titleEn: reward.titleEn,
-      descriptionJa: reward.descriptionJa,
-      descriptionEn: reward.descriptionEn,
-      emotionTag: reward.emotionTag,
-      rarity: reward.rarity,
-      previewAssetPath: reward.previewAssetPath,
-      unlocked: reward.unlocked,
+      uid: item.uid,
+      assetId: item.assetId,
+      imageUrl: item.imageUrl,
+      unlocked: item.unlocked,
     };
-    if (reward.unlockedAt !== undefined) {
-      data['unlockedAt'] = toRequiredFirestoreTimestamp(reward.unlockedAt, 'unlockedAt');
+    if (item.unlockedAt !== undefined) {
+      data['unlockedAt'] = toRequiredFirestoreTimestamp(item.unlockedAt, 'unlockedAt');
     }
-    if (reward.sourceSessionId !== undefined) {
-      data['sourceSessionId'] = reward.sourceSessionId;
+    if (item.sourceSessionId !== undefined) {
+      data['sourceSessionId'] = item.sourceSessionId;
     }
     return data;
   },
-  fromFirestore(snapshot: QueryDocumentSnapshot): LoungeRewardDoc {
+  fromFirestore(snapshot: QueryDocumentSnapshot): LoungeGalleryItemDoc {
     const data = snapshot.data();
     const id = snapshot.id;
     return {
       id,
-      uid: toRequiredString(data['uid'], COLLECTIONS.LOUNGE_REWARDS, id, 'uid'),
-      code: toRequiredString(data['code'], COLLECTIONS.LOUNGE_REWARDS, id, 'code'),
-      titleJa: toRequiredString(data['titleJa'], COLLECTIONS.LOUNGE_REWARDS, id, 'titleJa'),
-      titleEn: toRequiredString(data['titleEn'], COLLECTIONS.LOUNGE_REWARDS, id, 'titleEn'),
-      descriptionJa: toValidatedString(data['descriptionJa'], COLLECTIONS.LOUNGE_REWARDS, id, 'descriptionJa'),
-      descriptionEn: toValidatedString(data['descriptionEn'], COLLECTIONS.LOUNGE_REWARDS, id, 'descriptionEn'),
-      emotionTag: toRequiredEnum(data['emotionTag'], LOUNGE_EMOTION_STATES, COLLECTIONS.LOUNGE_REWARDS, id, 'emotionTag'),
-      rarity: toRequiredEnum(data['rarity'], LOUNGE_REWARD_RARITIES, COLLECTIONS.LOUNGE_REWARDS, id, 'rarity'),
-      previewAssetPath: toValidatedString(data['previewAssetPath'], COLLECTIONS.LOUNGE_REWARDS, id, 'previewAssetPath'),
-      unlocked: toRequiredBoolean(data['unlocked'], COLLECTIONS.LOUNGE_REWARDS, id, 'unlocked'),
-      unlockedAt: toOptionalLoungeIso(data['unlockedAt'], COLLECTIONS.LOUNGE_REWARDS, id, 'unlockedAt'),
+      uid: toRequiredString(data['uid'], COLLECTIONS.LOUNGE_GALLERY, id, 'uid'),
+      assetId: toRequiredString(data['assetId'], COLLECTIONS.LOUNGE_GALLERY, id, 'assetId'),
+      imageUrl: toValidatedString(data['imageUrl'], COLLECTIONS.LOUNGE_GALLERY, id, 'imageUrl'),
+      unlocked: toRequiredBoolean(data['unlocked'], COLLECTIONS.LOUNGE_GALLERY, id, 'unlocked'),
+      unlockedAt: toOptionalLoungeIso(data['unlockedAt'], COLLECTIONS.LOUNGE_GALLERY, id, 'unlockedAt'),
       sourceSessionId: typeof data['sourceSessionId'] === 'string' ? data['sourceSessionId'] : undefined,
     };
   },
@@ -1040,10 +1142,10 @@ export function getCollections(db: Firestore) {
       .collection(COLLECTIONS.LOUNGE_RAG_MEMORIES)
       .withConverter(loungeRagMemoryConverter),
 
-    /** Typed isolated Private Lounge illustration reward documents (`lounge_rewards`). */
-    loungeRewards: db
-      .collection(COLLECTIONS.LOUNGE_REWARDS)
-      .withConverter(loungeRewardConverter),
+    /** Typed isolated Private Lounge gallery illustration documents (`lounge_gallery`). */
+    loungeGallery: db
+      .collection(COLLECTIONS.LOUNGE_GALLERY)
+      .withConverter(loungeGalleryConverter),
   } as const;
 }
 
@@ -1065,7 +1167,7 @@ export {
   loungeSessionConverter,
   loungeMessageConverter,
   loungeRagMemoryConverter,
-  loungeRewardConverter,
+  loungeGalleryConverter,
 };
 
 // Re-export all schema models and collection constants.

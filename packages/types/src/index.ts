@@ -1052,7 +1052,12 @@ export type LoungeSubscriptionStatus = 'ACTIVE' | 'PAST_DUE' | 'CANCELED';
 export type LoungeAccountStatus = 'ACTIVE' | 'SUSPENDED';
 
 /**
- * AI persona emotional state surfaced on the Private Lounge stage HUD and messages.
+ * Supported UI and conversational response languages in the Gemitec Private Lounge.
+ */
+export type LoungeLanguage = 'ja' | 'en' | 'de' | 'pt' | 'es' | 'zh-HK' | 'vi' | 'th';
+
+/**
+ * AI persona emotional state surfaced as icon expressions on chat turns.
  */
 export type LoungeEmotionState =
   | 'NEUTRAL'
@@ -1060,7 +1065,8 @@ export type LoungeEmotionState =
   | 'TEASING'
   | 'SHY'
   | 'EXCITED'
-  | 'THOUGHTFUL';
+  | 'THOUGHTFUL'
+  | 'SURPRISED';
 
 /**
  * Turn author role inside a Private Lounge chat session.
@@ -1073,11 +1079,6 @@ export type LoungeSenderRole = 'USER' | 'ASSISTANT' | 'SYSTEM';
 export type LoungeMemoryCategory = 'EPISODE' | 'PREFERENCE' | 'PROMISE' | 'NICKNAME';
 
 /**
- * Collectible tier of unlockable Private Lounge illustration rewards.
- */
-export type LoungeRewardRarity = 'SR' | 'SSR' | 'UR';
-
-/**
  * Scroll-verified consent audit record captured during Private Lounge Sign-Up.
  */
 export interface LoungeUserDisclaimerConsent {
@@ -1087,7 +1088,7 @@ export interface LoungeUserDisclaimerConsent {
   agreedToGeminiTrainingUsage: boolean;
   /** Confirms user agreed not to transmit PII, credentials, or sensitive data. */
   agreedToZeroPiiProhibition: boolean;
-  /** Confirms user acknowledged one-way Public X memory isolation (no write-back). */
+  /** Confirms user acknowledged strict isolation from public social timeline posts. */
   agreedToOneWayMemoryIsolation: boolean;
   /** ISO 8601 timestamp recorded when disclaimer box reached 100% scroll depth. */
   scrolledToBottomAt: string;
@@ -1096,7 +1097,8 @@ export interface LoungeUserDisclaimerConsent {
 }
 
 /**
- * Domain model for an isolated Private Lounge end user (`lounge_users`).
+ * Public HTTP profile projection for an isolated Private Lounge end user (`lounge_users`).
+ * Internal Dreaming fields (`coreProfile`, `episodicBuffer`, `lastDreamedAt`) remain server-only on `LoungeUserDoc`.
  */
 export interface LoungeUser {
   uid: string;
@@ -1105,6 +1107,8 @@ export interface LoungeUser {
   displayName: string;
   avatarUrl: string;
   status: LoungeAccountStatus;
+  language: LoungeLanguage;
+  timezone: string;
   disclaimerConsent: LoungeUserDisclaimerConsent;
   createdAt: string;
   updatedAt: string;
@@ -1112,9 +1116,32 @@ export interface LoungeUser {
 }
 
 /**
- * Persisted Firestore schema shape for `lounge_users` documents.
+ * Request DTO confirming irreversible account deletion and no refund for unused paid turns.
  */
-export type LoungeUserDoc = LoungeUser;
+export interface LoungeDeleteAccountRequestDto {
+  confirmedIrreversibleDeletion: boolean;
+  confirmedNoRefundForRemainingTurns: boolean;
+}
+
+/**
+ * Request DTO updating Private Lounge language and timezone preferences.
+ */
+export interface LoungeUpdatePreferencesRequestDto {
+  language?: LoungeLanguage;
+  timezone?: string;
+}
+
+/**
+ * Persisted Firestore schema shape for `lounge_users` documents including internal Dreaming memory fields.
+ */
+export interface LoungeUserDoc extends LoungeUser {
+  /** Structured long-term user profile consolidated via independent Private Lounge Dreaming. */
+  coreProfile?: UserCoreProfile;
+  /** Sliding window of raw conversation entries pending Private Lounge Dreaming consolidation. */
+  episodicBuffer?: ConversationLogEntry[];
+  /** ISO 8601 datetime of the last completed Private Lounge Dreaming consolidation. */
+  lastDreamedAt?: string;
+}
 
 /**
  * Domain model for a Private Lounge subscription and daily chat turn quota (`lounge_subscriptions`).
@@ -1176,7 +1203,8 @@ export interface LoungeMessage {
   role: LoungeSenderRole;
   content: string;
   emotion: LoungeEmotionState;
-  unlockedRewardId?: string;
+  imageAssetId?: string;
+  imageUrl?: string;
   tokenUsage?: LoungeTokenUsage;
   createdAt: string;
 }
@@ -1195,6 +1223,7 @@ export interface LoungeRagMemory {
   sessionId: string;
   category: LoungeMemoryCategory;
   summary: string;
+  embedding: number[];
   salienceScore: number;
   createdAt: string;
   updatedAt: string;
@@ -1206,28 +1235,47 @@ export interface LoungeRagMemory {
 export type LoungeRagMemoryDoc = LoungeRagMemory;
 
 /**
- * Domain model for unlockable Private Lounge illustration rewards (`lounge_rewards`).
+ * Independent Private Lounge memory snapshot for a single user (`lounge_*` collections only).
  */
-export interface LoungeReward {
+export interface LoungePrivateMemorySnapshot {
+  readonly coreProfile: UserCoreProfile;
+  readonly recentRawMessages: readonly LoungeMessage[];
+  readonly vectorMemories: readonly LoungeRagMemory[];
+  readonly lastDreamedAt?: string;
+}
+
+/**
+ * Read-only Public X Bot memory snapshot injected into Private Lounge prompts without reverse write-back.
+ * Combines the user's Public X history/profile with Rebecca's Layer 1/2/3 self-post memories.
+ */
+export interface LoungePublicXMemorySnapshot {
+  readonly xUserId: string;
+  readonly userStructuredProfile: UserCoreProfile | null;
+  readonly userRecentTurns: readonly ConversationLogEntry[];
+  readonly userVectorMemories: readonly string[];
+  readonly personaLayer1ExtendedPrompt: string;
+  readonly personaLayer2TimelineSummary: string;
+  readonly personaLayer3RecentPosts: readonly string[];
+  readonly syncedAt: string;
+}
+
+/**
+ * Domain model for an unlocked Bot illustration displayed in a session and saved to Gallery (`lounge_gallery`).
+ */
+export interface LoungeGalleryItem {
   id: string;
   uid: string;
-  code: string;
-  titleJa: string;
-  titleEn: string;
-  descriptionJa: string;
-  descriptionEn: string;
-  emotionTag: LoungeEmotionState;
-  rarity: LoungeRewardRarity;
-  previewAssetPath: string;
+  assetId: string;
+  imageUrl: string;
   unlocked: boolean;
   unlockedAt?: string;
   sourceSessionId?: string;
 }
 
 /**
- * Persisted Firestore schema shape for `lounge_rewards` documents.
+ * Persisted Firestore schema shape for `lounge_gallery` documents.
  */
-export type LoungeRewardDoc = LoungeReward;
+export type LoungeGalleryItemDoc = LoungeGalleryItem;
 
 /**
  * Request DTO submitted when onboarding a new X-linked user with scroll-gated disclaimer consent.
@@ -1236,6 +1284,8 @@ export interface LoungeSignUpRequestDto {
   idToken: string;
   xOAuthCode: string;
   disclaimerConsent: LoungeUserDisclaimerConsent;
+  language?: LoungeLanguage;
+  timezone?: string;
 }
 
 /**
@@ -1256,13 +1306,15 @@ export interface LoungeAuthSessionDto {
 }
 
 /**
- * Persona display branding surfaced dynamically from `@rebecca/persona`.
+ * Persona display branding and emotion-reactive chat avatar paths surfaced dynamically from `@rebecca/persona`.
  */
 export interface LoungePersonaBranding {
   displayName: string;
   englishName: string;
   brandName: string;
   avatarPath: string;
+  chatIconPath: string;
+  emotionAvatarPaths: Record<LoungeEmotionState, string>;
 }
 
 /**
@@ -1275,54 +1327,37 @@ export interface LoungeRuntimeConfigDto {
 }
 
 /**
- * Summary payload combining profile, subscription tier, remaining turns, and sync status.
+ * Summary payload combining profile, subscription tier, remaining turns, and gallery progress.
  */
 export interface LoungeAccountSummaryDto {
   user: LoungeUser;
   subscription: LoungeSubscription;
   persona?: LoungePersonaBranding;
-  publicXMemoryOneWayActive: boolean;
-  unlockedRewardCount: number;
-  totalRewardCount: number;
+  unlockedGalleryCount: number;
+  totalGalleryCount: number;
   appVersion: string;
 }
 
 /**
- * Paginated list response for `/api/v1/lounge/sessions`.
- */
-export interface LoungeSessionListResponseDto {
-  items: LoungeSession[];
-  nextCursor: string | null;
-  totalCount: number;
-}
-
-/**
- * Request DTO for creating a new Private Lounge conversation session.
- */
-export interface LoungeCreateSessionRequestDto {
-  title?: string;
-}
-
-/**
- * Request DTO for sending a user message in a Private Lounge session.
+ * Request DTO for sending a user message in the user's persistent Private Lounge session.
  */
 export interface LoungeSendMessageRequestDto {
   content: string;
 }
 
 /**
- * Response DTO returning both persisted user prompt, assistant reply, and updated quota.
+ * Response DTO returning persisted user prompt, assistant reply (with optional illustration), and quota state.
  */
 export interface LoungeSendMessageResponseDto {
   session: LoungeSession;
   userMessage: LoungeMessage;
   assistantMessage: LoungeMessage;
   remainingChatTurns: number;
-  unlockedReward?: LoungeReward;
+  unlockedGalleryItem?: LoungeGalleryItem;
 }
 
 /**
- * Paginated list response for `/api/v1/lounge/sessions/{sessionId}/messages`.
+ * Paginated list response for `/api/v1/lounge/session/messages`.
  */
 export interface LoungeMessageListResponseDto {
   items: LoungeMessage[];
@@ -1331,10 +1366,10 @@ export interface LoungeMessageListResponseDto {
 }
 
 /**
- * Paginated list response for `/api/v1/lounge/rewards`.
+ * Paginated list response for `/api/v1/lounge/gallery`.
  */
-export interface LoungeRewardListResponseDto {
-  items: LoungeReward[];
+export interface LoungeGalleryListResponseDto {
+  items: LoungeGalleryItem[];
   unlockedCount: number;
   totalCount: number;
   nextCursor: string | null;

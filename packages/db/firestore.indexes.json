@@ -213,7 +213,24 @@
       ]
     },
     {
-      "collectionGroup": "lounge_rewards",
+      "collectionGroup": "lounge_rag_memories",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "uid",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "embedding",
+          "vectorConfig": {
+            "dimension": 768,
+            "flat": {}
+          }
+        }
+      ]
+    },
+    {
+      "collectionGroup": "lounge_gallery",
       "queryScope": "COLLECTION",
       "fields": [
         {
