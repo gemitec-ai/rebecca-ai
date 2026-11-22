@@ -103,4 +103,10 @@
         align-items: center;
         justify-content: center;
     }
+
+    .sparkle-btn {
+        min-height: 44px;
+        display: inline-flex;
+        align-items: center;
+    }
 }
