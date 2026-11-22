@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.45.0](https://github.com/gemitec-ai/rebecca-ai/compare/v1.44.5...v1.45.0) (2026-11-22)
+
+
+### Features
+
+* **users:** paginate user conversations via dedicated endpoint and add 2-tab drawer UI ([#519](https://github.com/gemitec-ai/rebecca-ai/issues/519)) ([d20af72](https://github.com/gemitec-ai/rebecca-ai/commit/d20af728415872d6a765bb0df7a293e2c2693718))
+
 ## [1.44.5](https://github.com/gemitec-ai/rebecca-ai/compare/v1.44.4...v1.44.5) (2026-11-21)
 
 
