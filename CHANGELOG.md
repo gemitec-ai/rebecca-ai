@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.45.1](https://github.com/gemitec-ai/rebecca-ai/compare/v1.45.0...v1.45.1) (2026-11-22)
+
+
+### Bug Fixes
+
+* **dashboard-frontend:** pin user-drawer tabs and localize drawer headers/analyze button ([#523](https://github.com/gemitec-ai/rebecca-ai/issues/523)) ([213e9f7](https://github.com/gemitec-ai/rebecca-ai/commit/213e9f77e9ed7d2b8d9845c7ae2872d13aa55c35))
+
 ## [1.45.0](https://github.com/gemitec-ai/rebecca-ai/compare/v1.44.5...v1.45.0) (2026-11-22)
 
 
