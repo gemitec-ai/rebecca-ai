@@ -1,16 +1,12 @@
 import type { Request, Response } from 'express';
-import type { LoungeLoginRequestDto, LoungeSignUpRequestDto } from '@rebecca/types';
 import {
   requireLoungeIdentity,
   type LoungeAuthenticatedRequest,
 } from '../../../middleware/loungeAuth';
+import { extractTraceHeader, handleLoungeControllerError } from '../../../utils/errors';
 import {
-  LoungeValidationError,
-  extractTraceHeader,
-  handleLoungeControllerError,
-} from '../../../utils/errors';
-import {
-  parseAndValidateSignUpConsent,
+  parseAndValidateLoginRequest,
+  parseAndValidateSignUpRequest,
   type ILoungeAuthUseCase,
 } from '../usecases/loungeAuth.usecase';
 
@@ -24,16 +20,8 @@ export class LoungeAuthController {
   public async signUp(req: Request, res: Response): Promise<void> {
     const traceHeader = extractTraceHeader(req);
     try {
-      const body = req.body as Partial<LoungeSignUpRequestDto> | undefined;
-      if (!body || typeof body.idToken !== 'string' || typeof body.xOAuthCode !== 'string') {
-        throw new LoungeValidationError('Invalid sign-up request payload');
-      }
-      const disclaimerConsent = parseAndValidateSignUpConsent(body.disclaimerConsent);
-      const session = await this.authUseCase.signUpWithX({
-        idToken: body.idToken,
-        xOAuthCode: body.xOAuthCode,
-        disclaimerConsent,
-      });
+      const payload = parseAndValidateSignUpRequest(req.body);
+      const session = await this.authUseCase.signUpWithX(payload);
       res.status(201).json(session);
     } catch (err) {
       handleLoungeControllerError(res, err, 'POST /auth/signup', traceHeader);
@@ -44,14 +32,8 @@ export class LoungeAuthController {
   public async login(req: Request, res: Response): Promise<void> {
     const traceHeader = extractTraceHeader(req);
     try {
-      const body = req.body as Partial<LoungeLoginRequestDto> | undefined;
-      if (!body || typeof body.idToken !== 'string') {
-        throw new LoungeValidationError('Invalid login request payload');
-      }
-      const session = await this.authUseCase.loginWithX({
-        idToken: body.idToken,
-        xOAuthCode: typeof body.xOAuthCode === 'string' ? body.xOAuthCode : undefined,
-      });
+      const payload = parseAndValidateLoginRequest(req.body);
+      const session = await this.authUseCase.loginWithX(payload);
       res.status(200).json(session);
     } catch (err) {
       handleLoungeControllerError(res, err, 'POST /auth/login', traceHeader);

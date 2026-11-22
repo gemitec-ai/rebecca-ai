@@ -44,6 +44,22 @@ export function requireLoungeIdentity(req: LoungeAuthenticatedRequest): LoungeVe
 }
 
 /**
+ * Parses and validates an incoming `Authorization: Bearer <token>` header value.
+ *
+ * @throws LoungeAuthError When the header is absent, malformed, or contains an empty token.
+ */
+export function extractBearerTokenFromHeader(authHeader: unknown): string {
+  if (typeof authHeader !== 'string' || !authHeader.startsWith('Bearer ')) {
+    throw new LoungeAuthError(401, 'Missing or malformed Bearer authorization header');
+  }
+  const token = authHeader.slice('Bearer '.length).trim();
+  if (!token) {
+    throw new LoungeAuthError(401, 'Empty Bearer token');
+  }
+  return token;
+}
+
+/**
  * Options configuring the Private Lounge authentication middleware.
  */
 export interface LoungeAuthMiddlewareOptions {
@@ -64,6 +80,13 @@ export interface LoungeAuthMiddlewareOptions {
 export function createLoungeAuthMiddleware(
   options: LoungeAuthMiddlewareOptions,
 ): (req: LoungeAuthenticatedRequest, res: Response, next: NextFunction) => Promise<void> {
+  const isLocalEnv =
+    options.nodeEnv === 'development' ||
+    options.nodeEnv === 'test' ||
+    Boolean(options.authEmulatorHost?.trim());
+  const allowLocalBypass =
+    options.noAuth === true && options.nodeEnv !== 'production' && isLocalEnv;
+
   return async (
     req: LoungeAuthenticatedRequest,
     res: Response,
@@ -72,15 +95,7 @@ export function createLoungeAuthMiddleware(
     const traceHeader = extractTraceHeader(req);
 
     try {
-      const isLocalEnv =
-        options.nodeEnv === 'development' ||
-        options.nodeEnv === 'test' ||
-        Boolean(options.authEmulatorHost?.trim());
-      const allowLocalBypass =
-        options.noAuth === true && options.nodeEnv !== 'production' && isLocalEnv;
-      const authHeader = req.headers.authorization;
-
-      if (allowLocalBypass && !authHeader) {
+      if (allowLocalBypass) {
         req.loungeIdentity = {
           uid: 'lounge_dev_user',
           xUserId: '1000000001',
@@ -92,15 +107,7 @@ export function createLoungeAuthMiddleware(
         return;
       }
 
-      if (!authHeader || !authHeader.startsWith('Bearer ')) {
-        throw new LoungeAuthError(401, 'Missing or malformed Bearer authorization header');
-      }
-
-      const token = authHeader.slice('Bearer '.length).trim();
-      if (!token) {
-        throw new LoungeAuthError(401, 'Empty Bearer token');
-      }
-
+      const token = extractBearerTokenFromHeader(req.headers.authorization);
       req.loungeIdentity = await options.verifier.verifyBearerToken(token);
       next();
     } catch (err) {

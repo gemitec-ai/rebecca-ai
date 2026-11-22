@@ -74,6 +74,57 @@ export function parseAndValidateSignUpConsent(raw: unknown): LoungeUserDisclaime
 }
 
 /**
+ * Parses and validates an incoming X-linked login payload at the trust boundary.
+ *
+ * @throws LoungeValidationError When payload is non-object or missing a non-empty `idToken`.
+ */
+export function parseAndValidateLoginRequest(raw: unknown): LoungeLoginRequestDto {
+  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) {
+    throw new LoungeValidationError('Invalid login request payload');
+  }
+  const candidate = raw as Record<string, unknown>;
+  const idToken = typeof candidate['idToken'] === 'string' ? candidate['idToken'].trim() : '';
+  if (!idToken) {
+    throw new LoungeValidationError('Invalid login request payload');
+  }
+  const xOAuthCode =
+    typeof candidate['xOAuthCode'] === 'string' && candidate['xOAuthCode'].trim()
+      ? candidate['xOAuthCode'].trim()
+      : undefined;
+  return {
+    idToken,
+    ...(xOAuthCode ? { xOAuthCode } : {}),
+  };
+}
+
+/**
+ * Parses and validates an incoming X-linked sign-up payload at the trust boundary.
+ *
+ * @throws LoungeValidationError When payload tokens or scroll-gated consent terms are invalid.
+ */
+export function parseAndValidateSignUpRequest(raw: unknown): LoungeSignUpRequestDto {
+  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) {
+    throw new LoungeValidationError('Invalid sign-up request payload');
+  }
+  const candidate = raw as Record<string, unknown>;
+  const idToken = typeof candidate['idToken'] === 'string' ? candidate['idToken'].trim() : '';
+  if (!idToken) {
+    throw new LoungeValidationError('Field "idToken" is required');
+  }
+  const xOAuthCode =
+    typeof candidate['xOAuthCode'] === 'string' ? candidate['xOAuthCode'].trim() : '';
+  if (!xOAuthCode) {
+    throw new LoungeValidationError('Field "xOAuthCode" is required for X OAuth sign-up');
+  }
+  const disclaimerConsent = parseAndValidateSignUpConsent(candidate['disclaimerConsent']);
+  return {
+    idToken,
+    xOAuthCode,
+    disclaimerConsent,
+  };
+}
+
+/**
  * Orchestrates X-linked authentication and mandatory scroll-gated disclaimer validation.
  */
 export class LoungeAuthUseCase implements ILoungeAuthUseCase {
@@ -91,15 +142,8 @@ export class LoungeAuthUseCase implements ILoungeAuthUseCase {
    * @throws LoungeAuthError When UID or X user ID is already registered in `lounge_users` or token is invalid.
    */
   public async signUpWithX(request: LoungeSignUpRequestDto): Promise<LoungeAuthSessionDto> {
-    if (typeof request.idToken !== 'string' || !request.idToken.trim()) {
-      throw new LoungeValidationError('Field "idToken" is required');
-    }
-    if (typeof request.xOAuthCode !== 'string' || !request.xOAuthCode.trim()) {
-      throw new LoungeValidationError('Field "xOAuthCode" is required for X OAuth sign-up');
-    }
-    const sanitizedConsent = parseAndValidateSignUpConsent(request.disclaimerConsent);
-
-    const identity = await this.authVerifier.verifyBearerToken(request.idToken);
+    const sanitized = parseAndValidateSignUpRequest(request);
+    const identity = await this.authVerifier.verifyBearerToken(sanitized.idToken);
     const [existingByUid, existingByX] = await Promise.all([
       this.authRepository.findUserByUid(identity.uid),
       this.authRepository.findUserByXUserId(identity.xUserId),
@@ -114,7 +158,7 @@ export class LoungeAuthUseCase implements ILoungeAuthUseCase {
       xHandle: identity.xHandle,
       displayName: identity.displayName,
       avatarUrl: identity.avatarUrl,
-      disclaimerConsent: sanitizedConsent,
+      disclaimerConsent: sanitized.disclaimerConsent,
     });
 
     return {
@@ -131,10 +175,8 @@ export class LoungeAuthUseCase implements ILoungeAuthUseCase {
    * @throws LoungeAuthError When account is not registered or is suspended.
    */
   public async loginWithX(request: LoungeLoginRequestDto): Promise<LoungeAuthSessionDto> {
-    if (typeof request.idToken !== 'string' || !request.idToken.trim()) {
-      throw new LoungeValidationError('Field "idToken" is required');
-    }
-    const identity = await this.authVerifier.verifyBearerToken(request.idToken);
+    const sanitized = parseAndValidateLoginRequest(request);
+    const identity = await this.authVerifier.verifyBearerToken(sanitized.idToken);
     const user = await this.authRepository.findUserByUid(identity.uid);
     if (!user) {
       throw new LoungeAuthError(401, 'Private Lounge user not registered');
