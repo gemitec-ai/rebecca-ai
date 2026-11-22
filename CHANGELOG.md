@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.45.2](https://github.com/gemitec-ai/rebecca-ai/compare/v1.45.1...v1.45.2) (2026-11-22)
+
+
+### Bug Fixes
+
+* **deps:** bump the minor-and-patch group across workspaces ([#522](https://github.com/gemitec-ai/rebecca-ai/issues/522)) ([f8e2a1f](https://github.com/gemitec-ai/rebecca-ai/commit/f8e2a1fcdb71cf5000181724e7e2ffdfea1908fd))
+* **deps:** declare undici in bot-backend devDependencies for eval tests ([#527](https://github.com/gemitec-ai/rebecca-ai/issues/527)) ([1ec32ff](https://github.com/gemitec-ai/rebecca-ai/commit/1ec32ff1fa20ba093d207d91c508cd0a4bae4dee))
+
 ## [1.45.1](https://github.com/gemitec-ai/rebecca-ai/compare/v1.45.0...v1.45.1) (2026-11-22)
 
 
