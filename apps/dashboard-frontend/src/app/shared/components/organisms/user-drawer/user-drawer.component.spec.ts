@@ -27,15 +27,26 @@ describe('UserDrawerComponent (White-box Coverage)', () => {
       preferences: ['Late night anime'],
       concerns: [],
       important_memories: []
-    }),
-    chatHistory: []
+    })
   };
 
   beforeEach(async () => {
-    mockUsersRepo = jasmine.createSpyObj('UsersRepository', ['getById', 'bulkUpdateStatus', 'updateMemory']);
+    mockUsersRepo = jasmine.createSpyObj('UsersRepository', [
+      'getById',
+      'getConversations',
+      'bulkUpdateStatus',
+      'updateMemory'
+    ]);
     mockToastService = jasmine.createSpyObj('ToastService', ['show']);
 
     mockUsersRepo.getById.and.callFake(() => of({ ...mockUserDetail }));
+    mockUsersRepo.getConversations.and.returnValue(of({
+      data: [
+        { role: 'user', text: 'Hi', time: '2026-11-20T00:00:00Z' },
+        { role: 'model', text: 'Hey!', time: '2026-11-20T00:00:01Z' }
+      ],
+      meta: { totalItems: 2, totalPages: 2, currentPage: 1, limit: 20 }
+    }));
     mockUsersRepo.bulkUpdateStatus.and.returnValue(of(void 0));
     mockUsersRepo.updateMemory.and.returnValue(of(void 0));
 
@@ -62,6 +73,83 @@ describe('UserDrawerComponent (White-box Coverage)', () => {
     expect(component.user()).toEqual(mockUserDetail);
     expect(component.isBlocked()).toBeFalse();
     expect(component.parsedProfile()['attributes']).toContain('Gyaru lover');
+    expect(mockUsersRepo.getConversations).not.toHaveBeenCalled();
+  });
+
+  it('should lazy-load paginated conversations when switching to conversations tab and support sortOrder toggle', () => {
+    component.setTab('conversations');
+    expect(component.activeTab()).toBe('conversations');
+    expect(mockUsersRepo.getConversations).toHaveBeenCalledWith('user_123', {
+      page: 1,
+      limit: 20,
+      sortOrder: 'desc'
+    });
+    expect(component.conversations().length).toBe(2);
+
+    // Toggle to oldest-first ('asc')
+    component.toggleSortOrder();
+    expect(component.conversationsSortOrder()).toBe('asc');
+    expect(mockUsersRepo.getConversations).toHaveBeenCalledWith('user_123', {
+      page: 1,
+      limit: 20,
+      sortOrder: 'asc'
+    });
+  });
+
+  it('should handle scroll pagination (desc prepend & asc append), jumpToLatest, and errors', () => {
+    component.setTab('conversations');
+    expect(mockUsersRepo.getConversations).toHaveBeenCalledTimes(1);
+
+    // Switching back and forth after initial load does not re-fetch
+    component.setTab('profile');
+    component.setTab('conversations');
+    expect(mockUsersRepo.getConversations).toHaveBeenCalledTimes(1);
+
+    // Scroll away from bottom in desc mode -> showJumpToLatest = true, scrollTop = 10 -> loads page 2 & prepends
+    mockUsersRepo.getConversations.and.returnValue(of({
+      data: [{ role: 'user', text: 'Older', time: '2026-11-19T00:00:00Z' }],
+      meta: { totalItems: 3, totalPages: 2, currentPage: 2, limit: 20 }
+    }));
+    component.onChatScroll({
+      target: { scrollTop: 10, scrollHeight: 1000, clientHeight: 300 }
+    } as unknown as Event);
+    expect(component.showJumpToLatest()).toBeTrue();
+    expect(component.conversations()[0].text).toBe('Older');
+    expect(component.conversationsPage()).toBe(2);
+
+    // Further scroll when on last page does not fetch
+    component.onChatScroll({
+      target: { scrollTop: 0, scrollHeight: 1000, clientHeight: 300 }
+    } as unknown as Event);
+    expect(mockUsersRepo.getConversations).toHaveBeenCalledTimes(2);
+
+    component.jumpToLatest();
+    expect(component.showJumpToLatest()).toBeFalse();
+
+    // Switch to asc mode and scroll near bottom -> loads page 2 & appends
+    mockUsersRepo.getConversations.and.returnValue(of({
+      data: [{ role: 'user', text: 'Page1', time: '2026-11-19T00:00:00Z' }],
+      meta: { totalItems: 3, totalPages: 2, currentPage: 1, limit: 20 }
+    }));
+    component.toggleSortOrder();
+    mockUsersRepo.getConversations.and.returnValue(of({
+      data: [{ role: 'model', text: 'Page2', time: '2026-11-21T00:00:00Z' }],
+      meta: { totalItems: 3, totalPages: 2, currentPage: 2, limit: 20 }
+    }));
+    component.onChatScroll({
+      target: { scrollTop: 680, scrollHeight: 1000, clientHeight: 300 }
+    } as unknown as Event);
+    expect(component.conversations()[1].text).toBe('Page2');
+
+    // jumpToLatest from asc switches back to desc
+    component.jumpToLatest();
+    expect(component.conversationsSortOrder()).toBe('desc');
+
+    // Error handling in loadConversations
+    mockUsersRepo.getConversations.and.returnValue(throwError(() => new Error('Network error')));
+    component.loadConversations(1, false);
+    expect(component.isLoadingConversations()).toBeFalse();
+    expect(component.isLoadingMoreConversations()).toBeFalse();
   });
 
   it('should handle fetch user error gracefully', () => {

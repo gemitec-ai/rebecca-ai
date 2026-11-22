@@ -8,6 +8,7 @@
     --color-primary: #a855f7; /* Vibrant neon purple */
     --color-primary-glow: rgba(168, 85, 247, 0.4);
     --color-secondary: #9333ea;
+    --accent-thought: #00f2fe;
     --text-main: #f8fafc; /* Slate-50 */
     --text-muted: #94a3b8; /* Slate-400 */
     --border-color: rgba(255, 255, 255, 0.06);
@@ -177,6 +178,8 @@ html, body {
 
 .drawer-header { padding: 1.5rem; border-bottom: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center; background: rgba(0,0,0,0.2); }
 .drawer-body { padding: 1.5rem; flex: 1; overflow-y: auto; }
+.drawer-body:has(.chat-mode) { overflow: hidden; }
+.drawer-body:has(.chat-mode) > div { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 .close-btn { background: none; border: none; color: var(--text-muted); cursor: pointer; padding: 4px; border-radius: 50%; transition: 0.2s; }
 .close-btn:hover { background: rgba(255,255,255,0.1); color: var(--text-main); }
 .form-group { margin-bottom: 1.5rem; }
@@ -411,5 +414,9 @@ textarea.form-control,
 
   .drawer-body > div[style*="padding: 20px"] {
     padding: 4px 0 !important;
+  }
+
+  .right-drawer:has(.chat-mode) {
+    height: 86dvh;
   }
 }

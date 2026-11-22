@@ -103,7 +103,6 @@ describe('Copilot Autonomous Agent Suite (Redesign v3)', () => {
             firstSeen: '2026-01-01T00:00:00Z',
             lastSeen: '2026-11-10T09:00:00Z',
             coreProfile: '{}',
-            chatHistory: [],
             status: UserStatus.ACTIVE
           }
         ],
@@ -602,7 +601,6 @@ describe('Copilot Autonomous Agent Suite (Redesign v3)', () => {
             firstSeen: '2026-01-01T00:00:00Z',
             lastSeen: '2026-11-10T09:00:00Z',
             coreProfile: '{}',
-            chatHistory: [],
             status: UserStatus.ACTIVE,
           },
         ],

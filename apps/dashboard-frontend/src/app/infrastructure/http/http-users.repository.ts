@@ -2,7 +2,7 @@ import { Injectable, inject } from '@angular/core';
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { Observable, map } from 'rxjs';
 import { UsersRepository } from '../../core/ports/users.repository';
-import { UserDetail, UserStatus, PaginatedResponse } from '@rebecca/types';
+import { UserDetail, UserStatus, PaginatedResponse, ChatMessage } from '@rebecca/types';
 import { environment } from '../../../environments/environment';
 
 /**
@@ -40,26 +40,39 @@ export class HttpUsersRepository implements UsersRepository {
   }
 
   /**
-   * Fetches a specific user profile and status by ID, supporting conversation beforeTimestamp pagination.
-   * 
+   * Fetches a specific user profile and status by ID.
+   *
    * @param id - The user ID/handle to look up.
-   * @param beforeTimestamp - Optional filter for chat logs.
-   * @param limit - Optional limit for chat logs.
    * @returns Observable of user detail.
    */
-  getById(id: string, beforeTimestamp?: string, limit?: number): Observable<UserDetail> {
-    let params = new HttpParams();
-    if (beforeTimestamp) {
-      params = params.set('beforeTimestamp', beforeTimestamp);
-    }
-    if (limit !== undefined) {
-      params = params.set('limit', limit.toString());
-    }
-    return this.http.get<UserDetail>(`${this.baseUrl}/users/${encodeURIComponent(id)}`, { params }).pipe(
+  getById(id: string): Observable<UserDetail> {
+    return this.http.get<UserDetail>(`${this.baseUrl}/users/${encodeURIComponent(id)}`).pipe(
       map((user: UserDetail) => ({
         ...user,
         status: this.mapStatus(user.status)
       }))
+    );
+  }
+
+  /**
+   * Fetches paginated conversation history for a specific user.
+   *
+   * @param id - The user ID/handle to look up.
+   * @param params - Pagination and sorting parameters (`page`, `limit`, `sortOrder`).
+   * @returns Observable of paginated chat messages.
+   */
+  getConversations(
+    id: string,
+    params?: { page?: number; limit?: number; sortOrder?: 'asc' | 'desc'; },
+  ): Observable<PaginatedResponse<ChatMessage>> {
+    let httpParams = new HttpParams();
+    if (params?.page !== undefined) httpParams = httpParams.set('page', params.page.toString());
+    if (params?.limit !== undefined) httpParams = httpParams.set('limit', params.limit.toString());
+    if (params?.sortOrder) httpParams = httpParams.set('sortOrder', params.sortOrder);
+
+    return this.http.get<PaginatedResponse<ChatMessage>>(
+      `${this.baseUrl}/users/${encodeURIComponent(id)}/conversations`,
+      { params: httpParams },
     );
   }
 

@@ -175,7 +175,7 @@ describe('Dashboard Backend Exhaustive Branch Coverage Tests', () => {
 
     it('getById should test pagination beforeTimestamp, limit, and status branches', async () => {
       (repo as any).collections.users.doc = jest.fn().mockReturnValue({
-        get: jest.fn().mockResolvedValueOnce({
+        get: jest.fn().mockResolvedValue({
           exists: true,
           id: 'u_muted',
           data: () => ({
@@ -192,15 +192,20 @@ describe('Dashboard Backend Exhaustive Branch Coverage Tests', () => {
       ];
 
       (repo as any).collections.conversationLogs.where = jest.fn().mockReturnValue({
+        orderBy: jest.fn().mockReturnThis(),
         limit: jest.fn().mockReturnThis(),
-        get: jest.fn().mockResolvedValueOnce({ docs: mockLogs })
+        get: jest.fn().mockResolvedValue({ docs: mockLogs, size: mockLogs.length })
       });
 
-      const res = await repo.getById('u_muted', '2026-08-05T00:00:00Z', 1);
+      const res = await repo.getById('u_muted');
       expect(res).not.toBeNull();
       expect(res?.status).toBe(UserStatus.MUTED);
-      expect(res?.chatHistory).toHaveLength(1);
-      expect(res?.chatHistory[0].text).toBe('Old msg');
+
+      const convRes = await repo.getConversations('u_muted', { page: 1, limit: 1, sortOrder: 'asc' });
+      expect(convRes).not.toBeNull();
+      expect(convRes?.data).toHaveLength(1);
+      expect(convRes?.data[0].text).toBe('Old msg');
+      expect(convRes?.meta.totalPages).toBe(2);
 
       // Non-existent user
       (repo as any).collections.users.doc = jest.fn().mockReturnValue({
@@ -1395,11 +1400,15 @@ describe('Dashboard Backend Exhaustive Branch Coverage Tests', () => {
         })
       };
 
-      // 1. Existing user with beforeTimestamp and limit
-      const userDetail = await usersRepo.getById('u_detail', '2026-08-15T00:00:00Z', 5);
+      // 1. Existing user lookup & paginated conversations (desc preserves [user, model] order per turn)
+      const userDetail = await usersRepo.getById('u_detail');
       expect(userDetail).not.toBeNull();
       expect(userDetail?.username).toBe('detail_u');
-      expect(userDetail?.chatHistory).toHaveLength(2);
+
+      const convDesc = await usersRepo.getConversations('u_detail', { page: 1, limit: 5, sortOrder: 'desc' });
+      expect(convDesc?.data).toHaveLength(2);
+      expect(convDesc?.data[0].role).toBe('user');
+      expect(convDesc?.data[1].role).toBe('model');
 
       // 2. User lookup fallback by username
       (usersRepo as any).collections.users.doc = jest.fn().mockReturnValue({
@@ -1449,7 +1458,9 @@ describe('Dashboard Backend Exhaustive Branch Coverage Tests', () => {
       });
 
       const userEpisodic = await usersRepo.getById('u_episodic');
-      expect(userEpisodic?.chatHistory).toHaveLength(2);
+      expect(userEpisodic).not.toBeNull();
+      const convEpisodic = await usersRepo.getConversations('u_episodic');
+      expect(convEpisodic?.data).toHaveLength(2);
 
       // 5. updateMemory with valid object and invalid JSON string
       const mockSet = jest.fn().mockResolvedValue(undefined);

@@ -1,5 +1,5 @@
 import { UsersRepository } from './repository';
-import { UserDetail, UserStatus, PaginationMeta } from '@rebecca/types';
+import { UserDetail, UserStatus, PaginationMeta, PaginatedResponse, ChatMessage } from '@rebecca/types';
 
 /**
  * Contains business logic and orchestrates operations related to user management.
@@ -30,6 +30,16 @@ export class UsersUseCase {
    */
   async getUserById(id: string): Promise<UserDetail | null> {
     return this.repo.getById(id);
+  }
+
+  /**
+   * Retrieves paginated conversation logs for a specific user.
+   */
+  async getUserConversations(
+    id: string,
+    params?: { page?: number; limit?: number; sortOrder?: 'asc' | 'desc' },
+  ): Promise<PaginatedResponse<ChatMessage> | null> {
+    return this.repo.getConversations(id, params);
   }
 
   /**

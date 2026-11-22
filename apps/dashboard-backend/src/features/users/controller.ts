@@ -64,6 +64,27 @@ export class UsersController {
   }
 
   /**
+   * Retrieves paginated conversation history for a user (`page`, `limit`, `sortOrder`).
+   */
+  async getConversations(req: Request, res: Response): Promise<void> {
+    const { id } = req.params;
+    const page = req.query.page ? parseInt(req.query.page as string, 10) : 1;
+    const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : 20;
+    const sortOrder = req.query.sortOrder === 'asc' ? 'asc' : 'desc';
+
+    try {
+      const conversations = await this.useCase.getUserConversations(id as string, { page, limit, sortOrder });
+      if (!conversations) {
+        res.status(404).json({ error: 'User not found' });
+        return;
+      }
+      res.json(conversations);
+    } catch (err) {
+      handleControllerError(res, err, 'Failed to fetch user conversations', { userId: id });
+    }
+  }
+
+  /**
    * Updates the core memory profile for a specific user.
    * 
    * @param req - The Express Request object containing the user ID in params and coreProfile in the body.

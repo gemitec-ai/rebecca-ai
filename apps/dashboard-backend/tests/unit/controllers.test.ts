@@ -40,6 +40,7 @@ describe('Dashboard Backend Controllers Unit Tests', () => {
       useCase = {
         getAllUsers: jest.fn(),
         getUserById: jest.fn(),
+        getUserConversations: jest.fn(),
         updateUserMemory: jest.fn(),
         bulkUpdateStatus: jest.fn()
       } as unknown as jest.Mocked<UsersUseCase>;
@@ -116,6 +117,31 @@ describe('Dashboard Backend Controllers Unit Tests', () => {
 
       await controller.getById(req, res);
       expect(res.status).toHaveBeenCalledWith(500);
+    });
+
+    it('getConversations should return paginated conversations, 404 when missing, and 500 on error', async () => {
+      const mockPage = {
+        data: [{ role: 'user' as const, text: 'Hi', time: '2026-11-20T00:00:00Z' }],
+        meta: { totalItems: 1, totalPages: 1, currentPage: 2, limit: 10 }
+      };
+      useCase.getUserConversations.mockResolvedValueOnce(mockPage);
+      const { req, res } = createMockReqRes({
+        params: { id: 'u1' },
+        query: { page: '2', limit: '10', sortOrder: 'asc' }
+      });
+      await controller.getConversations(req, res);
+      expect(useCase.getUserConversations).toHaveBeenCalledWith('u1', { page: 2, limit: 10, sortOrder: 'asc' });
+      expect(res.json).toHaveBeenCalledWith(mockPage);
+
+      useCase.getUserConversations.mockResolvedValueOnce(null);
+      const notFound = createMockReqRes({ params: { id: 'missing' }, query: {} });
+      await controller.getConversations(notFound.req, notFound.res);
+      expect(notFound.res.status).toHaveBeenCalledWith(404);
+
+      useCase.getUserConversations.mockRejectedValueOnce(new Error('DB Error'));
+      const errCase = createMockReqRes({ params: { id: 'u1' }, query: {} });
+      await controller.getConversations(errCase.req, errCase.res);
+      expect(errCase.res.status).toHaveBeenCalledWith(500);
     });
 
     it('updateMemory should update memory and return success', async () => {
