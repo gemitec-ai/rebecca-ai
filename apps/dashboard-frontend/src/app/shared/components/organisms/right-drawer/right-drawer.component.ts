@@ -1,11 +1,12 @@
 ﻿import { Component, EventEmitter, Input, Output, OnInit, inject, signal } from '@angular/core';
 
 import { DrawerService } from '../../../../core/services/drawer.service';
+import { TranslatePipe } from '../../../pipes/translate.pipe';
 
 @Component({
   selector: 'app-right-drawer',
   standalone: true,
-  imports: [],
+  imports: [TranslatePipe],
   templateUrl: './right-drawer.component.html',
   styleUrls: ['./right-drawer.component.css']
 })

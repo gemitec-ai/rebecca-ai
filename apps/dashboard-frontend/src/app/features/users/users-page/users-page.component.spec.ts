@@ -175,23 +175,19 @@ describe('UsersPageComponent', () => {
     expect(component.userSortOrder).toBe('desc');
   });
 
-  it('should fetch user by id when openUserDrawer is called with unknown id', () => {
-    usersRepoSpy.getById.and.returnValue(of({ id: 'u_ext', username: 'ext_user', name: 'External User' }));
+  it('should open drawer with unified localized title when openUserDrawer is called with string id', () => {
     component.openUserDrawer('u_ext');
     expect(component.isDrawerOpen).toBeTrue();
     expect(component.selectedUserId).toBe('u_ext');
-    expect(component.drawerTitle).toBe('@ext_user');
+    expect(component.drawerTitle).toBe('ユーザー詳細');
+    expect(usersRepoSpy.getById).not.toHaveBeenCalled();
   });
 
-  it('should handle openUserDrawer with user object and name fallback', () => {
+  it('should handle openUserDrawer with user object and onUserUpdated', () => {
     component.openUserDrawer({ id: 'u_obj', username: 'obj_user' } as any);
     expect(component.isDrawerOpen).toBeTrue();
     expect(component.selectedUserId).toBe('u_obj');
-    expect(component.drawerTitle).toBe('@obj_user');
-
-    usersRepoSpy.getById.and.returnValue(of({ id: 'u_noname', name: 'Fallback Name' }));
-    component.openUserDrawer('u_noname');
-    expect(component.drawerTitle).toBe('@Fallback Name');
+    expect(component.drawerTitle).toBe('ユーザー詳細');
 
     usersRepoSpy.getAll.and.returnValue(of({ data: [], meta: { totalItems: 0, totalPages: 1 } }));
     component.onUserUpdated();
