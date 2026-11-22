@@ -155,28 +155,15 @@ paths:
 
   /users/{id}:
     get:
-      summary: Get user details and chat history
-      description: Retrieves full profile details and paginated chat history for a specific user handle.
+      summary: Get user details
+      description: Retrieves profile details, interaction statistics, and status for a specific user ID or handle.
       parameters:
         - name: id
           in: path
           required: true
-          description: User handle (without @ prefix, e.g. rebecca_oshi)
+          description: User ID or handle (without @ prefix, e.g. rebecca_oshi)
           schema:
             type: string
-        - name: beforeTimestamp
-          in: query
-          required: false
-          description: Before ISO timestamp for paginated chat history
-          schema:
-            type: string
-        - name: limit
-          in: query
-          required: false
-          description: Limit for chat logs page size
-          schema:
-            type: integer
-            default: 20
       responses:
         '200':
           description: Detailed user details
@@ -184,6 +171,56 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/UserDetail'
+        '404':
+          description: User not found
+
+  /users/{id}/conversations:
+    get:
+      summary: Get paginated user conversation history
+      description: Retrieves paginated conversation turns for a specific user ID or handle, keeping each turn's user and model messages in chronological order within the page.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: User ID or handle (without @ prefix)
+          schema:
+            type: string
+        - name: page
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 1
+            minimum: 1
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 20
+            minimum: 1
+            maximum: 100
+        - name: sortOrder
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [desc, asc]
+            default: desc
+      responses:
+        '200':
+          description: Paginated user conversations retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ChatBubble'
+                  meta:
+                    $ref: '#/components/schemas/PaginationMeta'
         '404':
           description: User not found
 
@@ -1125,10 +1162,6 @@ components:
           type: string
           description: JSON serialized string of profile structure
           example: '{"attributes":["student"],"preferences":["anime"],"concerns":[],"important_memories":[]}'
-        chatHistory:
-          type: array
-          items:
-            $ref: '#/components/schemas/ChatBubble'
         status:
           $ref: '#/components/schemas/UserStatus'
 

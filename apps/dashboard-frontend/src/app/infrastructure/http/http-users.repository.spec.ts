@@ -59,19 +59,33 @@ describe('HttpUsersRepository', () => {
     req.flush({});
   });
 
-  it('should fetch user by ID with beforeTimestamp and limit', () => {
-    repository.getById('bob', '2026-08-15T00:00:00Z', 20).subscribe((user) => {
+  it('should fetch user by ID', () => {
+    repository.getById('bob').subscribe((user) => {
       expect(user.username).toBe('bob');
       expect(user.status).toBe(UserStatus.BLOCKED);
     });
 
+    const req = httpMock.expectOne((r) => r.url.endsWith('/users/bob') && r.method === 'GET');
+    req.flush({ id: 'bob', username: 'bob', status: 'BLOCKED' });
+  });
+
+  it('should fetch paginated user conversations with page, limit, and sortOrder', () => {
+    repository.getConversations('bob', { page: 2, limit: 20, sortOrder: 'desc' }).subscribe((res) => {
+      expect(res.data.length).toBe(1);
+      expect(res.meta.currentPage).toBe(2);
+    });
+
     const req = httpMock.expectOne((r) =>
-      r.url.endsWith('/users/bob') &&
-      r.params.get('beforeTimestamp') === '2026-08-15T00:00:00Z' &&
-      r.params.get('limit') === '20'
+      r.url.endsWith('/users/bob/conversations') &&
+      r.params.get('page') === '2' &&
+      r.params.get('limit') === '20' &&
+      r.params.get('sortOrder') === 'desc'
     );
     expect(req.request.method).toBe('GET');
-    req.flush({ id: 'bob', username: 'bob', status: 'BLOCKED' });
+    req.flush({
+      data: [{ role: 'user', text: 'Hi', time: '2026-11-20T00:00:00Z' }],
+      meta: { totalItems: 21, totalPages: 2, currentPage: 2, limit: 20 }
+    });
   });
 
   it('should update user memory via PUT request', () => {

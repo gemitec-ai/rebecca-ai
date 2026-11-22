@@ -21,6 +21,7 @@ export function initializeUsersModule(firestore: Firestore): Router {
   router.put('/status', controller.bulkUpdateStatus.bind(controller)); // Bulk update status
   
   router.get('/:id', controller.getById.bind(controller));
+  router.get('/:id/conversations', controller.getConversations.bind(controller));
   router.put('/:id/memory', controller.updateMemory.bind(controller));
 
   return router;

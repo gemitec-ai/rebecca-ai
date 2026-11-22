@@ -271,7 +271,6 @@ export class UsersRepository {
         firstSeen,
         lastSeen,
         coreProfile: typeof data.coreProfile === 'string' ? data.coreProfile : JSON.stringify(data.coreProfile || {}),
-        chatHistory: [],
         status,
         ragMemoriesStatus,
         ragMemoriesCount
@@ -292,22 +291,32 @@ export class UsersRepository {
   }
 
   /**
+   * Resolves a user Firestore document snapshot by document ID or `@username` handle.
+   */
+  private async resolveUserDoc(id: string): Promise<FirebaseFirestore.DocumentSnapshot | null> {
+    const rawId = id.replace('@', '').trim();
+    const doc = await this.collections.users.doc(rawId).get();
+    if (doc.exists) {
+      return doc;
+    }
+
+    const snap = await this.collections.users.where('username', '==', rawId).limit(1).get();
+    if (!snap.empty) {
+      return snap.docs[0];
+    }
+    return null;
+  }
+
+  /**
    * Retrieves detailed user profile and status by their user ID or username handle.
-   * 
+   *
    * @param id - The user ID/handle to look up.
    * @returns A promise that resolves to the detailed user information, or null if the user does not exist.
    */
-  async getById(id: string, beforeTimestamp?: string, limit?: number): Promise<UserDetail | null> {
-    const rawId = id.replace('@', '').trim();
-    let doc = await this.collections.users.doc(rawId).get();
-    
-    if (!doc.exists) {
-      const snap = await this.collections.users.where('username', '==', rawId).limit(1).get();
-      if (!snap.empty) {
-        doc = snap.docs[0];
-      } else {
-        return null;
-      }
+  async getById(id: string): Promise<UserDetail | null> {
+    const doc = await this.resolveUserDoc(id);
+    if (!doc) {
+      return null;
     }
 
     const data = (doc.data() || {}) as unknown as Record<string, unknown>;
@@ -316,69 +325,15 @@ export class UsersRepository {
     const name = typeof data.name === 'string' ? data.name.trim() : '';
     const firstSeen = typeof data.firstSeen === 'string' ? data.firstSeen : '';
     const lastSeen = typeof data.lastSeen === 'string' ? data.lastSeen : '';
-    
-    // Fetch conversation logs from Firestore with a safety upper bound and sort in-memory
-    let userLogsQuery = this.collections.conversationLogs.where('userId', '==', resolvedUserId);
-    if (typeof userLogsQuery.limit === 'function') {
-      userLogsQuery = userLogsQuery.limit(MAX_USER_CHAT_LOGS_LIMIT);
-    }
-    const chatLogsSnap = await userLogsQuery.get();
-      
-    let sortedDocs = chatLogsSnap.docs.sort((a, b) => {
-      const tA = a.data().timestamp || '';
-      const tB = b.data().timestamp || '';
-      return tA.localeCompare(tB);
-    });
 
-    if (beforeTimestamp) {
-      sortedDocs = sortedDocs.filter(d => (d.data().timestamp || '') < beforeTimestamp);
-    }
-
-    if (limit) {
-      const safeLimit = Math.min(Math.max(1, Math.floor(limit)), MAX_USERS_LIMIT);
-      sortedDocs = sortedDocs.slice(-safeLimit);
-    }
-
-    const chatHistory: ChatMessage[] = [];
-    for (const d of sortedDocs) {
-      const log = d.data();
-      if (log.userText) {
-        chatHistory.push({
-          role: 'user',
-          text: String(log.userText),
-          time: String(log.timestamp || '')
-        });
-      }
-      if (log.aiText) {
-        chatHistory.push({
-          role: 'model',
-          text: String(log.aiText),
-          thought: log.thought ? String(log.thought) : undefined,
-          time: String(log.timestamp || '')
-        });
-      }
-    }
-
-    // Fallback: If chatHistory is sparse, also check episodicBuffer or rag_memories
-    if (chatHistory.length === 0 && Array.isArray(data.episodicBuffer)) {
-      for (const entry of data.episodicBuffer as Array<{ role: string; content: string; thought?: string; timestamp?: string }>) {
-        if (entry.content) {
-          chatHistory.push({
-            role: entry.role === 'user' ? 'user' : 'model',
-            text: entry.content,
-            thought: entry.role !== 'user' && entry.thought ? String(entry.thought) : undefined,
-            time: entry.timestamp || String(data.last_reply_date || '')
-          });
-        }
-      }
-    }
-
-    const calculatedInteractions = Math.max(
-      chatLogsSnap.size,
-      chatHistory.length > 0 ? Math.ceil(chatHistory.length / 2) : 0,
-      typeof data.interactions === 'number' ? data.interactions : 0,
-      typeof data.daily_reply_count === 'number' ? data.daily_reply_count : 0
-    );
+    const rawInteractions =
+      typeof data.interactions === 'number'
+        ? data.interactions
+        : typeof data.daily_reply_count === 'number'
+          ? data.daily_reply_count
+          : 0;
+    const calculatedInteractions =
+      rawInteractions > 0 ? rawInteractions : await this.countUserConversationLogs(resolvedUserId);
 
     const status = this.resolveUserStatus(data);
     const { ragMemoriesCount, ragMemoriesStatus } = this.calculateRagStats(data);
@@ -391,10 +346,136 @@ export class UsersRepository {
       firstSeen,
       lastSeen,
       coreProfile: typeof data.coreProfile === 'string' ? data.coreProfile : JSON.stringify(data.coreProfile || {}),
-      chatHistory,
       status,
       ragMemoriesStatus,
       ragMemoriesCount
+    };
+  }
+
+  /**
+   * Retrieves paginated conversation history for a user, ordered by turn timestamp.
+   *
+   * Each turn is kept intact as a `[user, model]` pair in chronological order within the returned page,
+   * while `sortOrder` (`'desc'` default or `'asc'`) determines whether page 1 starts from the newest or oldest turns.
+   *
+   * @param id - The user ID/handle to look up.
+   * @param params - Pagination and sorting parameters (`page`, `limit`, `sortOrder`).
+   * @returns Paginated `ChatMessage` list or `null` if the user does not exist.
+   */
+  async getConversations(
+    id: string,
+    params?: { page?: number; limit?: number; sortOrder?: 'asc' | 'desc' },
+  ): Promise<PaginatedResponse<ChatMessage> | null> {
+    const doc = await this.resolveUserDoc(id);
+    if (!doc) {
+      return null;
+    }
+
+    const data = (doc.data() || {}) as unknown as Record<string, unknown>;
+    const resolvedUserId = doc.id;
+    const requestedPage = Number(params?.page);
+    const page = Number.isFinite(requestedPage) && requestedPage > 0 ? Math.floor(requestedPage) : 1;
+    const requestedLimit = Number(params?.limit);
+    const limit =
+      Number.isFinite(requestedLimit) && requestedLimit > 0
+        ? Math.min(Math.floor(requestedLimit), MAX_USERS_LIMIT)
+        : 20;
+    const sortOrder: 'asc' | 'desc' = params?.sortOrder === 'asc' ? 'asc' : 'desc';
+
+    let userLogsQuery: FirebaseFirestore.Query = this.collections.conversationLogs.where('userId', '==', resolvedUserId);
+    if (typeof userLogsQuery.orderBy === 'function') {
+      userLogsQuery = userLogsQuery.orderBy('timestamp', sortOrder);
+    }
+    if (typeof userLogsQuery.limit === 'function') {
+      userLogsQuery = userLogsQuery.limit(MAX_USER_CHAT_LOGS_LIMIT);
+    }
+    const chatLogsSnap = await userLogsQuery.get();
+
+    interface ConversationTurn {
+      timestamp: string;
+      messages: ChatMessage[];
+    }
+
+    let turns: ConversationTurn[] = [];
+    if (chatLogsSnap.docs.length > 0) {
+      const sortedDocs = [...chatLogsSnap.docs].sort((a, b) => {
+        const tA = String(a.data().timestamp || '');
+        const tB = String(b.data().timestamp || '');
+        return sortOrder === 'desc' ? tB.localeCompare(tA) : tA.localeCompare(tB);
+      });
+
+      turns = sortedDocs
+        .map((d) => {
+          const log = d.data();
+          const timestamp = String(log.timestamp || '');
+          const messages: ChatMessage[] = [];
+          if (log.userText) {
+            messages.push({
+              role: 'user',
+              text: String(log.userText),
+              time: timestamp,
+            });
+          }
+          if (log.aiText) {
+            messages.push({
+              role: 'model',
+              text: String(log.aiText),
+              thought: log.thought ? String(log.thought) : undefined,
+              time: timestamp,
+            });
+          }
+          return { timestamp, messages };
+        })
+        .filter((t) => t.messages.length > 0);
+    } else if (Array.isArray(data.episodicBuffer)) {
+      const fallbackEntries = data.episodicBuffer as Array<{
+        role: string;
+        content: string;
+        thought?: string;
+        timestamp?: string;
+      }>;
+      const fallbackMessages: ChatMessage[] = [];
+      for (const entry of fallbackEntries) {
+        if (entry.content) {
+          fallbackMessages.push({
+            role: entry.role === 'user' ? 'user' : 'model',
+            text: entry.content,
+            thought: entry.role !== 'user' && entry.thought ? String(entry.thought) : undefined,
+            time: entry.timestamp || String(data.last_reply_date || ''),
+          });
+        }
+      }
+      for (let i = 0; i < fallbackMessages.length; i += 2) {
+        const slice = fallbackMessages.slice(i, i + 2);
+        turns.push({
+          timestamp: slice[0]?.time || '',
+          messages: slice,
+        });
+      }
+      if (sortOrder === 'desc') {
+        turns.reverse();
+      }
+    }
+
+    const totalItems = turns.length;
+    const totalPages = Math.ceil(totalItems / limit) || 1;
+    const startIdx = (page - 1) * limit;
+    const pageTurns = turns.slice(startIdx, startIdx + limit);
+
+    // Keep turns in chronological order within the returned slice so [user -> model] always flows naturally
+    const chronologicalTurns = sortOrder === 'desc' ? [...pageTurns].reverse() : pageTurns;
+    const messages: ChatMessage[] = chronologicalTurns.flatMap((t) => t.messages);
+
+    return {
+      data: messages,
+      meta: {
+        totalItems,
+        totalPages,
+        currentPage: page,
+        limit,
+        itemCount: pageTurns.length,
+        itemsPerPage: limit,
+      },
     };
   }
 
