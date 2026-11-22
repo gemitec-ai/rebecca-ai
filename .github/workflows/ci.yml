@@ -93,6 +93,8 @@ jobs:
             apps/functions/coverage/
             apps/dashboard-frontend/coverage/
             apps/portal-web/coverage/
+            apps/lounge-backend/coverage/
+            apps/lounge-frontend/coverage/
 
       - name: Post Coverage Report to PR
         uses: actions/github-script@v9

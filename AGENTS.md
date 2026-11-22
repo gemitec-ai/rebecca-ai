@@ -9,6 +9,8 @@ This file defines repository-wide invariants for AI coding agents and contributo
   - `apps/bot-backend`: Autonomous AI engine, webhook/worker pipelines, RAG memory consolidation, external integrations (**Google Gemini API**, **X API** via `@xdevplatform/xdk`, **Stripe** checkout/webhooks, Cloud Tasks/Storage).
   - `apps/dashboard-backend`: Express 5 Backend-for-Frontend (BFF) REST API secured by Firebase Auth, Helmet, CORS allowlisting, and rate limiting.
   - `apps/dashboard-frontend`: Angular 22 Zoneless administration SPA (**Hexagonal ports/adapters**, **Atomic Design** UI hierarchy, Signals).
+  - `apps/lounge-backend`: Isolated Private Lounge Express 5 BFF skeleton (`lounge_*` collections, read-only Public X memory port).
+  - `apps/lounge-frontend`: Gemitec Private Lounge Angular 22 Zoneless SPA skeleton (scroll-gated X sign-up, chat HUD, slide-over sidebar, rewards gallery).
   - `apps/dashboard-e2e`: Playwright end-to-end test suite against local emulators and services.
   - `apps/functions`: Firebase Cloud Functions (Gen 2) asynchronous event and auth-blocking triggers.
   - `packages/types` (`@rebecca/types`), `packages/db` (`@rebecca/db`), `packages/logger` (`@rebecca/logger`), `packages/persona` (`@rebecca/persona`), `packages/memory` (`@rebecca/memory`), `packages/prompt` (`@rebecca/prompt`), `packages/tools` (`@rebecca/tools`).
@@ -137,6 +139,8 @@ Every change affecting external or cross-module contracts **MUST** update its au
   - `apps/bot-backend/AGENTS.md` — AI engine features, pipelines, auth middleware, and LLM/RAG rules.
   - `apps/dashboard-backend/AGENTS.md` — Express 5 BFF architecture and OpenAPI contract parity.
   - `apps/dashboard-frontend/AGENTS.md` — Angular 22 Zoneless, Signals, Hexagonal ports, and UI design rules.
+  - `apps/lounge-backend/AGENTS.md` — Isolated Private Lounge BFF invariants and OpenAPI contract parity.
+  - `apps/lounge-frontend/AGENTS.md` — Private Lounge Signals, scroll-gated consent, and drawer accessibility rules.
   - `apps/dashboard-e2e/AGENTS.md` — Playwright CUJ scope, web-first assertions, and deterministic transition testing.
   - `apps/functions/AGENTS.md` — Cloud Functions Gen 2 triggers and isolated lockfile synchronization.
   - `packages/AGENTS.md` — Shared workspace library boundaries, schema converters, and security rules.
