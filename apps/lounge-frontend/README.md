@@ -5,12 +5,13 @@ Angular 22 Zoneless SPA architecture skeleton for the **Gemitec Private Lounge**
 ## Architecture
 
 - **Hexagonal Ports (`src/app/core/ports/`)**:
-  - `LoungeAuthPort`: X-linked login, logout, and scroll-verified disclaimer sign-up.
-  - `LoungeAccountPort`: Subscription tier and remaining daily chat turns summary.
-  - `LoungeSessionPort`: Paginated Private Lounge sessions and interactive turn submission.
-  - `LoungeRewardPort`: Paginated collectible illustration gallery.
-- **Adapters (`src/app/core/adapters/`)**: `LoungeBffAdapter` implements all four ports cleanly against `@rebecca/types` DTOs and dynamic `@rebecca/persona` metadata.
-- **Signals Facade (`src/app/core/services/lounge-facade.service.ts`)**: Reactive Zoneless state coordinating the Auth (`LOGIN` / scroll-gated `SIGNUP`), Chat Stage (top-left hamburger menu), Slide-Over Sidebar Drawer (account quota + Rewards navigation + Logout), and Rewards Illustration Gallery views.
+  - `LoungeConfigPort`: Runtime version, disclaimer version, and dynamic persona branding (`/config`).
+  - `LoungeAuthPort`: X-linked login, logout, and 1:1 X sign-up with scroll-verified disclaimer consent.
+  - `LoungeAccountPort`: Subscription tier, daily remaining chat turns summary, locale/timezone updates, and cascade account deletion.
+  - `LoungeSessionPort`: User's single persistent Private Lounge conversation session and message turn submission.
+  - `LoungeGalleryPort`: Paginated visual Bot illustration gallery automatically unlocked during chat turns.
+- **Adapters (`src/app/core/adapters/`)**: `LoungeBffAdapter` implements all five ports cleanly against `@rebecca/types` DTOs and dynamic `/api/v1/lounge/config` metadata.
+- **Signals Facade (`src/app/core/services/lounge-facade.service.ts`)**: Reactive Zoneless state orchestrating Auth (`LOGIN` / scroll-gated `SIGNUP`), post-signup Language/Timezone Onboarding (`ONBOARDING`), Single-Session Chat (`CHAT`), Slide-Over Sidebar Drawer, Bot Illustration Gallery (`GALLERY`), Options Preferences & 2-Step Withdrawal Modal (`OPTIONS`), across 8 supported languages (`ja`, `en`, `de`, `pt`, `es`, `zh-HK`, `vi`, `th`).
 
 ## Commands
 

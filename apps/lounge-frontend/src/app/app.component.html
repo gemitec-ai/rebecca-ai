@@ -1,966 +1,941 @@
-<div class="lounge-viewport">
-  <div class="ambient-grid" aria-hidden="true"></div>
-  <div class="ambient-glow violet" aria-hidden="true"></div>
-  <div class="ambient-glow cyan" aria-hidden="true"></div>
+@if (facade.errorMessage(); as errMsg) {
+  <div id="lounge-error-toast" class="error-toast" role="alert">
+    <span class="material-icons error-toast-icon" aria-hidden="true">error_outline</span>
+    <span class="error-toast-text">{{ errMsg }}</span>
+    <button
+      id="btn-dismiss-error"
+      type="button"
+      class="toast-close-btn"
+      [attr.aria-label]="facade.t('dismissErrorAria')"
+      (click)="facade.dismissError()"
+    >
+      <span class="material-icons" aria-hidden="true">close</span>
+    </button>
+  </div>
+}
 
-  @if (facade.activeView() === 'AUTH') {
-    <!-- ============================================================
-         VIEW 1: X-LINKED LOGIN & SCROLL-GATED SIGN-UP ENTRANCE
-         ============================================================ -->
-    <main class="auth-shell">
-      <section class="auth-hero glass-panel">
-        <div class="brand-lockup">
-          <img src="assets/gemitec_logo.svg" alt="GEMITEC Inc." class="gemitec-wordmark" />
-          <span class="tech-chip">PRIVATE NEURAL VAULT</span>
+@if (facade.activeView() === 'AUTH' || facade.activeView() === 'ONBOARDING') {
+  <main class="auth-shell">
+    <div class="ambient-bg" aria-hidden="true">
+      <div class="ambient-orb orb-purple"></div>
+      <div class="ambient-orb orb-pink"></div>
+      <div class="ambient-grid"></div>
+    </div>
+
+    <div class="auth-layout">
+      <!-- Left Stage: Gemitec Private Lounge Companion Showcase -->
+      <section class="hero-panel">
+        <div class="brand-pill">
+          <img src="assets/gemitec_icon.svg" alt="" class="brand-crest-icon" aria-hidden="true" />
+          <span>GEMITEC // {{ facade.t('brandBadge') }}</span>
         </div>
 
-        <h1 class="hero-headline">
-          @if (facade.lang() === 'ja') {
-            二人だけの<br />
-            秘密ラウンジへ<span class="neon-text">接続しよう。</span>
-          } @else {
-            Connect to Your<br />
-            <span class="neon-text">Encrypted Private Lounge.</span>
-          }
+        <h1 class="hero-title">
+          <span class="hero-title-lead">{{ facade.t('heroLead') }}</span>
+          <span class="hero-title-accent">{{ facade.t('heroHighlight') }}</span>
         </h1>
 
-        <p class="hero-subcopy">
-          @if (facade.lang() === 'ja') {
-            公開Xの記憶を受け継ぎながら、会話履歴は完全隔離データベース（<code>lounge_*</code>）へ暗号化保存。人目を気にせず{{ personaDisplayName() }}と1対1の深い対話を楽しめます。
-          } @else {
-            Carries over your shared Public X bond while isolating every private turn inside encrypted <code>lounge_*</code> tables—zero public timeline leakage.
-          }
-        </p>
+        <p class="hero-body">{{ facade.t('heroBody') }}</p>
 
-        <div class="hero-visual-stage">
-          <div class="stage-corner tl" aria-hidden="true"></div>
-          <div class="stage-corner br" aria-hidden="true"></div>
-          <div class="stage-aura" aria-hidden="true"></div>
+        <div class="hero-character-stage">
+          <div class="character-halo" aria-hidden="true"></div>
           <img
             [src]="facade.personaBranding().avatarPath"
-            [alt]="personaDisplayName()"
-            class="hero-character-img"
+            [alt]="facade.personaDisplayName()"
+            class="hero-cutout"
           />
-          <div class="hero-hud-telemetry">
-            <span class="hud-pill cyan">● ONE-WAY X SYNC</span>
-            <span class="hud-pill violet">DB ISOLATED</span>
-            <span class="hud-pill magenta">EXCLUSIVE REWARDS</span>
+          <div class="hero-nameplate">
+            <span class="material-icons nameplate-icon" aria-hidden="true">chat_bubble</span>
+            <span>{{ facade.personaDisplayName() }}</span>
           </div>
         </div>
       </section>
 
-      <section class="auth-card glass-panel" aria-label="Authentication panel">
-        <h2 class="sr-only">
-          {{ facade.lang() === 'ja' ? 'X連携認証と利用規約' : 'X OAuth Authentication and Terms' }}
-        </h2>
-
-        <div class="auth-card-top">
-          <div class="auth-tabs" role="tablist">
-            <button
-              type="button"
-              role="tab"
-              id="tab-signup"
-              [attr.aria-selected]="facade.authMode() === 'SIGNUP'"
-              class="auth-tab"
-              [class.active]="facade.authMode() === 'SIGNUP'"
-              (click)="facade.setAuthMode('SIGNUP')"
-            >
-              {{ facade.lang() === 'ja' ? '新規登録' : 'SIGN UP' }}
-            </button>
-            <button
-              type="button"
-              role="tab"
-              id="tab-login"
-              [attr.aria-selected]="facade.authMode() === 'LOGIN'"
-              class="auth-tab"
-              [class.active]="facade.authMode() === 'LOGIN'"
-              (click)="facade.setAuthMode('LOGIN')"
-            >
-              {{ facade.lang() === 'ja' ? 'ログイン' : 'LOGIN' }}
-            </button>
-          </div>
-
-          <button
-            type="button"
-            class="lang-chip-btn"
-            (click)="facade.toggleLanguage()"
-            [attr.aria-label]="facade.lang() === 'ja' ? 'Switch to English' : '日本語に切替'"
-          >
-            {{ facade.lang() === 'ja' ? 'JP / EN' : 'EN / JP' }}
-          </button>
-        </div>
-
-        @if (facade.errorMessage()) {
-          <div class="error-banner" role="alert">
-            <span>{{ facade.errorMessage() }}</span>
-            <button
-              type="button"
-              class="error-dismiss-btn"
-              (click)="facade.dismissError()"
-              [attr.aria-label]="facade.lang() === 'ja' ? 'エラーを閉じる' : 'Dismiss error'"
-            >
-              <svg viewBox="0 0 24 24" class="inline-svg-xs" aria-hidden="true">
-                <path
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2.2"
-                  stroke-linecap="round"
-                  d="M6 6l12 12M18 6L6 18"
-                />
-              </svg>
-            </button>
-          </div>
-        }
-
-        @if (facade.authMode() === 'SIGNUP') {
-          <div class="auth-mode-body" role="tabpanel" aria-labelledby="tab-signup">
-            <div class="step-label">
-              <span class="step-badge">STEP 01</span>
-              <span>
-                {{
-                  facade.lang() === 'ja'
-                    ? '免責事項・データ取扱規約を最後までスクロールしてください'
-                    : 'Scroll through the mandatory privacy & Gemini terms to unlock sign-up'
-                }}
-              </span>
+      <!-- Right Stage: Auth Card OR Post-X-Link Locale/Timezone Onboarding Card -->
+      @if (facade.activeView() === 'AUTH') {
+        <section class="auth-card" [attr.aria-label]="facade.t('authHeadingSrOnly')">
+          <header class="auth-card-header">
+            <div class="auth-tabs" role="tablist">
+              <button
+                id="tab-signup"
+                type="button"
+                role="tab"
+                class="auth-tab"
+                [class.active]="facade.authMode() === 'SIGNUP'"
+                [attr.aria-selected]="facade.authMode() === 'SIGNUP'"
+                (click)="facade.setAuthMode('SIGNUP')"
+              >
+                {{ facade.t('tabSignUp') }}
+              </button>
+              <button
+                id="tab-login"
+                type="button"
+                role="tab"
+                class="auth-tab"
+                [class.active]="facade.authMode() === 'LOGIN'"
+                [attr.aria-selected]="facade.authMode() === 'LOGIN'"
+                (click)="facade.setAuthMode('LOGIN')"
+              >
+                {{ facade.t('tabLogin') }}
+              </button>
             </div>
 
-            <div class="disclaimer-container">
-              <div class="disclaimer-progress-bar">
-                <div
-                  class="disclaimer-progress-fill"
-                  [style.width.%]="facade.disclaimerScrollProgress()"
-                ></div>
+            <div class="auth-lang-wrap">
+              <app-lounge-dropdown
+                id="auth-lang-dropdown"
+                [compact]="true"
+                [align]="'right'"
+                [leadingIcon]="'language'"
+                [options]="languageOptions"
+                [selectedValue]="facade.lang()"
+                [ariaLabel]="facade.t('languageSelectLabel')"
+                (valueChange)="onLanguageChange($event)"
+              />
+            </div>
+          </header>
+
+          @if (facade.authMode() === 'SIGNUP') {
+            <div class="auth-panel-body">
+              <div class="disclaimer-heading">
+                <span class="material-icons disclaimer-heading-icon" aria-hidden="true">gavel</span>
+                <span>{{ facade.t('disclaimerInstruction') }}</span>
               </div>
 
-              <div class="disclaimer-body-wrap">
+              <div
+                class="disclaimer-scroll-wrap"
+                [class.at-bottom]="facade.disclaimerScrolledToBottom()"
+              >
                 <div
-                  id="disclaimer-scroll-region"
+                  #disclaimerBox
+                  id="disclaimer-scroll-box"
                   class="disclaimer-scroll-box"
                   tabindex="0"
                   role="region"
-                  [attr.aria-label]="
-                    facade.lang() === 'ja'
-                      ? '新規登録前の免責事項および注意事項'
-                      : 'Mandatory Sign-Up Disclaimer'
-                  "
+                  [attr.aria-label]="facade.t('disclaimerRegionLabel')"
                   (scroll)="onDisclaimerScroll($event)"
                 >
-                  @if (facade.lang() === 'ja') {
-                    <h3>1. Google Gemini API による会話内容の学習・品質改善利用</h3>
-                    <p>
-                      本プライベートラウンジでは対話生成エンジンとして Google Gemini API を使用します。契約枠・API 仕様に基づき、送信された会話テキストは Google によるモデル学習・安全性評価・品質改善プロセスに使用される場合があります。
-                    </p>
-                    <h3>2. 個人情報（PII）・機密情報の送信禁止</h3>
-                    <p>
-                      氏名・住所・電話番号・メールアドレス・パスワード・ログイン資格情報・クレジットカード番号・マイナンバー・所属企業の未公開情報など、個人を特定できる情報や機密情報はチャット欄へ絶対に入力・送信しないでください。
-                    </p>
-                    <h3>3. 公開 X 記憶の片方向同期とデータ完全隔離</h3>
-                    <p>
-                      公開X上での過去のやり取りや関係性メタデータは{{ personaDisplayName() }}が片方向で参照しますが、プライベートラウンジの会話ログ・RAG記憶は完全に分離された専用テーブル（<code>lounge_*</code>）に保持され、公開Xタイムラインやリプライへ送信・反映されることは一切ありません。
-                    </p>
-                    <h3>4. 利用制限・禁止事項</h3>
-                    <p>
-                      自動スクリプトによる大量アクセス、プロンプトインジェクション攻撃、または法令・公序良俗に反する入力が確認された場合、事前通告なくアカウントを停止する場合があります。以上すべてに同意の上でXアカウント連携を実行してください。
-                    </p>
-                  } @else {
-                    <h3>1. Google Gemini API Training &amp; Quality Improvement</h3>
-                    <p>
-                      Interactive replies in Private Lounge are powered by the Google Gemini API. Depending on active API tier terms, submitted dialogue prompts may be processed for model learning, safety monitoring, and quality improvement.
-                    </p>
-                    <h3>2. Strict Zero-PII &amp; Zero-Credential Policy</h3>
-                    <p>
-                      Never enter legal names, home addresses, phone numbers, email addresses, passwords, payment card details, or confidential proprietary secrets in any Private Lounge prompt.
-                    </p>
-                    <h3>3. One-Way Public X Memory Sync &amp; Storage Isolation</h3>
-                    <p>
-                      Public X memory context flows strictly one-way (read-only) so {{ personaDisplayName() }} recognizes shared history. Private Lounge chats and memories reside exclusively in isolated <code>lounge_*</code> collections and never post back to Public X.
-                    </p>
-                    <h3>4. Acceptable Use</h3>
-                    <p>
-                      Automated abuse, prompt-injection tampering, or terms violations may result in immediate account suspension. Scroll to the end to confirm your agreement.
-                    </p>
-                  }
-                </div>
+                  <div class="disclaimer-clause">
+                    <h2>{{ facade.t('clause1Title') }}</h2>
+                    <p>{{ facade.t('clause1Body') }}</p>
+                  </div>
 
-                @if (!facade.disclaimerScrolledToBottom()) {
-                  <div class="disclaimer-scroll-fade" aria-hidden="true"></div>
-                }
+                  <div class="disclaimer-clause">
+                    <h2>{{ facade.t('clause2Title') }}</h2>
+                    <p>{{ facade.t('clause2Body') }}</p>
+                  </div>
+
+                  <div class="disclaimer-clause">
+                    <h2>{{ facade.t('clause3Title') }}</h2>
+                    <p>{{ facade.t('clause3Body') }}</p>
+                  </div>
+                </div>
               </div>
 
-              <div id="disclaimer-scroll-status" class="scroll-status-row" aria-live="polite">
-                @if (facade.disclaimerScrolledToBottom()) {
-                  <span class="scroll-pill unlocked">
-                    <svg viewBox="0 0 24 24" class="inline-svg-sm" aria-hidden="true">
-                      <path
-                        fill="none"
-                        stroke="currentColor"
-                        stroke-width="2.4"
-                        stroke-linecap="round"
-                        stroke-linejoin="round"
-                        d="M5 13l4 4L19 7"
-                      />
-                    </svg>
-                    <span>
-                      {{
-                        facade.lang() === 'ja'
-                          ? '全文確認完了 — 同意チェック可能'
-                          : 'Full text reviewed — consent unlocked'
-                      }}
-                    </span>
+              <div
+                class="scroll-status-bar"
+                [class.unlocked]="facade.disclaimerScrolledToBottom()"
+                aria-live="polite"
+              >
+                <div class="scroll-status-text">
+                  <span class="material-icons scroll-status-icon" aria-hidden="true">
+                    {{ facade.disclaimerScrolledToBottom() ? 'check_circle' : 'arrow_downward' }}
                   </span>
+                  <span>
+                    {{
+                      facade.disclaimerScrolledToBottom()
+                        ? facade.t('scrollUnlocked')
+                        : facade.t('scrollLocked')
+                    }}
+                  </span>
+                </div>
+                <span class="scroll-progress-pct">{{ facade.disclaimerScrollProgress() }}%</span>
+              </div>
+
+              <label
+                class="consent-label"
+                [class.consent-disabled]="!facade.disclaimerScrolledToBottom()"
+              >
+                <input
+                  id="checkbox-disclaimer-consent"
+                  type="checkbox"
+                  class="consent-checkbox"
+                  [disabled]="!facade.disclaimerScrolledToBottom()"
+                  [checked]="facade.disclaimerChecked()"
+                  (change)="onConsentChange($event)"
+                />
+                <span>{{ facade.t('consentLabel') }}</span>
+              </label>
+
+              <button
+                id="btn-x-signup"
+                type="button"
+                class="x-cta-btn"
+                [disabled]="!facade.canSubmitSignUp()"
+                (click)="facade.submitSignUpWithX()"
+              >
+                @if (facade.isLoading()) {
+                  <span class="material-icons spin-icon" aria-hidden="true">autorenew</span>
                 } @else {
-                  <span class="scroll-pill locked">
-                    <svg viewBox="0 0 24 24" class="inline-svg-sm" aria-hidden="true">
-                      <path
-                        fill="none"
-                        stroke="currentColor"
-                        stroke-width="2.2"
-                        stroke-linecap="round"
-                        stroke-linejoin="round"
-                        d="M12 5v14M6 13l6 6 6-6"
-                      />
-                    </svg>
-                    <span>
-                      {{
-                        facade.lang() === 'ja'
-                          ? '最後までスクロールすると同意チェックが有効になります'
-                          : 'Scroll to bottom to enable consent checkbox'
-                      }}
-                    </span>
-                  </span>
+                  <svg class="x-brand-svg" viewBox="0 0 24 24" aria-hidden="true">
+                    <path
+                      fill="currentColor"
+                      d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"
+                    />
+                  </svg>
                 }
-                <span class="scroll-percent">{{ facade.disclaimerScrollProgress() }}%</span>
-              </div>
+                <span>{{ facade.t('signUpCta') }}</span>
+              </button>
             </div>
-
-            <label
-              class="consent-checkbox-row"
-              [class.disabled]="!facade.disclaimerScrolledToBottom()"
-            >
-              <input
-                id="lounge-consent-checkbox"
-                type="checkbox"
-                aria-describedby="disclaimer-scroll-status"
-                [disabled]="!facade.disclaimerScrolledToBottom()"
-                [checked]="facade.disclaimerChecked()"
-                (change)="onConsentCheckboxChange($event)"
-              />
-              <span>
-                {{
-                  facade.lang() === 'ja'
-                    ? '上記の免責事項（Gemini学習利用・個人情報送信禁止・隔離仕様）を最後まで読み、すべてに同意します'
-                    : 'I have read the disclaimer to the end and accept all Gemini learning, zero-PII, and isolation terms'
-                }}
-              </span>
-            </label>
-
-            <button
-              id="btn-x-signup"
-              type="button"
-              class="x-oauth-cta cyber-primary"
-              [disabled]="!facade.canSubmitSignUp()"
-              (click)="facade.submitSignUpWithX()"
-            >
-              <svg class="x-icon" viewBox="0 0 24 24" aria-hidden="true">
-                <path
-                  fill="currentColor"
-                  d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"
-                />
-              </svg>
-              <span>
-                {{
-                  facade.lang() === 'ja'
-                    ? 'Xアカウントで同意して新規登録'
-                    : 'Agree &amp; Sign Up with X Account'
-                }}
-              </span>
-            </button>
-          </div>
-        } @else {
-          <div class="auth-mode-body login-body" role="tabpanel" aria-labelledby="tab-login">
-            <div class="login-callout">
-              <div class="callout-icon" aria-hidden="true">
-                <svg viewBox="0 0 24 24" class="inline-svg-md">
-                  <path
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="2"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    d="M13 2L4 14h7l-1 8 9-12h-7l1-8z"
-                  />
-                </svg>
-              </div>
-              <div>
-                <div class="callout-title">
-                  {{
-                    facade.lang() === 'ja'
-                      ? 'X (Twitter) 連携セッション認証'
-                      : 'X OAuth Authenticated Reconnect'
-                  }}
+          } @else {
+            <div class="auth-panel-body login-panel-body">
+              <div class="login-callout">
+                <div class="login-callout-badge" aria-hidden="true">
+                  <span class="material-icons">bolt</span>
                 </div>
-                <p class="callout-desc">
-                  {{
-                    facade.lang() === 'ja'
-                      ? '登録済みのXアカウントでサインインし、前回の記憶とサブスク残回数を復元します。'
-                      : 'Sign in with your linked X account to restore private memories and daily quota.'
-                  }}
-                </p>
+                <h2 class="login-callout-title">{{ facade.t('loginCalloutTitle') }}</h2>
+                <p class="login-callout-body">{{ facade.t('loginCalloutBody') }}</p>
+              </div>
+
+              <button
+                id="btn-x-login"
+                type="button"
+                class="x-cta-btn"
+                [disabled]="facade.isLoading()"
+                (click)="facade.submitLoginWithX()"
+              >
+                @if (facade.isLoading()) {
+                  <span class="material-icons spin-icon" aria-hidden="true">autorenew</span>
+                } @else {
+                  <svg class="x-brand-svg" viewBox="0 0 24 24" aria-hidden="true">
+                    <path
+                      fill="currentColor"
+                      d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"
+                    />
+                  </svg>
+                }
+                <span>{{ facade.t('loginCta') }}</span>
+              </button>
+            </div>
+          }
+
+          <footer class="auth-card-footer">
+            <span>{{ facade.t('disclaimerVersionLabel') }}</span>
+            <span class="version-chip">{{ formattedVersion() }}</span>
+          </footer>
+        </section>
+      } @else {
+        <section
+          id="onboarding-preferences-card"
+          class="auth-card onboarding-card"
+          [attr.aria-label]="facade.t('onboardingTitle')"
+        >
+          <div class="onboarding-linked-pill">
+            <span class="material-icons onboarding-linked-icon" aria-hidden="true"
+              >check_circle</span
+            >
+            <span>{{ facade.t('onboardingXLinkedBadge') }}</span>
+            @if (facade.accountSummary()?.user?.xHandle; as handle) {
+              <span class="onboarding-x-handle">{{ handle }}</span>
+            }
+          </div>
+
+          <div class="onboarding-heading-group">
+            <h2 class="onboarding-title">{{ facade.t('onboardingTitle') }}</h2>
+            <p class="onboarding-subtitle">{{ facade.t('onboardingSubtitle') }}</p>
+          </div>
+
+          <div class="onboarding-fields">
+            <div class="option-group">
+              <div class="option-label-row">
+                <span class="material-icons option-label-icon" aria-hidden="true">language</span>
+                <span class="option-label-text">{{ facade.t('optionsLanguageLabel') }}</span>
+              </div>
+              <app-lounge-dropdown
+                id="onboarding-lang-dropdown"
+                [leadingIcon]="'language'"
+                [options]="languageOptions"
+                [selectedValue]="facade.lang()"
+                [ariaLabel]="facade.t('optionsLanguageLabel')"
+                (valueChange)="onLanguageChange($event)"
+              />
+              <p class="option-hint">{{ facade.t('optionsLanguageHint') }}</p>
+            </div>
+
+            <div class="option-group">
+              <div class="option-label-row">
+                <span class="material-icons option-label-icon" aria-hidden="true">schedule</span>
+                <span class="option-label-text">{{ facade.t('optionsTimezoneLabel') }}</span>
+              </div>
+              <app-lounge-dropdown
+                id="onboarding-timezone-dropdown"
+                [leadingIcon]="'schedule'"
+                [options]="timezoneOptions"
+                [selectedValue]="facade.timezone()"
+                [ariaLabel]="facade.t('optionsTimezoneLabel')"
+                (valueChange)="onTimezoneChange($event)"
+              />
+              <p class="option-hint">{{ facade.t('optionsTimezoneHint') }}</p>
+            </div>
+          </div>
+
+          <div class="onboarding-note-box">
+            <span class="material-icons onboarding-note-icon" aria-hidden="true">info_outline</span>
+            <span>{{ facade.t('onboardingChangeLaterNote') }}</span>
+          </div>
+
+          <button
+            id="btn-start-lounge"
+            type="button"
+            class="x-cta-btn"
+            [disabled]="facade.isLoading()"
+            (click)="facade.completeOnboarding()"
+          >
+            @if (facade.isLoading()) {
+              <span class="material-icons spin-icon" aria-hidden="true">autorenew</span>
+            } @else {
+              <span class="material-icons" aria-hidden="true">arrow_forward</span>
+            }
+            <span>{{ facade.t('onboardingStartCta') }}</span>
+          </button>
+
+          <footer class="auth-card-footer">
+            <span>{{ facade.t('disclaimerVersionLabel') }}</span>
+            <span class="version-chip">{{ formattedVersion() }}</span>
+          </footer>
+        </section>
+      }
+    </div>
+  </main>
+} @else {
+  <div class="lounge-shell">
+    <div class="ambient-bg" aria-hidden="true">
+      <div class="ambient-orb orb-purple"></div>
+      <div class="ambient-orb orb-pink"></div>
+    </div>
+
+    <!-- Top Application Bar -->
+    <header class="lounge-topbar">
+      <div class="topbar-left">
+        <button
+          #hamburgerButton
+          id="btn-hamburger"
+          type="button"
+          class="hamburger-btn"
+          [attr.aria-label]="facade.t('openMenuAria')"
+          [attr.aria-expanded]="facade.isSidebarOpen()"
+          aria-controls="lounge-sidebar-drawer"
+          (click)="facade.toggleSidebar(true)"
+        >
+          <span class="material-icons" aria-hidden="true">menu</span>
+        </button>
+
+        <div class="topbar-brand">
+          <img src="assets/gemitec_icon.svg" alt="" class="topbar-crest" aria-hidden="true" />
+          <span class="topbar-title">
+            @switch (facade.activeView()) {
+              @case ('GALLERY') {
+                {{ facade.t('galleryTitle') }}
+              }
+              @case ('OPTIONS') {
+                {{ facade.t('optionsTitle') }}
+              }
+              @default {
+                {{ facade.personaDisplayName() }}
+              }
+            }
+          </span>
+        </div>
+      </div>
+
+      <div class="topbar-right">
+        @if (facade.accountSummary(); as summary) {
+          <div
+            class="turns-pill"
+            [title]="facade.t('remainingTurnsLabel')"
+            [attr.aria-label]="facade.t('remainingTurnsLabel')"
+          >
+            <span class="material-icons turns-pill-icon" aria-hidden="true"
+              >chat_bubble_outline</span
+            >
+            <span class="turns-pill-value">
+              {{ summary.subscription.remainingChatTurns }} /
+              {{ summary.subscription.dailyTurnQuota }}
+            </span>
+          </div>
+        }
+      </div>
+    </header>
+
+    <!-- Slide-Over Navigation Drawer -->
+    @if (facade.isSidebarOpen()) {
+      <div
+        class="drawer-backdrop"
+        aria-hidden="true"
+        (click)="facade.toggleSidebar(false)"
+      ></div>
+      <aside
+        #sidebarDrawer
+        id="lounge-sidebar-drawer"
+        class="sidebar-drawer"
+        role="dialog"
+        aria-modal="true"
+        [attr.aria-label]="facade.t('brandBadge')"
+      >
+        <div class="sidebar-header">
+          <div class="sidebar-brand">
+            <img src="assets/gemitec_icon.svg" alt="" class="sidebar-crest" aria-hidden="true" />
+            <span class="sidebar-brand-label">GEMITEC // {{ facade.t('brandBadge') }}</span>
+          </div>
+          <button
+            #closeSidebarButton
+            id="btn-close-sidebar"
+            type="button"
+            class="icon-close-btn"
+            [attr.aria-label]="facade.t('closeMenuAria')"
+            (click)="facade.toggleSidebar(false)"
+          >
+            <span class="material-icons" aria-hidden="true">close</span>
+          </button>
+        </div>
+
+        @if (facade.accountSummary(); as summary) {
+          <div class="account-card">
+            <div class="account-profile-row">
+              @if (summary.user.avatarUrl) {
+                <img
+                  [src]="summary.user.avatarUrl"
+                  [alt]="summary.user.displayName"
+                  class="account-avatar"
+                  [class.account-avatar-crest]="summary.user.avatarUrl.includes('gemitec_icon')"
+                />
+              } @else {
+                <div class="account-avatar account-avatar-fallback" aria-hidden="true">
+                  <span class="material-icons">person</span>
+                </div>
+              }
+
+              <div class="account-identity">
+                <div class="account-name">{{ summary.user.displayName }}</div>
+                <div class="account-handle">{{ summary.user.xHandle }}</div>
               </div>
             </div>
 
-            <button
-              id="btn-x-login"
-              type="button"
-              class="x-oauth-cta cyber-primary"
-              [disabled]="facade.isLoading()"
-              (click)="facade.submitLoginWithX()"
-            >
-              <svg class="x-icon" viewBox="0 0 24 24" aria-hidden="true">
-                <path
-                  fill="currentColor"
-                  d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"
-                />
-              </svg>
-              <span>
-                {{
-                  facade.lang() === 'ja'
-                    ? 'Xアカウントでログイン'
-                    : 'Sign In with X Account'
-                }}
-              </span>
-            </button>
+            <div class="subscription-row">
+              <span class="subscription-caption">{{ facade.t('subscriptionLabel') }}</span>
+              <span class="tier-badge">{{ summary.subscription.tier }}</span>
+            </div>
+
+            <div class="quota-block">
+              <div class="quota-row">
+                <span class="quota-label">{{ facade.t('remainingTurnsLabel') }}</span>
+                <span class="quota-value">
+                  {{ summary.subscription.remainingChatTurns }} /
+                  {{ summary.subscription.dailyTurnQuota }}
+                  {{ facade.t('remainingTurnsUnit') }}
+                </span>
+              </div>
+              <div class="quota-track" aria-hidden="true">
+                <div
+                  class="quota-fill"
+                  [style.width.%]="facade.remainingTurnsPercent()"
+                ></div>
+              </div>
+            </div>
           </div>
         }
 
-        <footer class="auth-footer">
-          <span class="footer-brand">Gemitec Inc. // Official AI Client</span>
-          <span class="app-version-badge" data-testid="auth-version">{{ facade.appVersion() }}</span>
-        </footer>
-      </section>
-    </main>
-  } @else {
-    <!-- ============================================================
-         AUTHENTICATED SHELL: TOP-LEFT HAMBURGER + CHAT / REWARDS + SLIDE-OVER SIDEBAR
-         ============================================================ -->
-    <div class="app-shell">
-      <header class="top-hud glass-panel">
-        <div class="hud-left">
+        <nav class="sidebar-nav">
           <button
-            id="btn-hamburger"
+            id="nav-btn-chat"
             type="button"
-            class="hamburger-btn"
-            [attr.aria-expanded]="facade.isSidebarOpen()"
-            aria-controls="lounge-sidebar-drawer"
-            [attr.aria-label]="facade.lang() === 'ja' ? 'メニューを開く' : 'Open navigation menu'"
-            (click)="facade.toggleSidebar()"
+            class="nav-item"
+            [class.active]="facade.activeView() === 'CHAT'"
+            (click)="facade.navigateTo('CHAT')"
           >
-            <svg viewBox="0 0 24 24" class="hamburger-icon" aria-hidden="true">
-              <path
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2.1"
-                stroke-linecap="round"
-                d="M4 6.5h16M4 12h16M4 17.5h11"
-              />
-            </svg>
+            <span class="material-icons nav-item-icon" aria-hidden="true">chat</span>
+            <span class="nav-item-label">{{ facade.t('navChat') }}</span>
           </button>
 
-          <img src="assets/gemitec_icon.svg" alt="GEMITEC" class="hud-brand-icon" />
-          <div class="hud-title-group">
-            <span class="hud-kicker">GEMITEC // PRIVATE LOUNGE</span>
-            <h1 class="hud-title">
-              @if (facade.activeView() === 'REWARDS') {
-                {{ facade.lang() === 'ja' ? 'リワード・イラスト一覧' : 'Rewards Illustration Gallery' }}
-              } @else {
-                {{ facade.activeSession()?.title || 'NEON LOUNGE' }}
-              }
-            </h1>
-          </div>
-        </div>
-
-        <div class="hud-right">
-          <span class="hud-sync-pill" title="Read-only Public X memory sync">
-            <span class="pulse-dot" aria-hidden="true"></span>
-            <span>X-SYNC: 1-WAY</span>
-          </span>
-
-          @if (facade.accountSummary(); as summary) {
-            <span class="hud-quota-chip" data-testid="hud-remaining-turns">
-              <span class="quota-label hide-on-xs">{{ facade.lang() === 'ja' ? '残回数' : 'TURNS' }}</span>
-              <strong>{{ summary.subscription.remainingChatTurns }}/{{ summary.subscription.dailyTurnQuota }}</strong>
-            </span>
-          }
+          <button
+            id="nav-btn-gallery"
+            type="button"
+            class="nav-item"
+            [class.active]="facade.activeView() === 'GALLERY'"
+            (click)="facade.navigateTo('GALLERY')"
+          >
+            <span class="material-icons nav-item-icon" aria-hidden="true">photo_library</span>
+            <span class="nav-item-label">{{ facade.t('navGallery') }}</span>
+            <span class="nav-count-badge"
+              >{{ unlockedGalleryCount() }}/{{ totalGalleryCount() }}</span
+            >
+          </button>
 
           <button
+            id="nav-btn-options"
             type="button"
-            class="lang-chip-btn"
-            (click)="facade.toggleLanguage()"
-            [attr.aria-label]="facade.lang() === 'ja' ? 'Switch to English' : '日本語に切替'"
+            class="nav-item"
+            [class.active]="facade.activeView() === 'OPTIONS'"
+            (click)="facade.navigateTo('OPTIONS')"
           >
-            {{ facade.lang() === 'ja' ? 'JP / EN' : 'EN / JP' }}
+            <span class="material-icons nav-item-icon" aria-hidden="true">tune</span>
+            <span class="nav-item-label">{{ facade.t('navOptions') }}</span>
           </button>
-        </div>
-      </header>
+        </nav>
 
-      @if (facade.errorMessage()) {
-        <div class="error-banner shell-error-banner" role="alert">
-          <span>{{ facade.errorMessage() }}</span>
+        <footer class="sidebar-footer">
           <button
+            id="btn-logout"
             type="button"
-            class="error-dismiss-btn"
-            (click)="facade.dismissError()"
-            [attr.aria-label]="facade.lang() === 'ja' ? 'エラーを閉じる' : 'Dismiss error'"
+            class="logout-btn"
+            [disabled]="facade.isLoading()"
+            (click)="facade.logout()"
           >
-            <svg viewBox="0 0 24 24" class="inline-svg-xs" aria-hidden="true">
-              <path
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2.2"
-                stroke-linecap="round"
-                d="M6 6l12 12M18 6L6 18"
-              />
-            </svg>
-          </button>
-        </div>
-      }
-
-      @if (facade.activeView() === 'CHAT') {
-        <!-- ============================================================
-             VIEW 2: MAIN CHAT STAGE
-             ============================================================ -->
-        <main class="chat-workspace">
-          <aside class="resonance-panel glass-panel">
-            <div class="resonance-portrait-frame">
-              <img
-                [src]="facade.personaBranding().avatarPath"
-                [alt]="personaDisplayName()"
-                class="resonance-portrait"
-              />
-              <span
-                class="emotion-badge emotion-badge--overlay"
-                [style.--emotion-color]="currentEmotionMeta().accent"
-              >
-                <span class="emotion-dot" aria-hidden="true"></span>
-                {{ currentEmotionMeta().en }} // {{ currentEmotionMeta().ja }}
-              </span>
-            </div>
-
-            <div class="resonance-meta">
-              <div class="persona-title-row">
-                <div class="persona-heading-group">
-                  <h2 class="persona-name">{{ personaDisplayName() }}</h2>
-                  <span
-                    class="emotion-badge emotion-badge--inline"
-                    [style.--emotion-color]="currentEmotionMeta().accent"
-                  >
-                    <span class="emotion-dot" aria-hidden="true"></span>
-                    {{ currentEmotionMeta().en }}
-                  </span>
-                </div>
-                <span class="persona-status">{{ facade.lang() === 'ja' ? 'オンライン' : 'CONNECTED' }}</span>
-              </div>
-              <p class="isolation-note">
-                @if (facade.lang() === 'ja') {
-                  公開X記憶を参照中（このラウンジの会話は <code>lounge_*</code> に完全隔離）
-                } @else {
-                  Public X bond synced read-only. Private log isolated inside <code>lounge_*</code>.
-                }
-              </p>
-
-              <button
-                type="button"
-                class="quick-rewards-btn"
-                (click)="facade.navigateTo('REWARDS')"
-              >
-                <span class="btn-icon-label">
-                  <svg viewBox="0 0 24 24" class="inline-svg-sm" aria-hidden="true">
-                    <path
-                      fill="none"
-                      stroke="currentColor"
-                      stroke-width="2"
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                      d="M12 3l2.2 5.3L19.5 10l-5.3 1.7L12 17l-2.2-5.3L4.5 10l5.3-1.7L12 3z"
-                    />
-                  </svg>
-                  <span>{{ facade.lang() === 'ja' ? 'リワード一覧' : 'Rewards' }}</span>
-                </span>
-                <span class="count-pill">{{ unlockedRewardsCount() }}/{{ facade.rewards().length }}</span>
-              </button>
-            </div>
-          </aside>
-
-          <section class="chat-panel glass-panel" aria-label="Private conversation stream">
-            <div class="chat-stream">
-              @for (msg of facade.messages(); track msg.id) {
-                <article
-                  class="message-row"
-                  [class.from-user]="msg.role === 'USER'"
-                  [class.from-assistant]="msg.role === 'ASSISTANT'"
-                >
-                  <div class="message-meta">
-                    <span class="sender-label">
-                      {{ msg.role === 'USER' ? (facade.accountSummary()?.user?.xHandle || '@you') : personaDisplayName() }}
-                    </span>
-                    @if (msg.role === 'ASSISTANT') {
-                      <span class="msg-emotion-tag">{{ getEmotionLabel(msg.emotion) }}</span>
-                    }
-                  </div>
-                  <div class="message-bubble">
-                    <p>{{ msg.content }}</p>
-                    @if (msg.unlockedRewardId) {
-                      <button
-                        type="button"
-                        class="unlocked-reward-banner"
-                        (click)="facade.navigateTo('REWARDS')"
-                      >
-                        <span class="btn-icon-label">
-                          <svg viewBox="0 0 24 24" class="inline-svg-sm" aria-hidden="true">
-                            <path
-                              fill="none"
-                              stroke="currentColor"
-                              stroke-width="2"
-                              stroke-linecap="round"
-                              stroke-linejoin="round"
-                              d="M20 12v8H4v-8M2 7h20v5H2V7zm10 0v13M12 7c-2.5 0-4.5-1.2-4.5-3S9.2 1 11 2.8L12 4l1-1.2C14.8 1 16.5 2.2 16.5 4S14.5 7 12 7z"
-                            />
-                          </svg>
-                          <span>
-                            {{
-                              facade.lang() === 'ja'
-                                ? '新しいイラストリワードが解放されました！一覧を見る'
-                                : 'New Illustration Reward Unlocked! View Gallery'
-                            }}
-                          </span>
-                        </span>
-                        <svg viewBox="0 0 24 24" class="inline-svg-sm" aria-hidden="true">
-                          <path
-                            fill="none"
-                            stroke="currentColor"
-                            stroke-width="2"
-                            stroke-linecap="round"
-                            stroke-linejoin="round"
-                            d="M5 12h14M13 6l6 6-6 6"
-                          />
-                        </svg>
-                      </button>
-                    }
-                  </div>
-                </article>
-              }
-            </div>
-
-            @if (isQuotaExhausted()) {
-              <div class="quota-exhausted-banner" role="status" data-testid="quota-exhausted-banner">
-                {{
-                  facade.lang() === 'ja'
-                    ? '本日のチャット残回数が上限に達しました。リセット時刻までお待ちいただくかプランをご確認ください。'
-                    : 'Daily chat turn quota exhausted. Please wait for reset or upgrade your supporter tier.'
-                }}
-              </div>
+            @if (facade.isLoading()) {
+              <span class="material-icons spin-icon" aria-hidden="true">autorenew</span>
+            } @else {
+              <span class="material-icons" aria-hidden="true">logout</span>
             }
+            <span>{{ facade.t('logoutLabel') }}</span>
+          </button>
+          <span class="sidebar-version">{{ formattedVersion() }}</span>
+        </footer>
+      </aside>
+    }
 
-            <form class="composer-bar" (submit)="onSubmitMessage($event)">
-              <input
-                type="text"
-                name="composer"
-                class="composer-input"
-                [disabled]="isQuotaExhausted()"
-                [attr.aria-label]="
-                  facade.lang() === 'ja' ? 'プライベートメッセージ入力欄' : 'Private chat message input'
-                "
-                [ngModel]="facade.composerDraft()"
-                (ngModelChange)="facade.composerDraft.set($event)"
-                [placeholder]="
-                  facade.lang() === 'ja'
-                    ? '個人情報(PII)は入力せず、メッセージを入力...'
-                    : 'Type your private message (do not include PII)...'
-                "
-                maxlength="4000"
-              />
-              <button
-                type="submit"
-                class="send-btn cyber-primary"
-                [disabled]="!facade.composerDraft().trim() || facade.isLoading() || isQuotaExhausted()"
-              >
-                {{ facade.lang() === 'ja' ? '送信' : 'SEND' }}
-              </button>
-            </form>
-          </section>
-        </main>
-      } @else {
-        <!-- ============================================================
-             VIEW 4: REWARDS ILLUSTRATION GALLERY
-             ============================================================ -->
-        <main class="rewards-workspace">
-          <div class="rewards-banner glass-panel">
-            <div>
-              <span class="step-badge">COLLECTION // REWARDS</span>
-              <h2 class="rewards-heading">
-                {{
-                  facade.lang() === 'ja'
-                    ? personaDisplayName() + 'からのリワード・イラスト一覧'
-                    : 'Exclusive Rewards Shared by ' + personaDisplayName()
-                }}
-              </h2>
-              <p class="rewards-subtitle">
-                {{
-                  facade.lang() === 'ja'
-                    ? 'プライベート対話の共鳴や記念イベントで解禁された限定イラストコレクション'
-                    : 'Special illustrations unlocked through private resonance milestones and supporter perks.'
-                }}
-              </p>
-            </div>
-
-            <div class="rewards-banner-actions">
-              <div class="unlock-counter">
-                <span class="counter-label">{{ facade.lang() === 'ja' ? '解禁進捗' : 'UNLOCKED' }}</span>
-                <strong class="counter-value">{{ unlockedRewardsCount() }} / {{ facade.rewards().length }}</strong>
+    <!-- Main Content Viewport -->
+    <main class="lounge-workspace">
+      @switch (facade.activeView()) {
+        @case ('CHAT') {
+          <div class="chat-layout">
+            <!-- PC Left Companion Showcase (hidden on Mobile to maximize conversation space) -->
+            <aside class="companion-panel">
+              <div class="companion-visual-stage">
+                <div class="companion-halo" aria-hidden="true"></div>
+                <img
+                  [src]="facade.personaBranding().avatarPath"
+                  [alt]="facade.personaDisplayName()"
+                  class="companion-cutout"
+                />
               </div>
+
+              <div class="companion-info">
+                <h2 class="companion-name">{{ facade.personaDisplayName() }}</h2>
+                <p class="companion-subtext">{{ facade.t('companionSubtext') }}</p>
+              </div>
+
               <button
-                id="btn-back-to-chat"
+                id="btn-companion-gallery"
                 type="button"
-                class="back-chat-btn"
+                class="companion-gallery-btn"
+                (click)="facade.navigateTo('GALLERY')"
+              >
+                <span class="material-icons" aria-hidden="true">photo_library</span>
+                <span class="companion-gallery-label">{{ facade.t('openGalleryBtn') }}</span>
+                <span class="companion-gallery-count"
+                  >{{ unlockedGalleryCount() }}/{{ totalGalleryCount() }}</span
+                >
+              </button>
+            </aside>
+
+            <!-- Primary Single-Session Chat Stream & Composer -->
+            <section class="chat-panel">
+              <div #chatStream id="chat-message-stream" class="chat-stream" aria-live="polite">
+                @for (msg of facade.messages(); track msg.id) {
+                  @if (msg.role === 'ASSISTANT') {
+                    <article class="message-row from-assistant">
+                      <img
+                        class="ai-chat-avatar"
+                        [src]="getEmotionAvatarPath(msg.emotion)"
+                        [alt]="facade.personaDisplayName()"
+                      />
+                      <div class="message-bubble assistant-bubble">
+                        <div class="message-meta">
+                          <span class="sender-name">{{ facade.personaDisplayName() }}</span>
+                          <time class="message-time" [attr.datetime]="msg.createdAt">
+                            {{ formatMessageTime(msg.createdAt) }}
+                          </time>
+                        </div>
+                        <p class="message-text">{{ msg.content }}</p>
+
+                        @if (msg.imageUrl) {
+                          <button
+                            type="button"
+                            class="chat-inline-image-btn"
+                            [attr.aria-label]="facade.t('viewFullImageAria')"
+                            (click)="openImagePreview(msg.imageUrl, $event)"
+                          >
+                            <img
+                              class="chat-inline-image"
+                              [src]="msg.imageUrl"
+                              [alt]="facade.personaDisplayName()"
+                              (load)="scrollChatToBottom()"
+                            />
+                            <span class="inline-image-zoom-hint" aria-hidden="true">
+                              <span class="material-icons">zoom_in</span>
+                            </span>
+                          </button>
+                        }
+                      </div>
+                    </article>
+                  } @else {
+                    <article class="message-row from-user">
+                      <div class="message-bubble user-bubble">
+                        <div class="message-meta">
+                          <span class="sender-name">
+                            {{ facade.accountSummary()?.user?.xHandle ?? '@you' }}
+                          </span>
+                          <time class="message-time" [attr.datetime]="msg.createdAt">
+                            {{ formatMessageTime(msg.createdAt) }}
+                          </time>
+                        </div>
+                        <p class="message-text">{{ msg.content }}</p>
+                      </div>
+                    </article>
+                  }
+                }
+              </div>
+
+              @if (facade.accountSummary()?.subscription?.remainingChatTurns === 0) {
+                <div class="quota-exhausted-banner" role="status">
+                  <span class="material-icons" aria-hidden="true">info_outline</span>
+                  <span>{{ facade.t('quotaExhaustedBanner') }}</span>
+                </div>
+              }
+
+              <form class="composer-bar" (submit)="onSendMessage($event)">
+                <textarea
+                  #composerInput
+                  id="chat-composer-input"
+                  class="composer-input"
+                  rows="1"
+                  [value]="facade.composerDraft()"
+                  [placeholder]="facade.t('composerPlaceholder')"
+                  [attr.aria-label]="facade.t('composerAria')"
+                  [disabled]="
+                    facade.isLoading() ||
+                    (facade.accountSummary()?.subscription?.remainingChatTurns ?? 0) <= 0
+                  "
+                  (input)="onComposerInput($event)"
+                  (keydown)="onComposerKeydown($event)"
+                ></textarea>
+
+                <button
+                  id="btn-send-message"
+                  type="submit"
+                  class="send-btn"
+                  [disabled]="
+                    facade.isLoading() ||
+                    !facade.composerDraft().trim() ||
+                    (facade.accountSummary()?.subscription?.remainingChatTurns ?? 0) <= 0
+                  "
+                  [attr.aria-label]="facade.t('sendLabel')"
+                >
+                  @if (facade.isLoading()) {
+                    <span class="material-icons spin-icon" aria-hidden="true">autorenew</span>
+                  } @else {
+                    <span class="material-icons" aria-hidden="true">send</span>
+                  }
+                  <span class="send-label">{{ facade.t('sendLabel') }}</span>
+                </button>
+              </form>
+            </section>
+          </div>
+        }
+
+        @case ('GALLERY') {
+          <section id="gallery-view" class="subview-container gallery-view">
+            <header class="view-header">
+              <div class="view-title-group">
+                <span class="material-icons view-title-icon" aria-hidden="true">photo_library</span>
+                <div>
+                  <h1 class="view-title">{{ facade.t('galleryTitle') }}</h1>
+                  <p class="view-subtitle">{{ facade.t('gallerySubtitle') }}</p>
+                </div>
+              </div>
+
+              <div class="view-header-actions">
+                <span class="gallery-count-pill">
+                  {{ unlockedGalleryCount() }} / {{ totalGalleryCount() }}
+                  {{ facade.t('galleryUnlockedLabel') }}
+                </span>
+                <button
+                  id="btn-back-to-chat"
+                  type="button"
+                  class="back-btn"
+                  (click)="facade.navigateTo('CHAT')"
+                >
+                  <span class="material-icons" aria-hidden="true">arrow_back</span>
+                  <span>{{ facade.t('backToChat') }}</span>
+                </button>
+              </div>
+            </header>
+
+            <div class="gallery-grid">
+              @for (item of facade.galleryItems(); track item.id) {
+                @if (item.unlocked) {
+                  <button
+                    [id]="'gallery-card-' + item.id"
+                    type="button"
+                    class="gallery-tile unlocked"
+                    [attr.aria-label]="facade.t('viewFullImageAria')"
+                    (click)="openImagePreview(item.imageUrl, $event)"
+                  >
+                    <img
+                      class="gallery-tile-img"
+                      [src]="item.imageUrl"
+                      [alt]="facade.personaDisplayName()"
+                      loading="lazy"
+                    />
+                    <span class="gallery-zoom-badge" aria-hidden="true">
+                      <span class="material-icons">zoom_in</span>
+                    </span>
+                  </button>
+                } @else {
+                  <div [id]="'gallery-card-' + item.id" class="gallery-tile locked">
+                    <span class="material-icons gallery-lock-icon" aria-hidden="true"
+                      >lock_outline</span
+                    >
+                  </div>
+                }
+              }
+            </div>
+          </section>
+        }
+
+        @case ('OPTIONS') {
+          <section id="options-view" class="subview-container options-view">
+            <header class="view-header">
+              <div class="view-title-group">
+                <span class="material-icons view-title-icon" aria-hidden="true">tune</span>
+                <div>
+                  <h1 class="view-title">{{ facade.t('optionsTitle') }}</h1>
+                  <p class="view-subtitle">{{ facade.t('optionsSubtitle') }}</p>
+                </div>
+              </div>
+
+              <button
+                id="btn-options-back-to-chat"
+                type="button"
+                class="back-btn"
                 (click)="facade.navigateTo('CHAT')"
               >
-                <svg viewBox="0 0 24 24" class="inline-svg-sm" aria-hidden="true">
-                  <path
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="2.1"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    d="M19 12H5M11 6l-6 6 6 6"
-                  />
-                </svg>
-                <span>{{ facade.lang() === 'ja' ? 'チャットへ戻る' : 'Back to Chat' }}</span>
+                <span class="material-icons" aria-hidden="true">arrow_back</span>
+                <span>{{ facade.t('backToChat') }}</span>
               </button>
-            </div>
-          </div>
+            </header>
 
-          <section class="rewards-grid" aria-label="Rewards illustration gallery">
-            @for (item of facade.rewards(); track item.id) {
-              <article
-                class="reward-card glass-panel"
-                [class.locked]="!item.unlocked"
-                [attr.data-rarity]="item.rarity"
-              >
-                <div class="reward-media">
-                  @if (item.unlocked && item.previewAssetPath) {
-                    <button
-                      type="button"
-                      class="reward-media-trigger"
-                      (click)="openRewardLightbox(item)"
-                      [attr.aria-label]="
-                        (facade.lang() === 'ja' ? item.titleJa : item.titleEn) +
-                        (facade.lang() === 'ja' ? ' を拡大表示' : ' - View full illustration')
-                      "
-                    >
-                      <img
-                        [src]="item.previewAssetPath"
-                        [alt]="facade.lang() === 'ja' ? item.titleJa : item.titleEn"
-                        class="reward-artwork"
-                      />
-                      <span class="expand-hint" aria-hidden="true">
-                        <svg viewBox="0 0 24 24" class="inline-svg-xs">
-                          <path
-                            fill="none"
-                            stroke="currentColor"
-                            stroke-width="2"
-                            stroke-linecap="round"
-                            stroke-linejoin="round"
-                            d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"
-                          />
-                        </svg>
-                      </span>
-                    </button>
-                  } @else {
-                    <div class="locked-silhouette" aria-hidden="true">
-                      <svg viewBox="0 0 48 48" class="lock-crest-svg">
-                        <rect
-                          x="11"
-                          y="21"
-                          width="26"
-                          height="20"
-                          rx="4"
-                          fill="none"
-                          stroke="currentColor"
-                          stroke-width="2"
-                        />
-                        <path
-                          d="M17 21v-5a7 7 0 0 1 14 0v5"
-                          fill="none"
-                          stroke="currentColor"
-                          stroke-width="2"
-                        />
-                        <circle cx="24" cy="31" r="2.5" fill="currentColor" />
-                      </svg>
-                      <span class="encrypted-tag">ENCRYPTED ASSET</span>
-                    </div>
-                  }
-
-                  <span class="rarity-badge" [class]="'rarity-' + item.rarity.toLowerCase()">
-                    {{ item.rarity }}
-                  </span>
-                  <span class="code-tag">{{ item.code }}</span>
-                </div>
-
-                <div class="reward-body">
-                  <div class="reward-meta-row">
-                    <span class="emotion-chip">{{ item.emotionTag }}</span>
-                    <span class="unlock-state" [class.is-open]="item.unlocked">
-                      {{
-                        item.unlocked
-                          ? (facade.lang() === 'ja' ? '解禁済み' : 'UNLOCKED')
-                          : (facade.lang() === 'ja' ? '未解禁' : 'LOCKED')
-                      }}
-                    </span>
+            <div class="options-stack">
+              <div class="options-card">
+                <div class="option-group">
+                  <div class="option-label-row">
+                    <span class="material-icons option-label-icon" aria-hidden="true">language</span>
+                    <span class="option-label-text">{{ facade.t('optionsLanguageLabel') }}</span>
                   </div>
-                  <h3 class="reward-title">
-                    {{ facade.lang() === 'ja' ? item.titleJa : item.titleEn }}
-                  </h3>
-                  <p class="reward-desc">
-                    {{ facade.lang() === 'ja' ? item.descriptionJa : item.descriptionEn }}
-                  </p>
+                  <app-lounge-dropdown
+                    id="options-lang-dropdown"
+                    [leadingIcon]="'language'"
+                    [options]="languageOptions"
+                    [selectedValue]="facade.lang()"
+                    [ariaLabel]="facade.t('optionsLanguageLabel')"
+                    (valueChange)="onLanguageChange($event)"
+                  />
+                  <p class="option-hint">{{ facade.t('optionsLanguageHint') }}</p>
                 </div>
-              </article>
-            }
-          </section>
-        </main>
-      }
 
-      <!-- ============================================================
-           VIEW 3: SLIDE-OVER SIDEBAR DRAWER (FROM TOP-LEFT HAMBURGER)
-           ============================================================ -->
-      @if (facade.isSidebarOpen()) {
-        <div
-          class="sidebar-backdrop"
-          aria-hidden="true"
-          (click)="facade.toggleSidebar(false)"
-        ></div>
-        <aside
-          id="lounge-sidebar-drawer"
-          class="sidebar-drawer glass-panel"
-          role="dialog"
-          aria-modal="true"
-          [attr.aria-label]="facade.lang() === 'ja' ? 'アカウント・メニュー' : 'Account & Navigation Menu'"
-          (keydown)="onDrawerKeydown($event)"
-        >
-          <div class="drawer-header">
-            <div class="drawer-brand">
-              <img src="assets/gemitec_icon.svg" alt="GEMITEC" class="drawer-logo-icon" />
-              <span>GEMITEC LOUNGE</span>
-            </div>
-            <button
-              id="btn-close-sidebar"
-              type="button"
-              class="close-drawer-btn"
-              [attr.aria-label]="facade.lang() === 'ja' ? 'メニューを閉じる' : 'Close menu'"
-              (click)="facade.toggleSidebar(false)"
-            >
-              <svg viewBox="0 0 24 24" class="inline-svg-sm" aria-hidden="true">
-                <path
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2.2"
-                  stroke-linecap="round"
-                  d="M6 6l12 12M18 6L6 18"
-                />
-              </svg>
-            </button>
-          </div>
+                <div class="options-divider" aria-hidden="true"></div>
 
-          @if (facade.accountSummary(); as summary) {
-            <section class="account-telemetry-card">
-              <div class="account-profile-row">
-                <img
-                  [src]="summary.user.avatarUrl || 'assets/gemitec_icon.svg'"
-                  [alt]="summary.user.displayName"
-                  class="account-avatar"
-                />
-                <div class="account-identity">
-                  <div class="account-name">{{ summary.user.displayName }}</div>
-                  <div class="account-handle">{{ summary.user.xHandle }}</div>
+                <div class="option-group">
+                  <div class="option-label-row">
+                    <span class="material-icons option-label-icon" aria-hidden="true">schedule</span>
+                    <span class="option-label-text">{{ facade.t('optionsTimezoneLabel') }}</span>
+                  </div>
+                  <app-lounge-dropdown
+                    id="options-timezone-dropdown"
+                    [leadingIcon]="'schedule'"
+                    [options]="timezoneOptions"
+                    [selectedValue]="facade.timezone()"
+                    [ariaLabel]="facade.t('optionsTimezoneLabel')"
+                    (valueChange)="onTimezoneChange($event)"
+                  />
+                  <p class="option-hint">{{ facade.t('optionsTimezoneHint') }}</p>
                 </div>
-              </div>
 
-              <div class="subscription-row">
-                <span class="sub-label">{{ facade.lang() === 'ja' ? '加入プラン' : 'SUBSCRIPTION' }}</span>
-                <span class="sub-tier-pill" data-testid="sidebar-subscription-tier">
-                  {{ summary.subscription.tier }} // {{ summary.subscription.status }}
-                </span>
-              </div>
-
-              <div class="quota-block">
-                <div class="quota-header">
-                  <span>{{ facade.lang() === 'ja' ? '残りチャット回数' : 'Remaining Chat Turns' }}</span>
-                  <strong class="quota-count" data-testid="sidebar-remaining-turns">
-                    {{ summary.subscription.remainingChatTurns }} / {{ summary.subscription.dailyTurnQuota }}
-                    {{ facade.lang() === 'ja' ? '回' : 'turns' }}
-                  </strong>
-                </div>
-                <div class="quota-meter">
+                @if (facade.optionsSavedNotice(); as savedMsg) {
                   <div
-                    class="quota-meter-fill"
-                    [style.width.%]="facade.remainingTurnsPercent()"
-                  ></div>
-                </div>
-                <div class="quota-reset-hint">
-                  {{
-                    facade.lang() === 'ja'
-                      ? '公開X記憶：片方向リードオンリー同期有効'
-                      : 'Public X Memory: Read-only 1-way sync active'
-                  }}
-                </div>
+                    id="options-saved-banner"
+                    class="options-saved-pill"
+                    role="status"
+                    aria-live="polite"
+                  >
+                    <span class="material-icons" aria-hidden="true">check_circle</span>
+                    <span>{{ savedMsg }}</span>
+                  </div>
+                }
               </div>
-            </section>
-          }
 
-          <nav class="drawer-nav" aria-label="Lounge views">
-            <button
-              id="nav-lounge-chat"
-              type="button"
-              class="drawer-nav-item"
-              [class.active]="facade.activeView() === 'CHAT'"
-              (click)="facade.navigateTo('CHAT')"
-            >
-              <span class="btn-icon-label">
-                <svg viewBox="0 0 24 24" class="inline-svg-sm" aria-hidden="true">
-                  <path
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="2"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"
-                  />
-                </svg>
-                <span>{{ facade.lang() === 'ja' ? 'プライベートチャット' : 'Private Chat' }}</span>
-              </span>
-            </button>
+              <!-- Account Withdrawal / Cascade Data Reset Section -->
+              <div class="danger-zone-card">
+                <div class="danger-zone-header">
+                  <span class="material-icons danger-zone-icon" aria-hidden="true"
+                    >warning_amber</span
+                  >
+                  <div>
+                    <h2 class="danger-zone-title">{{ facade.t('deleteAccountSectionTitle') }}</h2>
+                    <p class="danger-zone-desc">{{ facade.t('deleteAccountSectionDesc') }}</p>
+                  </div>
+                </div>
 
-            <button
-              id="nav-lounge-rewards"
-              type="button"
-              class="drawer-nav-item"
-              [class.active]="facade.activeView() === 'REWARDS'"
-              (click)="facade.navigateTo('REWARDS')"
-            >
-              <span class="btn-icon-label">
-                <svg viewBox="0 0 24 24" class="inline-svg-sm" aria-hidden="true">
-                  <rect
-                    x="3"
-                    y="4"
-                    width="18"
-                    height="16"
-                    rx="2"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="2"
-                  />
-                  <circle cx="8.5" cy="9.5" r="1.5" fill="currentColor" />
-                  <path
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="2"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    d="M21 15l-5-5L5 20"
-                  />
-                </svg>
-                <span>{{ facade.lang() === 'ja' ? 'リワード（イラスト一覧）' : 'Rewards Illustration Gallery' }}</span>
-              </span>
-              <span class="nav-count-badge">{{ unlockedRewardsCount() }}/{{ facade.rewards().length }}</span>
-            </button>
-          </nav>
-
-          <div class="drawer-spacer"></div>
-
-          <footer class="drawer-footer">
-            <button
-              id="btn-logout"
-              type="button"
-              class="logout-btn"
-              [disabled]="facade.isLoading()"
-              (click)="facade.logout()"
-            >
-              <span class="btn-icon-label">
-                <svg viewBox="0 0 24 24" class="inline-svg-sm" aria-hidden="true">
-                  <path
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="2"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"
-                  />
-                </svg>
-                <span>{{ facade.lang() === 'ja' ? 'ログアウト' : 'Logout' }}</span>
-              </span>
-            </button>
-
-            <div class="drawer-version-row">
-              <span>Gemitec Inc.</span>
-              <span class="app-version-badge" data-testid="sidebar-version">{{ facade.appVersion() }}</span>
+                <button
+                  #openDeleteAccountButton
+                  id="btn-open-delete-account"
+                  type="button"
+                  class="danger-open-btn"
+                  [disabled]="facade.isLoading()"
+                  (click)="facade.openDeleteAccountModal()"
+                >
+                  <span class="material-icons" aria-hidden="true">delete_forever</span>
+                  <span>{{ facade.t('deleteAccountOpenBtn') }}</span>
+                </button>
+              </div>
             </div>
-          </footer>
-        </aside>
+          </section>
+        }
       }
+    </main>
+  </div>
+}
 
-      @if (selectedLightboxReward(); as reward) {
-        <div
-          class="lightbox-backdrop"
-          aria-hidden="true"
-          (click)="closeRewardLightbox()"
-        ></div>
-        <div
-          id="reward-lightbox-modal"
-          class="lightbox-dialog glass-panel"
-          role="dialog"
-          aria-modal="true"
-          [attr.aria-label]="facade.lang() === 'ja' ? reward.titleJa : reward.titleEn"
-        >
-          <div class="lightbox-header">
-            <div class="lightbox-badges">
-              <span class="rarity-badge inline" [class]="'rarity-' + reward.rarity.toLowerCase()">
-                {{ reward.rarity }}
-              </span>
-              <span class="code-tag inline">{{ reward.code }}</span>
-              <span class="emotion-chip">{{ reward.emotionTag }}</span>
-            </div>
-            <button
-              id="btn-close-lightbox"
-              type="button"
-              class="close-drawer-btn"
-              [attr.aria-label]="facade.lang() === 'ja' ? 'イラスト表示を閉じる' : 'Close artwork viewer'"
-              (click)="closeRewardLightbox()"
-            >
-              <svg viewBox="0 0 24 24" class="inline-svg-sm" aria-hidden="true">
-                <path
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2.2"
-                  stroke-linecap="round"
-                  d="M6 6l12 12M18 6L6 18"
-                />
-              </svg>
-            </button>
-          </div>
-          <div class="lightbox-media">
-            <img
-              [src]="reward.previewAssetPath"
-              [alt]="facade.lang() === 'ja' ? reward.titleJa : reward.titleEn"
-              class="lightbox-artwork"
+<!-- Multi-Step Account Deletion Warning & Consent Modal -->
+@if (facade.deleteAccountStep() > 0) {
+  <div
+    #deleteModal
+    id="delete-account-modal"
+    class="modal-backdrop"
+    role="dialog"
+    aria-modal="true"
+    [attr.aria-label]="
+      facade.deleteAccountStep() === 1
+        ? facade.t('deleteModalStep1Title')
+        : facade.t('deleteModalStep2Title')
+    "
+    (click)="facade.closeDeleteAccountModal()"
+  >
+    <div class="delete-modal-card" (click)="$event.stopPropagation()">
+      <div class="delete-modal-header">
+        <span class="material-icons delete-modal-warn-icon" aria-hidden="true">warning_amber</span>
+        <h2 class="delete-modal-title">
+          {{
+            facade.deleteAccountStep() === 1
+              ? facade.t('deleteModalStep1Title')
+              : facade.t('deleteModalStep2Title')
+          }}
+        </h2>
+      </div>
+
+      @if (facade.deleteAccountStep() === 1) {
+        <p class="delete-modal-body">{{ facade.t('deleteModalStep1Body') }}</p>
+
+        <div class="delete-modal-actions">
+          <button
+            #deleteCancelButton
+            id="btn-delete-cancel"
+            type="button"
+            class="modal-cancel-btn"
+            (click)="facade.closeDeleteAccountModal()"
+          >
+            {{ facade.t('deleteModalCancelBtn') }}
+          </button>
+          <button
+            id="btn-delete-step1-next"
+            type="button"
+            class="modal-danger-next-btn"
+            (click)="facade.proceedToDeleteAccountStep2()"
+          >
+            <span>{{ facade.t('deleteModalStep1NextBtn') }}</span>
+            <span class="material-icons" aria-hidden="true">arrow_forward</span>
+          </button>
+        </div>
+      } @else {
+        <p class="delete-modal-body">{{ facade.t('deleteModalStep2Body') }}</p>
+
+        <div class="delete-check-list">
+          <label class="delete-check-item">
+            <input
+              #deleteIrreversibleCheck
+              id="checkbox-delete-irreversible"
+              type="checkbox"
+              class="consent-checkbox"
+              [checked]="facade.deleteConfirmIrreversible()"
+              (change)="onDeleteIrreversibleChange($event)"
             />
-          </div>
-          <div class="lightbox-caption">
-            <h2>{{ facade.lang() === 'ja' ? reward.titleJa : reward.titleEn }}</h2>
-            <p>{{ facade.lang() === 'ja' ? reward.descriptionJa : reward.descriptionEn }}</p>
-          </div>
+            <span>{{ facade.t('deleteModalCheckIrreversible') }}</span>
+          </label>
+
+          <label class="delete-check-item">
+            <input
+              id="checkbox-delete-no-refund"
+              type="checkbox"
+              class="consent-checkbox"
+              [checked]="facade.deleteConfirmNoRefund()"
+              (change)="onDeleteNoRefundChange($event)"
+            />
+            <span>{{ facade.t('deleteModalCheckNoRefund') }}</span>
+          </label>
+        </div>
+
+        <div class="delete-modal-actions">
+          <button
+            #deleteCancelButton
+            id="btn-delete-cancel"
+            type="button"
+            class="modal-cancel-btn"
+            (click)="facade.closeDeleteAccountModal()"
+          >
+            {{ facade.t('deleteModalCancelBtn') }}
+          </button>
+          <button
+            id="btn-confirm-delete-account"
+            type="button"
+            class="modal-danger-confirm-btn"
+            [disabled]="!facade.canConfirmDeleteAccount()"
+            (click)="facade.confirmDeleteAccount()"
+          >
+            @if (facade.isLoading()) {
+              <span class="material-icons spin-icon" aria-hidden="true">autorenew</span>
+            } @else {
+              <span class="material-icons" aria-hidden="true">delete_forever</span>
+            }
+            <span>{{ facade.t('deleteModalConfirmBtn') }}</span>
+          </button>
         </div>
       }
     </div>
-  }
-</div>
+  </div>
+}
+
+<!-- Fullscreen Illustration Lightbox Modal -->
+@if (selectedImageUrl(); as previewUrl) {
+  <div
+    #lightboxModal
+    id="gallery-lightbox-modal"
+    class="lightbox-backdrop"
+    role="dialog"
+    aria-modal="true"
+    [attr.aria-label]="facade.t('viewFullImageAria')"
+    (click)="closeLightbox()"
+  >
+    <div class="lightbox-frame" (click)="$event.stopPropagation()">
+      <button
+        #closeLightboxButton
+        id="btn-close-lightbox"
+        type="button"
+        class="lightbox-close-btn"
+        [attr.aria-label]="facade.t('closeLightboxAria')"
+        (click)="closeLightbox()"
+      >
+        <span class="material-icons" aria-hidden="true">close</span>
+      </button>
+      <img class="lightbox-img" [src]="previewUrl" [alt]="facade.personaDisplayName()" />
+    </div>
+  </div>
+}

@@ -10,7 +10,7 @@ This file defines repository-wide invariants for AI coding agents and contributo
   - `apps/dashboard-backend`: Express 5 Backend-for-Frontend (BFF) REST API secured by Firebase Auth, Helmet, CORS allowlisting, and rate limiting.
   - `apps/dashboard-frontend`: Angular 22 Zoneless administration SPA (**Hexagonal ports/adapters**, **Atomic Design** UI hierarchy, Signals).
   - `apps/lounge-backend`: Isolated Private Lounge Express 5 BFF skeleton (`lounge_*` collections, read-only Public X memory port).
-  - `apps/lounge-frontend`: Gemitec Private Lounge Angular 22 Zoneless SPA skeleton (scroll-gated X sign-up, chat HUD, slide-over sidebar, rewards gallery).
+  - `apps/lounge-frontend`: Gemitec Private Lounge Angular 22 Zoneless SPA skeleton (scroll-gated X sign-up + onboarding, singleton chat HUD, slide-over sidebar, visual Bot artwork gallery, 8-language/timezone options & multi-step withdrawal).
   - `apps/dashboard-e2e`: Playwright end-to-end test suite against local emulators and services.
   - `apps/functions`: Firebase Cloud Functions (Gen 2) asynchronous event and auth-blocking triggers.
   - `packages/types` (`@rebecca/types`), `packages/db` (`@rebecca/db`), `packages/logger` (`@rebecca/logger`), `packages/persona` (`@rebecca/persona`), `packages/memory` (`@rebecca/memory`), `packages/prompt` (`@rebecca/prompt`), `packages/tools` (`@rebecca/tools`).

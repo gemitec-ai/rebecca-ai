@@ -2,28 +2,47 @@ import { Injectable } from '@angular/core';
 import type {
   LoungeAccountSummaryDto,
   LoungeAuthSessionDto,
-  LoungeCreateSessionRequestDto,
+  LoungeDeleteAccountRequestDto,
+  LoungeEmotionState,
+  LoungeGalleryItem,
+  LoungeGalleryListResponseDto,
+  LoungeLanguage,
   LoungeLoginRequestDto,
   LoungeMessage,
   LoungeMessageListResponseDto,
   LoungePersonaBranding,
-  LoungeReward,
-  LoungeRewardListResponseDto,
   LoungeRuntimeConfigDto,
   LoungeSendMessageRequestDto,
   LoungeSendMessageResponseDto,
   LoungeSession,
-  LoungeSessionListResponseDto,
   LoungeSignUpRequestDto,
   LoungeSubscription,
+  LoungeUpdatePreferencesRequestDto,
   LoungeUser,
 } from '@rebecca/types';
 import { environment } from '../../../environments/environment';
 import { LoungeAccountPort } from '../ports/lounge-account.port';
 import { LoungeAuthPort } from '../ports/lounge-auth.port';
 import { LoungeConfigPort } from '../ports/lounge-config.port';
-import { LoungeRewardPort } from '../ports/lounge-reward.port';
+import { LoungeGalleryPort } from '../ports/lounge-gallery.port';
 import { LoungeSessionPort } from '../ports/lounge-session.port';
+
+function isValidEmotionAvatarMap(raw: unknown): raw is Record<LoungeEmotionState, string> {
+  if (!raw || typeof raw !== 'object') {
+    return false;
+  }
+  const obj = raw as Record<string, unknown>;
+  const keys: LoungeEmotionState[] = [
+    'NEUTRAL',
+    'HAPPY',
+    'TEASING',
+    'SHY',
+    'EXCITED',
+    'THOUGHTFUL',
+    'SURPRISED',
+  ];
+  return keys.every((key) => typeof obj[key] === 'string' && obj[key].trim().length > 0);
+}
 
 function isValidPersonaBranding(raw: unknown): raw is LoungePersonaBranding {
   if (!raw || typeof raw !== 'object') {
@@ -38,22 +57,114 @@ function isValidPersonaBranding(raw: unknown): raw is LoungePersonaBranding {
     typeof obj['brandName'] === 'string' &&
     obj['brandName'].trim().length > 0 &&
     typeof obj['avatarPath'] === 'string' &&
-    obj['avatarPath'].trim().length > 0
+    obj['avatarPath'].trim().length > 0 &&
+    typeof obj['chatIconPath'] === 'string' &&
+    obj['chatIconPath'].trim().length > 0 &&
+    isValidEmotionAvatarMap(obj['emotionAvatarPaths'])
   );
 }
 
+function createInitialMessages(): LoungeMessage[] {
+  return [
+    {
+      id: 'msg_001',
+      sessionId: 'uid_preview_001',
+      uid: 'uid_preview_001',
+      role: 'ASSISTANT',
+      content: 'おかえり！今日は1対1でゆっくり話そうね。最近の調子はどう？',
+      emotion: 'HAPPY',
+      createdAt: '2026-11-22T12:01:00.000Z',
+    },
+    {
+      id: 'msg_002',
+      sessionId: 'uid_preview_001',
+      uid: 'uid_preview_001',
+      role: 'USER',
+      content: 'いつもXでありがとう！今日は落ち着いてゆっくり話したくて遊びに来たよ。',
+      emotion: 'NEUTRAL',
+      createdAt: '2026-11-22T12:04:00.000Z',
+    },
+    {
+      id: 'msg_003',
+      sessionId: 'uid_preview_001',
+      uid: 'uid_preview_001',
+      role: 'ASSISTANT',
+      content:
+        'ふふ、そう言ってもらえるの素直に嬉しいじゃん！せっかく来てくれたし、今朝の雰囲気にぴったりな1枚見せてあげるね！',
+      emotion: 'SURPRISED',
+      imageAssetId: 'bot_img_01',
+      imageUrl: 'assets/gallery_morning.webp',
+      tokenUsage: { promptTokens: 320, candidatesTokens: 78, totalTokens: 398 },
+      createdAt: '2026-11-22T12:08:00.000Z',
+    },
+  ];
+}
+
+function createInitialGallery(): LoungeGalleryItem[] {
+  return [
+    {
+      id: 'uid_preview_001_bot_img_01',
+      uid: 'uid_preview_001',
+      assetId: 'bot_img_01',
+      imageUrl: 'assets/gallery_morning.webp',
+      unlocked: true,
+      unlockedAt: '2026-11-22T12:08:00.000Z',
+      sourceSessionId: 'uid_preview_001',
+    },
+    {
+      id: 'uid_preview_001_bot_img_02',
+      uid: 'uid_preview_001',
+      assetId: 'bot_img_02',
+      imageUrl: 'assets/gallery_street.webp',
+      unlocked: true,
+      unlockedAt: '2026-11-22T12:12:00.000Z',
+      sourceSessionId: 'uid_preview_001',
+    },
+    {
+      id: 'uid_preview_001_bot_img_03',
+      uid: 'uid_preview_001',
+      assetId: 'bot_img_03',
+      imageUrl: 'assets/IMG_8649.JPG',
+      unlocked: true,
+      unlockedAt: '2026-11-22T12:18:00.000Z',
+      sourceSessionId: 'uid_preview_001',
+    },
+    {
+      id: 'uid_preview_001_bot_img_04',
+      uid: 'uid_preview_001',
+      assetId: 'bot_img_04',
+      imageUrl: '',
+      unlocked: false,
+    },
+    {
+      id: 'uid_preview_001_bot_img_05',
+      uid: 'uid_preview_001',
+      assetId: 'bot_img_05',
+      imageUrl: '',
+      unlocked: false,
+    },
+    {
+      id: 'uid_preview_001_bot_img_06',
+      uid: 'uid_preview_001',
+      assetId: 'bot_img_06',
+      imageUrl: '',
+      unlocked: false,
+    },
+  ];
+}
+
 /**
- * Architecture skeleton BFF adapter implementing Config, Auth, Account, Session, and Reward ports.
- * Resolves live runtime persona config from `/api/v1/lounge/config` when hosted alongside BFF
- * and serves deterministic isolated preview data matching `/api/v1/lounge/*` OpenAPI DTO contracts
- * until full HTTP transport is wired.
+ * Architecture skeleton BFF adapter implementing Config, Auth, Account, Session, and Gallery ports.
+ * Models 1 X account = 1 user = 1 persistent conversation session and irreversible deletion.
  */
 @Injectable({ providedIn: 'root' })
 export class LoungeBffAdapter
-  implements LoungeConfigPort, LoungeAuthPort, LoungeAccountPort, LoungeSessionPort, LoungeRewardPort
+  implements LoungeConfigPort, LoungeAuthPort, LoungeAccountPort, LoungeSessionPort, LoungeGalleryPort
 {
   private resolvedRuntimeConfig: LoungeRuntimeConfigDto | null = null;
   private user: LoungeUser | null = null;
+  private preferredLanguage: LoungeLanguage = 'ja';
+  private preferredTimezone = 'Asia/Tokyo';
 
   private subscription: LoungeSubscription = {
     uid: 'uid_preview_001',
@@ -67,144 +178,29 @@ export class LoungeBffAdapter
   };
 
   private session: LoungeSession = {
-    id: 'sess_lounge_001',
+    id: 'uid_preview_001',
     uid: 'uid_preview_001',
-    title: 'NEON LOUNGE // SESSION #01',
+    title: 'Private Lounge',
     messageCount: 3,
     currentEmotion: 'TEASING',
     publicXMemorySyncedAt: '2026-11-22T12:00:00.000Z',
-    lastMessagePreview: '公開Xのみんなには内緒だからねっ。',
+    lastMessagePreview: '今朝の雰囲気にぴったりな1枚見せてあげるね！',
     createdAt: '2026-11-22T12:00:00.000Z',
     updatedAt: '2026-11-22T12:08:00.000Z',
   };
 
-  private messages: LoungeMessage[] = [
-    {
-      id: 'msg_001',
-      sessionId: 'sess_lounge_001',
-      uid: 'uid_preview_001',
-      role: 'ASSISTANT',
-      content:
-        'おかえり！ここは Gemitec の暗号化プライベートラウンジ。公開Xの記憶はちゃんと持ってきたけど、ここでの会話は外に絶対漏れないから安心してね。',
-      emotion: 'HAPPY',
-      createdAt: '2026-11-22T12:01:00.000Z',
-    },
-    {
-      id: 'msg_002',
-      sessionId: 'sess_lounge_001',
-      uid: 'uid_preview_001',
-      role: 'USER',
-      content: 'いつもXでリプありがとう！今日は特別にラウンジへ遊びに来たよ。',
-      emotion: 'NEUTRAL',
-      createdAt: '2026-11-22T12:04:00.000Z',
-    },
-    {
-      id: 'msg_003',
-      sessionId: 'sess_lounge_001',
-      uid: 'uid_preview_001',
-      role: 'ASSISTANT',
-      content:
-        'ふふ、よく来てくれたじゃんっ！Xだと文字数とか人目とか気になるけど、ここでは二人きりだし。さっき撮っておいた朝のオフショット、リワード棚に入れておいたから後で見てみてよ！',
-      emotion: 'TEASING',
-      unlockedRewardId: 'uid_preview_001_RW-01',
-      tokenUsage: { promptTokens: 320, candidatesTokens: 78, totalTokens: 398 },
-      createdAt: '2026-11-22T12:08:00.000Z',
-    },
-  ];
-
-  private readonly rewards: LoungeReward[] = [
-    {
-      id: 'uid_preview_001_RW-01',
-      uid: 'uid_preview_001',
-      code: 'RW-01',
-      titleJa: '朝の陽だまりオフショット',
-      titleEn: 'Morning Sunlight Off-Shot',
-      descriptionJa: '初回のプライベートログイン記念として共有された特別スナップ。',
-      descriptionEn: 'Unlocked upon completing your first Private Lounge link.',
-      emotionTag: 'HAPPY',
-      rarity: 'UR',
-      previewAssetPath: 'assets/gallery_morning.webp',
-      unlocked: true,
-      unlockedAt: '2026-11-22T12:08:00.000Z',
-      sourceSessionId: 'sess_lounge_001',
-    },
-    {
-      id: 'uid_preview_001_RW-02',
-      uid: 'uid_preview_001',
-      code: 'RW-02',
-      titleJa: '渋谷ナイト・サイバーストリート',
-      titleEn: 'Cyber Neon Street Walk',
-      descriptionJa: '「Xでも音楽の話してくれたよね」と共鳴レベルが上がった瞬間に解放。',
-      descriptionEn: 'Unlocked when syncing shared music & tech memories.',
-      emotionTag: 'TEASING',
-      rarity: 'SSR',
-      previewAssetPath: 'assets/gallery_street.webp',
-      unlocked: true,
-      unlockedAt: '2026-11-22T12:12:00.000Z',
-      sourceSessionId: 'sess_lounge_001',
-    },
-    {
-      id: 'uid_preview_001_RW-03',
-      uid: 'uid_preview_001',
-      code: 'RW-03',
-      titleJa: 'トワイライト・オーシャンブリーズ',
-      titleEn: 'Twilight Ocean Breeze',
-      descriptionJa: 'サポーターパス継続特典として解放されたプライベート思い出カット。',
-      descriptionEn: 'Unlocked with active Supporter Pass resonance milestone.',
-      emotionTag: 'SHY',
-      rarity: 'SSR',
-      previewAssetPath: 'assets/gallery_beach.webp',
-      unlocked: true,
-      unlockedAt: '2026-11-22T12:18:00.000Z',
-      sourceSessionId: 'sess_lounge_001',
-    },
-    {
-      id: 'uid_preview_001_RW-04',
-      uid: 'uid_preview_001',
-      code: 'RW-04',
-      titleJa: '深夜のカフェラテ・シークレット',
-      titleEn: 'Midnight Espresso Secret',
-      descriptionJa: '解禁条件：親愛度共鳴ランク EXCITED 到達で暗号解除。',
-      descriptionEn: 'Condition: Reach EXCITED resonance state in private dialogue.',
-      emotionTag: 'EXCITED',
-      rarity: 'UR',
-      previewAssetPath: '',
-      unlocked: false,
-    },
-    {
-      id: 'uid_preview_001_RW-05',
-      uid: 'uid_preview_001',
-      code: 'RW-05',
-      titleJa: 'Gemitec ラボ・ホログラス衣装',
-      titleEn: 'Gemitec Hologlass Lab Ver.',
-      descriptionJa: '解禁条件：技術トピックについて5ターン以上語り合うと解除。',
-      descriptionEn: 'Condition: Discuss tech projects for 5 turns in Private Lounge.',
-      emotionTag: 'THOUGHTFUL',
-      rarity: 'SR',
-      previewAssetPath: '',
-      unlocked: false,
-    },
-    {
-      id: 'uid_preview_001_RW-06',
-      uid: 'uid_preview_001',
-      code: 'RW-06',
-      titleJa: 'VIP ミッドナイト・セレブレーション',
-      titleEn: 'VIP Midnight Celebration',
-      descriptionJa: '解禁条件：累計30ターンの対話達成で特別解放。',
-      descriptionEn: 'Condition: Complete 30 private turns to decrypt illustration.',
-      emotionTag: 'HAPPY',
-      rarity: 'UR',
-      previewAssetPath: '',
-      unlocked: false,
-    },
-  ];
+  private messages: LoungeMessage[] = createInitialMessages();
+  private galleryItems: LoungeGalleryItem[] = createInitialGallery();
 
   /** @inheritdoc */
   public async getRuntimeConfig(): Promise<LoungeRuntimeConfigDto> {
     const fallbackConfig: LoungeRuntimeConfigDto = {
       appVersion: environment.appVersion,
       disclaimerVersion: environment.disclaimerVersion,
-      persona: { ...environment.persona },
+      persona: {
+        ...environment.persona,
+        emotionAvatarPaths: { ...environment.persona.emotionAvatarPaths },
+      },
     };
 
     if (typeof fetch !== 'function') {
@@ -236,7 +232,7 @@ export class LoungeBffAdapter
         return liveConfig;
       }
     } catch {
-      // Static preview or offline mode falls back to configured environment placeholder.
+      // Offline/static preview falls back cleanly to configured environment placeholder.
     }
 
     this.resolvedRuntimeConfig = fallbackConfig;
@@ -275,6 +271,15 @@ export class LoungeBffAdapter
     ) {
       throw new Error('Mandatory disclaimer terms must be accepted before sign-up');
     }
+    if (this.user) {
+      throw new Error('An account linked to this X account is already registered');
+    }
+    if (request.language) {
+      this.preferredLanguage = request.language;
+    }
+    if (request.timezone) {
+      this.preferredTimezone = request.timezone;
+    }
     const now = new Date().toISOString();
     this.user = {
       ...this.createPreviewUser(now),
@@ -295,41 +300,63 @@ export class LoungeBffAdapter
   /** @inheritdoc */
   public async getAccountSummary(): Promise<LoungeAccountSummaryDto> {
     const activeUser = this.user ?? this.createPreviewUser(new Date().toISOString());
-    const unlockedCount = this.rewards.filter((item) => item.unlocked).length;
+    const unlockedCount = this.galleryItems.filter((item) => item.unlocked).length;
     return {
       user: activeUser,
       subscription: this.subscription,
-      persona: this.resolvedRuntimeConfig?.persona ?? { ...environment.persona },
-      publicXMemoryOneWayActive: true,
-      unlockedRewardCount: unlockedCount,
-      totalRewardCount: this.rewards.length,
+      persona: this.resolvedRuntimeConfig?.persona ?? {
+        ...environment.persona,
+        emotionAvatarPaths: { ...environment.persona.emotionAvatarPaths },
+      },
+      unlockedGalleryCount: unlockedCount,
+      totalGalleryCount: this.galleryItems.length,
       appVersion: this.resolvedRuntimeConfig?.appVersion ?? environment.appVersion,
     };
   }
 
   /** @inheritdoc */
-  public async listSessions(): Promise<LoungeSessionListResponseDto> {
-    return {
-      items: [this.session],
-      nextCursor: null,
-      totalCount: 1,
+  public async updatePreferences(request: LoungeUpdatePreferencesRequestDto): Promise<LoungeUser> {
+    if (request.language) {
+      this.preferredLanguage = request.language;
+    }
+    if (request.timezone) {
+      this.preferredTimezone = request.timezone;
+    }
+    const now = new Date().toISOString();
+    const baseUser = this.user ?? this.createPreviewUser(now);
+    this.user = {
+      ...baseUser,
+      language: this.preferredLanguage,
+      timezone: this.preferredTimezone,
+      updatedAt: now,
+    };
+    return this.user;
+  }
+
+  /** @inheritdoc */
+  public async deleteAccount(request: LoungeDeleteAccountRequestDto): Promise<void> {
+    if (!request.confirmedIrreversibleDeletion || !request.confirmedNoRefundForRemainingTurns) {
+      throw new Error('Both irreversible deletion and no-refund confirmations are required');
+    }
+    this.user = null;
+    this.messages = createInitialMessages();
+    this.galleryItems = createInitialGallery();
+    this.session = {
+      ...this.session,
+      messageCount: this.messages.length,
+      currentEmotion: 'SURPRISED',
+      lastMessagePreview: this.messages[this.messages.length - 1]?.content ?? '',
+      updatedAt: new Date().toISOString(),
+    };
+    this.subscription = {
+      ...this.subscription,
+      remainingChatTurns: 24,
+      updatedAt: new Date().toISOString(),
     };
   }
 
   /** @inheritdoc */
-  public async createSession(request: LoungeCreateSessionRequestDto): Promise<LoungeSession> {
-    const now = new Date().toISOString();
-    this.messages = [];
-    this.session = {
-      ...this.session,
-      id: `sess_${Date.now()}`,
-      title: request.title?.trim() || 'NEON LOUNGE // NEW SESSION',
-      messageCount: 0,
-      currentEmotion: 'NEUTRAL',
-      lastMessagePreview: '',
-      createdAt: now,
-      updatedAt: now,
-    };
+  public async getSession(): Promise<LoungeSession> {
     return this.session;
   }
 
@@ -344,7 +371,6 @@ export class LoungeBffAdapter
 
   /** @inheritdoc */
   public async sendMessage(
-    sessionId: string,
     request: LoungeSendMessageRequestDto,
   ): Promise<LoungeSendMessageResponseDto> {
     const trimmed = request.content.trim();
@@ -356,6 +382,7 @@ export class LoungeBffAdapter
     }
 
     const now = new Date().toISOString();
+    const sessionId = this.session.id;
     const userMessage: LoungeMessage = {
       id: `msg_${Date.now()}_u`,
       sessionId,
@@ -365,16 +392,54 @@ export class LoungeBffAdapter
       emotion: 'NEUTRAL',
       createdAt: now,
     };
+
+    const replyMap: Record<LoungeLanguage, string> = {
+      ja: `なるほど、「${trimmed.slice(0, 28)}」だねっ！せっかく二人きりだし、もっとゆっくり話聞かせてよ。`,
+      en: `Got it — "${trimmed.slice(0, 28)}"! Since it's just us here, tell me more about it.`,
+      de: `Verstehe – „${trimmed.slice(0, 28)}“! Erzähl mir gerne noch mehr davon.`,
+      pt: `Entendi — "${trimmed.slice(0, 28)}"! Como estamos só nós dois aqui, me conta mais!`,
+      es: `¡Entiendo — "${trimmed.slice(0, 28)}"! Aprovechemos nuestro espacio para charlar más.`,
+      'zh-HK': `明晒，「${trimmed.slice(0, 28)}」嘛！難得一對一傾計，講多啲俾我聽呀。`,
+      vi: `Mình hiểu rồi — "${trimmed.slice(0, 28)}"! Kể cho mình nghe thêm đi nhé.`,
+      th: `เข้าใจแล้วจ้า — "${trimmed.slice(0, 28)}"! เล่าให้ฟังต่ออีกได้เลยนะ`,
+    };
+
+    const nextLockedIndex = this.galleryItems.findIndex((item) => !item.unlocked);
+    let unlockedGalleryItem: LoungeGalleryItem | undefined;
+    if (nextLockedIndex >= 0) {
+      const target = this.galleryItems[nextLockedIndex];
+      const previewImages = ['assets/gallery_beach.webp', 'assets/IMG_8653.JPG', 'assets/IMG_8673.JPG'];
+      const assetPath = previewImages[nextLockedIndex % previewImages.length];
+      const unlocked: LoungeGalleryItem = {
+        ...target,
+        imageUrl: assetPath,
+        unlocked: true,
+        unlockedAt: now,
+        sourceSessionId: sessionId,
+      };
+      unlockedGalleryItem = unlocked;
+      this.galleryItems = this.galleryItems.map((item, idx) =>
+        idx === nextLockedIndex ? unlocked : item,
+      );
+    }
+
     const assistantMessage: LoungeMessage = {
       id: `msg_${Date.now()}_a`,
       sessionId,
       uid: 'uid_preview_001',
       role: 'ASSISTANT',
-      content: `なるほど、「${trimmed.slice(0, 28)}」だねっ！プライベートラウンジだから、もっと深く話聞かせてよ。`,
+      content: replyMap[this.preferredLanguage],
       emotion: 'EXCITED',
+      ...(unlockedGalleryItem
+        ? {
+            imageAssetId: unlockedGalleryItem.assetId,
+            imageUrl: unlockedGalleryItem.imageUrl,
+          }
+        : {}),
       tokenUsage: { promptTokens: 280, candidatesTokens: 54, totalTokens: 334 },
       createdAt: now,
     };
+
     this.messages = [...this.messages, userMessage, assistantMessage];
     this.subscription = {
       ...this.subscription,
@@ -394,16 +459,17 @@ export class LoungeBffAdapter
       userMessage,
       assistantMessage,
       remainingChatTurns: this.subscription.remainingChatTurns,
+      ...(unlockedGalleryItem ? { unlockedGalleryItem } : {}),
     };
   }
 
   /** @inheritdoc */
-  public async listRewards(): Promise<LoungeRewardListResponseDto> {
-    const unlockedCount = this.rewards.filter((item) => item.unlocked).length;
+  public async listGallery(): Promise<LoungeGalleryListResponseDto> {
+    const unlockedCount = this.galleryItems.filter((item) => item.unlocked).length;
     return {
-      items: [...this.rewards],
+      items: [...this.galleryItems],
       unlockedCount,
-      totalCount: this.rewards.length,
+      totalCount: this.galleryItems.length,
       nextCursor: null,
     };
   }
@@ -416,6 +482,8 @@ export class LoungeBffAdapter
       displayName: 'Cyber Runner 01',
       avatarUrl: 'assets/gemitec_icon.svg',
       status: 'ACTIVE',
+      language: this.preferredLanguage,
+      timezone: this.preferredTimezone,
       disclaimerConsent: {
         disclaimerVersion: this.resolvedRuntimeConfig?.disclaimerVersion ?? environment.disclaimerVersion,
         agreedToGeminiTrainingUsage: true,

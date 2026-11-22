@@ -1,0 +1,57 @@
+<div class="dropdown-root" [class.dropdown-compact]="compact()" [class.dropdown-open]="isOpen()">
+  <button
+    #triggerButton
+    type="button"
+    class="dropdown-trigger"
+    role="combobox"
+    aria-haspopup="listbox"
+    [attr.aria-expanded]="isOpen()"
+    [attr.aria-controls]="listboxId"
+    [attr.aria-label]="ariaLabel()"
+    [attr.aria-activedescendant]="activeDescendantId()"
+    [disabled]="disabled()"
+    (click)="toggleOpen()"
+    (keydown)="onTriggerKeydown($event)"
+  >
+    <span class="dropdown-trigger-value">
+      @if (leadingIcon()) {
+        <span class="material-icons dropdown-leading-icon" aria-hidden="true">{{
+          leadingIcon()
+        }}</span>
+      }
+      <span class="dropdown-label-text">{{ selectedOption()?.label ?? '' }}</span>
+    </span>
+    <span class="material-icons dropdown-chevron" [class.rotated]="isOpen()" aria-hidden="true"
+      >expand_more</span
+    >
+  </button>
+
+  @if (isOpen()) {
+    <ul
+      #listboxEl
+      class="dropdown-menu"
+      [class.dropdown-menu-right]="align() === 'right'"
+      [id]="listboxId"
+      role="listbox"
+      [attr.aria-label]="ariaLabel()"
+    >
+      @for (opt of options(); track opt.value; let i = $index) {
+        <li
+          class="dropdown-option"
+          [id]="listboxId + '-opt-' + i"
+          role="option"
+          [attr.aria-selected]="opt.value === selectedValue()"
+          [class.selected]="opt.value === selectedValue()"
+          [class.active]="activeIndex() === i"
+          (click)="selectOption(opt.value)"
+          (mouseenter)="activeIndex.set(i)"
+        >
+          <span class="dropdown-option-label">{{ opt.label }}</span>
+          @if (opt.value === selectedValue()) {
+            <span class="material-icons dropdown-check" aria-hidden="true">check</span>
+          }
+        </li>
+      }
+    </ul>
+  }
+</div>

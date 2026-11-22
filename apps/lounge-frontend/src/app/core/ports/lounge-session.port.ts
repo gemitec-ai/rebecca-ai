@@ -1,32 +1,25 @@
 import type {
-  LoungeCreateSessionRequestDto,
   LoungeMessageListResponseDto,
   LoungeSendMessageRequestDto,
   LoungeSendMessageResponseDto,
   LoungeSession,
-  LoungeSessionListResponseDto,
 } from '@rebecca/types';
 
 /**
- * Hexagonal port abstracting Private Lounge chat sessions and turn transmission.
+ * Hexagonal port abstracting the user's single persistent Private Lounge chat session and turn transmission.
  */
 export abstract class LoungeSessionPort {
-  /** Retrieves paginated Private Lounge conversation sessions for the signed-in user. */
-  public abstract listSessions(
-    limit?: number,
-    startAfterId?: string,
-  ): Promise<LoungeSessionListResponseDto>;
-  /** Creates a new isolated Private Lounge conversation thread. */
-  public abstract createSession(request: LoungeCreateSessionRequestDto): Promise<LoungeSession>;
-  /** Retrieves paginated chat turns belonging to `sessionId`. */
+  /** Retrieves (or initializes) the signed-in user's single continuous Private Lounge conversation session. */
+  public abstract getSession(): Promise<LoungeSession>;
+
+  /** Retrieves paginated chat turns for the user's single session. */
   public abstract listMessages(
-    sessionId: string,
     limit?: number,
     startAfterId?: string,
   ): Promise<LoungeMessageListResponseDto>;
-  /** Sends a user message and returns the assistant reply with updated turn quota. */
+
+  /** Sends a user message and returns the assistant reply with updated turn quota and optional matched illustration. */
   public abstract sendMessage(
-    sessionId: string,
     request: LoungeSendMessageRequestDto,
   ): Promise<LoungeSendMessageResponseDto>;
 }

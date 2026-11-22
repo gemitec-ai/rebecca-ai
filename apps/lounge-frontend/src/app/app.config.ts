@@ -3,7 +3,7 @@ import { LoungeBffAdapter } from './core/adapters/lounge-bff.adapter';
 import { LoungeAccountPort } from './core/ports/lounge-account.port';
 import { LoungeAuthPort } from './core/ports/lounge-auth.port';
 import { LoungeConfigPort } from './core/ports/lounge-config.port';
-import { LoungeRewardPort } from './core/ports/lounge-reward.port';
+import { LoungeGalleryPort } from './core/ports/lounge-gallery.port';
 import { LoungeSessionPort } from './core/ports/lounge-session.port';
 
 /**
@@ -17,6 +17,6 @@ export const appConfig: ApplicationConfig = {
     { provide: LoungeAuthPort, useExisting: LoungeBffAdapter },
     { provide: LoungeAccountPort, useExisting: LoungeBffAdapter },
     { provide: LoungeSessionPort, useExisting: LoungeBffAdapter },
-    { provide: LoungeRewardPort, useExisting: LoungeBffAdapter },
+    { provide: LoungeGalleryPort, useExisting: LoungeBffAdapter },
   ],
 };
