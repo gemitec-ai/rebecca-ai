@@ -1,0 +1,966 @@
+<div class="lounge-viewport">
+  <div class="ambient-grid" aria-hidden="true"></div>
+  <div class="ambient-glow violet" aria-hidden="true"></div>
+  <div class="ambient-glow cyan" aria-hidden="true"></div>
+
+  @if (facade.activeView() === 'AUTH') {
+    <!-- ============================================================
+         VIEW 1: X-LINKED LOGIN & SCROLL-GATED SIGN-UP ENTRANCE
+         ============================================================ -->
+    <main class="auth-shell">
+      <section class="auth-hero glass-panel">
+        <div class="brand-lockup">
+          <img src="assets/gemitec_logo.svg" alt="GEMITEC Inc." class="gemitec-wordmark" />
+          <span class="tech-chip">PRIVATE NEURAL VAULT</span>
+        </div>
+
+        <h1 class="hero-headline">
+          @if (facade.lang() === 'ja') {
+            二人だけの<br />
+            秘密ラウンジへ<span class="neon-text">接続しよう。</span>
+          } @else {
+            Connect to Your<br />
+            <span class="neon-text">Encrypted Private Lounge.</span>
+          }
+        </h1>
+
+        <p class="hero-subcopy">
+          @if (facade.lang() === 'ja') {
+            公開Xの記憶を受け継ぎながら、会話履歴は完全隔離データベース（<code>lounge_*</code>）へ暗号化保存。人目を気にせず{{ personaDisplayName() }}と1対1の深い対話を楽しめます。
+          } @else {
+            Carries over your shared Public X bond while isolating every private turn inside encrypted <code>lounge_*</code> tables—zero public timeline leakage.
+          }
+        </p>
+
+        <div class="hero-visual-stage">
+          <div class="stage-corner tl" aria-hidden="true"></div>
+          <div class="stage-corner br" aria-hidden="true"></div>
+          <div class="stage-aura" aria-hidden="true"></div>
+          <img
+            [src]="facade.personaBranding().avatarPath"
+            [alt]="personaDisplayName()"
+            class="hero-character-img"
+          />
+          <div class="hero-hud-telemetry">
+            <span class="hud-pill cyan">● ONE-WAY X SYNC</span>
+            <span class="hud-pill violet">DB ISOLATED</span>
+            <span class="hud-pill magenta">EXCLUSIVE REWARDS</span>
+          </div>
+        </div>
+      </section>
+
+      <section class="auth-card glass-panel" aria-label="Authentication panel">
+        <h2 class="sr-only">
+          {{ facade.lang() === 'ja' ? 'X連携認証と利用規約' : 'X OAuth Authentication and Terms' }}
+        </h2>
+
+        <div class="auth-card-top">
+          <div class="auth-tabs" role="tablist">
+            <button
+              type="button"
+              role="tab"
+              id="tab-signup"
+              [attr.aria-selected]="facade.authMode() === 'SIGNUP'"
+              class="auth-tab"
+              [class.active]="facade.authMode() === 'SIGNUP'"
+              (click)="facade.setAuthMode('SIGNUP')"
+            >
+              {{ facade.lang() === 'ja' ? '新規登録' : 'SIGN UP' }}
+            </button>
+            <button
+              type="button"
+              role="tab"
+              id="tab-login"
+              [attr.aria-selected]="facade.authMode() === 'LOGIN'"
+              class="auth-tab"
+              [class.active]="facade.authMode() === 'LOGIN'"
+              (click)="facade.setAuthMode('LOGIN')"
+            >
+              {{ facade.lang() === 'ja' ? 'ログイン' : 'LOGIN' }}
+            </button>
+          </div>
+
+          <button
+            type="button"
+            class="lang-chip-btn"
+            (click)="facade.toggleLanguage()"
+            [attr.aria-label]="facade.lang() === 'ja' ? 'Switch to English' : '日本語に切替'"
+          >
+            {{ facade.lang() === 'ja' ? 'JP / EN' : 'EN / JP' }}
+          </button>
+        </div>
+
+        @if (facade.errorMessage()) {
+          <div class="error-banner" role="alert">
+            <span>{{ facade.errorMessage() }}</span>
+            <button
+              type="button"
+              class="error-dismiss-btn"
+              (click)="facade.dismissError()"
+              [attr.aria-label]="facade.lang() === 'ja' ? 'エラーを閉じる' : 'Dismiss error'"
+            >
+              <svg viewBox="0 0 24 24" class="inline-svg-xs" aria-hidden="true">
+                <path
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2.2"
+                  stroke-linecap="round"
+                  d="M6 6l12 12M18 6L6 18"
+                />
+              </svg>
+            </button>
+          </div>
+        }
+
+        @if (facade.authMode() === 'SIGNUP') {
+          <div class="auth-mode-body" role="tabpanel" aria-labelledby="tab-signup">
+            <div class="step-label">
+              <span class="step-badge">STEP 01</span>
+              <span>
+                {{
+                  facade.lang() === 'ja'
+                    ? '免責事項・データ取扱規約を最後までスクロールしてください'
+                    : 'Scroll through the mandatory privacy & Gemini terms to unlock sign-up'
+                }}
+              </span>
+            </div>
+
+            <div class="disclaimer-container">
+              <div class="disclaimer-progress-bar">
+                <div
+                  class="disclaimer-progress-fill"
+                  [style.width.%]="facade.disclaimerScrollProgress()"
+                ></div>
+              </div>
+
+              <div class="disclaimer-body-wrap">
+                <div
+                  id="disclaimer-scroll-region"
+                  class="disclaimer-scroll-box"
+                  tabindex="0"
+                  role="region"
+                  [attr.aria-label]="
+                    facade.lang() === 'ja'
+                      ? '新規登録前の免責事項および注意事項'
+                      : 'Mandatory Sign-Up Disclaimer'
+                  "
+                  (scroll)="onDisclaimerScroll($event)"
+                >
+                  @if (facade.lang() === 'ja') {
+                    <h3>1. Google Gemini API による会話内容の学習・品質改善利用</h3>
+                    <p>
+                      本プライベートラウンジでは対話生成エンジンとして Google Gemini API を使用します。契約枠・API 仕様に基づき、送信された会話テキストは Google によるモデル学習・安全性評価・品質改善プロセスに使用される場合があります。
+                    </p>
+                    <h3>2. 個人情報（PII）・機密情報の送信禁止</h3>
+                    <p>
+                      氏名・住所・電話番号・メールアドレス・パスワード・ログイン資格情報・クレジットカード番号・マイナンバー・所属企業の未公開情報など、個人を特定できる情報や機密情報はチャット欄へ絶対に入力・送信しないでください。
+                    </p>
+                    <h3>3. 公開 X 記憶の片方向同期とデータ完全隔離</h3>
+                    <p>
+                      公開X上での過去のやり取りや関係性メタデータは{{ personaDisplayName() }}が片方向で参照しますが、プライベートラウンジの会話ログ・RAG記憶は完全に分離された専用テーブル（<code>lounge_*</code>）に保持され、公開Xタイムラインやリプライへ送信・反映されることは一切ありません。
+                    </p>
+                    <h3>4. 利用制限・禁止事項</h3>
+                    <p>
+                      自動スクリプトによる大量アクセス、プロンプトインジェクション攻撃、または法令・公序良俗に反する入力が確認された場合、事前通告なくアカウントを停止する場合があります。以上すべてに同意の上でXアカウント連携を実行してください。
+                    </p>
+                  } @else {
+                    <h3>1. Google Gemini API Training &amp; Quality Improvement</h3>
+                    <p>
+                      Interactive replies in Private Lounge are powered by the Google Gemini API. Depending on active API tier terms, submitted dialogue prompts may be processed for model learning, safety monitoring, and quality improvement.
+                    </p>
+                    <h3>2. Strict Zero-PII &amp; Zero-Credential Policy</h3>
+                    <p>
+                      Never enter legal names, home addresses, phone numbers, email addresses, passwords, payment card details, or confidential proprietary secrets in any Private Lounge prompt.
+                    </p>
+                    <h3>3. One-Way Public X Memory Sync &amp; Storage Isolation</h3>
+                    <p>
+                      Public X memory context flows strictly one-way (read-only) so {{ personaDisplayName() }} recognizes shared history. Private Lounge chats and memories reside exclusively in isolated <code>lounge_*</code> collections and never post back to Public X.
+                    </p>
+                    <h3>4. Acceptable Use</h3>
+                    <p>
+                      Automated abuse, prompt-injection tampering, or terms violations may result in immediate account suspension. Scroll to the end to confirm your agreement.
+                    </p>
+                  }
+                </div>
+
+                @if (!facade.disclaimerScrolledToBottom()) {
+                  <div class="disclaimer-scroll-fade" aria-hidden="true"></div>
+                }
+              </div>
+
+              <div id="disclaimer-scroll-status" class="scroll-status-row" aria-live="polite">
+                @if (facade.disclaimerScrolledToBottom()) {
+                  <span class="scroll-pill unlocked">
+                    <svg viewBox="0 0 24 24" class="inline-svg-sm" aria-hidden="true">
+                      <path
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="2.4"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        d="M5 13l4 4L19 7"
+                      />
+                    </svg>
+                    <span>
+                      {{
+                        facade.lang() === 'ja'
+                          ? '全文確認完了 — 同意チェック可能'
+                          : 'Full text reviewed — consent unlocked'
+                      }}
+                    </span>
+                  </span>
+                } @else {
+                  <span class="scroll-pill locked">
+                    <svg viewBox="0 0 24 24" class="inline-svg-sm" aria-hidden="true">
+                      <path
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="2.2"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        d="M12 5v14M6 13l6 6 6-6"
+                      />
+                    </svg>
+                    <span>
+                      {{
+                        facade.lang() === 'ja'
+                          ? '最後までスクロールすると同意チェックが有効になります'
+                          : 'Scroll to bottom to enable consent checkbox'
+                      }}
+                    </span>
+                  </span>
+                }
+                <span class="scroll-percent">{{ facade.disclaimerScrollProgress() }}%</span>
+              </div>
+            </div>
+
+            <label
+              class="consent-checkbox-row"
+              [class.disabled]="!facade.disclaimerScrolledToBottom()"
+            >
+              <input
+                id="lounge-consent-checkbox"
+                type="checkbox"
+                aria-describedby="disclaimer-scroll-status"
+                [disabled]="!facade.disclaimerScrolledToBottom()"
+                [checked]="facade.disclaimerChecked()"
+                (change)="onConsentCheckboxChange($event)"
+              />
+              <span>
+                {{
+                  facade.lang() === 'ja'
+                    ? '上記の免責事項（Gemini学習利用・個人情報送信禁止・隔離仕様）を最後まで読み、すべてに同意します'
+                    : 'I have read the disclaimer to the end and accept all Gemini learning, zero-PII, and isolation terms'
+                }}
+              </span>
+            </label>
+
+            <button
+              id="btn-x-signup"
+              type="button"
+              class="x-oauth-cta cyber-primary"
+              [disabled]="!facade.canSubmitSignUp()"
+              (click)="facade.submitSignUpWithX()"
+            >
+              <svg class="x-icon" viewBox="0 0 24 24" aria-hidden="true">
+                <path
+                  fill="currentColor"
+                  d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"
+                />
+              </svg>
+              <span>
+                {{
+                  facade.lang() === 'ja'
+                    ? 'Xアカウントで同意して新規登録'
+                    : 'Agree &amp; Sign Up with X Account'
+                }}
+              </span>
+            </button>
+          </div>
+        } @else {
+          <div class="auth-mode-body login-body" role="tabpanel" aria-labelledby="tab-login">
+            <div class="login-callout">
+              <div class="callout-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" class="inline-svg-md">
+                  <path
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    d="M13 2L4 14h7l-1 8 9-12h-7l1-8z"
+                  />
+                </svg>
+              </div>
+              <div>
+                <div class="callout-title">
+                  {{
+                    facade.lang() === 'ja'
+                      ? 'X (Twitter) 連携セッション認証'
+                      : 'X OAuth Authenticated Reconnect'
+                  }}
+                </div>
+                <p class="callout-desc">
+                  {{
+                    facade.lang() === 'ja'
+                      ? '登録済みのXアカウントでサインインし、前回の記憶とサブスク残回数を復元します。'
+                      : 'Sign in with your linked X account to restore private memories and daily quota.'
+                  }}
+                </p>
+              </div>
+            </div>
+
+            <button
+              id="btn-x-login"
+              type="button"
+              class="x-oauth-cta cyber-primary"
+              [disabled]="facade.isLoading()"
+              (click)="facade.submitLoginWithX()"
+            >
+              <svg class="x-icon" viewBox="0 0 24 24" aria-hidden="true">
+                <path
+                  fill="currentColor"
+                  d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"
+                />
+              </svg>
+              <span>
+                {{
+                  facade.lang() === 'ja'
+                    ? 'Xアカウントでログイン'
+                    : 'Sign In with X Account'
+                }}
+              </span>
+            </button>
+          </div>
+        }
+
+        <footer class="auth-footer">
+          <span class="footer-brand">Gemitec Inc. // Official AI Client</span>
+          <span class="app-version-badge" data-testid="auth-version">{{ facade.appVersion() }}</span>
+        </footer>
+      </section>
+    </main>
+  } @else {
+    <!-- ============================================================
+         AUTHENTICATED SHELL: TOP-LEFT HAMBURGER + CHAT / REWARDS + SLIDE-OVER SIDEBAR
+         ============================================================ -->
+    <div class="app-shell">
+      <header class="top-hud glass-panel">
+        <div class="hud-left">
+          <button
+            id="btn-hamburger"
+            type="button"
+            class="hamburger-btn"
+            [attr.aria-expanded]="facade.isSidebarOpen()"
+            aria-controls="lounge-sidebar-drawer"
+            [attr.aria-label]="facade.lang() === 'ja' ? 'メニューを開く' : 'Open navigation menu'"
+            (click)="facade.toggleSidebar()"
+          >
+            <svg viewBox="0 0 24 24" class="hamburger-icon" aria-hidden="true">
+              <path
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2.1"
+                stroke-linecap="round"
+                d="M4 6.5h16M4 12h16M4 17.5h11"
+              />
+            </svg>
+          </button>
+
+          <img src="assets/gemitec_icon.svg" alt="GEMITEC" class="hud-brand-icon" />
+          <div class="hud-title-group">
+            <span class="hud-kicker">GEMITEC // PRIVATE LOUNGE</span>
+            <h1 class="hud-title">
+              @if (facade.activeView() === 'REWARDS') {
+                {{ facade.lang() === 'ja' ? 'リワード・イラスト一覧' : 'Rewards Illustration Gallery' }}
+              } @else {
+                {{ facade.activeSession()?.title || 'NEON LOUNGE' }}
+              }
+            </h1>
+          </div>
+        </div>
+
+        <div class="hud-right">
+          <span class="hud-sync-pill" title="Read-only Public X memory sync">
+            <span class="pulse-dot" aria-hidden="true"></span>
+            <span>X-SYNC: 1-WAY</span>
+          </span>
+
+          @if (facade.accountSummary(); as summary) {
+            <span class="hud-quota-chip" data-testid="hud-remaining-turns">
+              <span class="quota-label hide-on-xs">{{ facade.lang() === 'ja' ? '残回数' : 'TURNS' }}</span>
+              <strong>{{ summary.subscription.remainingChatTurns }}/{{ summary.subscription.dailyTurnQuota }}</strong>
+            </span>
+          }
+
+          <button
+            type="button"
+            class="lang-chip-btn"
+            (click)="facade.toggleLanguage()"
+            [attr.aria-label]="facade.lang() === 'ja' ? 'Switch to English' : '日本語に切替'"
+          >
+            {{ facade.lang() === 'ja' ? 'JP / EN' : 'EN / JP' }}
+          </button>
+        </div>
+      </header>
+
+      @if (facade.errorMessage()) {
+        <div class="error-banner shell-error-banner" role="alert">
+          <span>{{ facade.errorMessage() }}</span>
+          <button
+            type="button"
+            class="error-dismiss-btn"
+            (click)="facade.dismissError()"
+            [attr.aria-label]="facade.lang() === 'ja' ? 'エラーを閉じる' : 'Dismiss error'"
+          >
+            <svg viewBox="0 0 24 24" class="inline-svg-xs" aria-hidden="true">
+              <path
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2.2"
+                stroke-linecap="round"
+                d="M6 6l12 12M18 6L6 18"
+              />
+            </svg>
+          </button>
+        </div>
+      }
+
+      @if (facade.activeView() === 'CHAT') {
+        <!-- ============================================================
+             VIEW 2: MAIN CHAT STAGE
+             ============================================================ -->
+        <main class="chat-workspace">
+          <aside class="resonance-panel glass-panel">
+            <div class="resonance-portrait-frame">
+              <img
+                [src]="facade.personaBranding().avatarPath"
+                [alt]="personaDisplayName()"
+                class="resonance-portrait"
+              />
+              <span
+                class="emotion-badge emotion-badge--overlay"
+                [style.--emotion-color]="currentEmotionMeta().accent"
+              >
+                <span class="emotion-dot" aria-hidden="true"></span>
+                {{ currentEmotionMeta().en }} // {{ currentEmotionMeta().ja }}
+              </span>
+            </div>
+
+            <div class="resonance-meta">
+              <div class="persona-title-row">
+                <div class="persona-heading-group">
+                  <h2 class="persona-name">{{ personaDisplayName() }}</h2>
+                  <span
+                    class="emotion-badge emotion-badge--inline"
+                    [style.--emotion-color]="currentEmotionMeta().accent"
+                  >
+                    <span class="emotion-dot" aria-hidden="true"></span>
+                    {{ currentEmotionMeta().en }}
+                  </span>
+                </div>
+                <span class="persona-status">{{ facade.lang() === 'ja' ? 'オンライン' : 'CONNECTED' }}</span>
+              </div>
+              <p class="isolation-note">
+                @if (facade.lang() === 'ja') {
+                  公開X記憶を参照中（このラウンジの会話は <code>lounge_*</code> に完全隔離）
+                } @else {
+                  Public X bond synced read-only. Private log isolated inside <code>lounge_*</code>.
+                }
+              </p>
+
+              <button
+                type="button"
+                class="quick-rewards-btn"
+                (click)="facade.navigateTo('REWARDS')"
+              >
+                <span class="btn-icon-label">
+                  <svg viewBox="0 0 24 24" class="inline-svg-sm" aria-hidden="true">
+                    <path
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="2"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      d="M12 3l2.2 5.3L19.5 10l-5.3 1.7L12 17l-2.2-5.3L4.5 10l5.3-1.7L12 3z"
+                    />
+                  </svg>
+                  <span>{{ facade.lang() === 'ja' ? 'リワード一覧' : 'Rewards' }}</span>
+                </span>
+                <span class="count-pill">{{ unlockedRewardsCount() }}/{{ facade.rewards().length }}</span>
+              </button>
+            </div>
+          </aside>
+
+          <section class="chat-panel glass-panel" aria-label="Private conversation stream">
+            <div class="chat-stream">
+              @for (msg of facade.messages(); track msg.id) {
+                <article
+                  class="message-row"
+                  [class.from-user]="msg.role === 'USER'"
+                  [class.from-assistant]="msg.role === 'ASSISTANT'"
+                >
+                  <div class="message-meta">
+                    <span class="sender-label">
+                      {{ msg.role === 'USER' ? (facade.accountSummary()?.user?.xHandle || '@you') : personaDisplayName() }}
+                    </span>
+                    @if (msg.role === 'ASSISTANT') {
+                      <span class="msg-emotion-tag">{{ getEmotionLabel(msg.emotion) }}</span>
+                    }
+                  </div>
+                  <div class="message-bubble">
+                    <p>{{ msg.content }}</p>
+                    @if (msg.unlockedRewardId) {
+                      <button
+                        type="button"
+                        class="unlocked-reward-banner"
+                        (click)="facade.navigateTo('REWARDS')"
+                      >
+                        <span class="btn-icon-label">
+                          <svg viewBox="0 0 24 24" class="inline-svg-sm" aria-hidden="true">
+                            <path
+                              fill="none"
+                              stroke="currentColor"
+                              stroke-width="2"
+                              stroke-linecap="round"
+                              stroke-linejoin="round"
+                              d="M20 12v8H4v-8M2 7h20v5H2V7zm10 0v13M12 7c-2.5 0-4.5-1.2-4.5-3S9.2 1 11 2.8L12 4l1-1.2C14.8 1 16.5 2.2 16.5 4S14.5 7 12 7z"
+                            />
+                          </svg>
+                          <span>
+                            {{
+                              facade.lang() === 'ja'
+                                ? '新しいイラストリワードが解放されました！一覧を見る'
+                                : 'New Illustration Reward Unlocked! View Gallery'
+                            }}
+                          </span>
+                        </span>
+                        <svg viewBox="0 0 24 24" class="inline-svg-sm" aria-hidden="true">
+                          <path
+                            fill="none"
+                            stroke="currentColor"
+                            stroke-width="2"
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                            d="M5 12h14M13 6l6 6-6 6"
+                          />
+                        </svg>
+                      </button>
+                    }
+                  </div>
+                </article>
+              }
+            </div>
+
+            @if (isQuotaExhausted()) {
+              <div class="quota-exhausted-banner" role="status" data-testid="quota-exhausted-banner">
+                {{
+                  facade.lang() === 'ja'
+                    ? '本日のチャット残回数が上限に達しました。リセット時刻までお待ちいただくかプランをご確認ください。'
+                    : 'Daily chat turn quota exhausted. Please wait for reset or upgrade your supporter tier.'
+                }}
+              </div>
+            }
+
+            <form class="composer-bar" (submit)="onSubmitMessage($event)">
+              <input
+                type="text"
+                name="composer"
+                class="composer-input"
+                [disabled]="isQuotaExhausted()"
+                [attr.aria-label]="
+                  facade.lang() === 'ja' ? 'プライベートメッセージ入力欄' : 'Private chat message input'
+                "
+                [ngModel]="facade.composerDraft()"
+                (ngModelChange)="facade.composerDraft.set($event)"
+                [placeholder]="
+                  facade.lang() === 'ja'
+                    ? '個人情報(PII)は入力せず、メッセージを入力...'
+                    : 'Type your private message (do not include PII)...'
+                "
+                maxlength="4000"
+              />
+              <button
+                type="submit"
+                class="send-btn cyber-primary"
+                [disabled]="!facade.composerDraft().trim() || facade.isLoading() || isQuotaExhausted()"
+              >
+                {{ facade.lang() === 'ja' ? '送信' : 'SEND' }}
+              </button>
+            </form>
+          </section>
+        </main>
+      } @else {
+        <!-- ============================================================
+             VIEW 4: REWARDS ILLUSTRATION GALLERY
+             ============================================================ -->
+        <main class="rewards-workspace">
+          <div class="rewards-banner glass-panel">
+            <div>
+              <span class="step-badge">COLLECTION // REWARDS</span>
+              <h2 class="rewards-heading">
+                {{
+                  facade.lang() === 'ja'
+                    ? personaDisplayName() + 'からのリワード・イラスト一覧'
+                    : 'Exclusive Rewards Shared by ' + personaDisplayName()
+                }}
+              </h2>
+              <p class="rewards-subtitle">
+                {{
+                  facade.lang() === 'ja'
+                    ? 'プライベート対話の共鳴や記念イベントで解禁された限定イラストコレクション'
+                    : 'Special illustrations unlocked through private resonance milestones and supporter perks.'
+                }}
+              </p>
+            </div>
+
+            <div class="rewards-banner-actions">
+              <div class="unlock-counter">
+                <span class="counter-label">{{ facade.lang() === 'ja' ? '解禁進捗' : 'UNLOCKED' }}</span>
+                <strong class="counter-value">{{ unlockedRewardsCount() }} / {{ facade.rewards().length }}</strong>
+              </div>
+              <button
+                id="btn-back-to-chat"
+                type="button"
+                class="back-chat-btn"
+                (click)="facade.navigateTo('CHAT')"
+              >
+                <svg viewBox="0 0 24 24" class="inline-svg-sm" aria-hidden="true">
+                  <path
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2.1"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    d="M19 12H5M11 6l-6 6 6 6"
+                  />
+                </svg>
+                <span>{{ facade.lang() === 'ja' ? 'チャットへ戻る' : 'Back to Chat' }}</span>
+              </button>
+            </div>
+          </div>
+
+          <section class="rewards-grid" aria-label="Rewards illustration gallery">
+            @for (item of facade.rewards(); track item.id) {
+              <article
+                class="reward-card glass-panel"
+                [class.locked]="!item.unlocked"
+                [attr.data-rarity]="item.rarity"
+              >
+                <div class="reward-media">
+                  @if (item.unlocked && item.previewAssetPath) {
+                    <button
+                      type="button"
+                      class="reward-media-trigger"
+                      (click)="openRewardLightbox(item)"
+                      [attr.aria-label]="
+                        (facade.lang() === 'ja' ? item.titleJa : item.titleEn) +
+                        (facade.lang() === 'ja' ? ' を拡大表示' : ' - View full illustration')
+                      "
+                    >
+                      <img
+                        [src]="item.previewAssetPath"
+                        [alt]="facade.lang() === 'ja' ? item.titleJa : item.titleEn"
+                        class="reward-artwork"
+                      />
+                      <span class="expand-hint" aria-hidden="true">
+                        <svg viewBox="0 0 24 24" class="inline-svg-xs">
+                          <path
+                            fill="none"
+                            stroke="currentColor"
+                            stroke-width="2"
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                            d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"
+                          />
+                        </svg>
+                      </span>
+                    </button>
+                  } @else {
+                    <div class="locked-silhouette" aria-hidden="true">
+                      <svg viewBox="0 0 48 48" class="lock-crest-svg">
+                        <rect
+                          x="11"
+                          y="21"
+                          width="26"
+                          height="20"
+                          rx="4"
+                          fill="none"
+                          stroke="currentColor"
+                          stroke-width="2"
+                        />
+                        <path
+                          d="M17 21v-5a7 7 0 0 1 14 0v5"
+                          fill="none"
+                          stroke="currentColor"
+                          stroke-width="2"
+                        />
+                        <circle cx="24" cy="31" r="2.5" fill="currentColor" />
+                      </svg>
+                      <span class="encrypted-tag">ENCRYPTED ASSET</span>
+                    </div>
+                  }
+
+                  <span class="rarity-badge" [class]="'rarity-' + item.rarity.toLowerCase()">
+                    {{ item.rarity }}
+                  </span>
+                  <span class="code-tag">{{ item.code }}</span>
+                </div>
+
+                <div class="reward-body">
+                  <div class="reward-meta-row">
+                    <span class="emotion-chip">{{ item.emotionTag }}</span>
+                    <span class="unlock-state" [class.is-open]="item.unlocked">
+                      {{
+                        item.unlocked
+                          ? (facade.lang() === 'ja' ? '解禁済み' : 'UNLOCKED')
+                          : (facade.lang() === 'ja' ? '未解禁' : 'LOCKED')
+                      }}
+                    </span>
+                  </div>
+                  <h3 class="reward-title">
+                    {{ facade.lang() === 'ja' ? item.titleJa : item.titleEn }}
+                  </h3>
+                  <p class="reward-desc">
+                    {{ facade.lang() === 'ja' ? item.descriptionJa : item.descriptionEn }}
+                  </p>
+                </div>
+              </article>
+            }
+          </section>
+        </main>
+      }
+
+      <!-- ============================================================
+           VIEW 3: SLIDE-OVER SIDEBAR DRAWER (FROM TOP-LEFT HAMBURGER)
+           ============================================================ -->
+      @if (facade.isSidebarOpen()) {
+        <div
+          class="sidebar-backdrop"
+          aria-hidden="true"
+          (click)="facade.toggleSidebar(false)"
+        ></div>
+        <aside
+          id="lounge-sidebar-drawer"
+          class="sidebar-drawer glass-panel"
+          role="dialog"
+          aria-modal="true"
+          [attr.aria-label]="facade.lang() === 'ja' ? 'アカウント・メニュー' : 'Account & Navigation Menu'"
+          (keydown)="onDrawerKeydown($event)"
+        >
+          <div class="drawer-header">
+            <div class="drawer-brand">
+              <img src="assets/gemitec_icon.svg" alt="GEMITEC" class="drawer-logo-icon" />
+              <span>GEMITEC LOUNGE</span>
+            </div>
+            <button
+              id="btn-close-sidebar"
+              type="button"
+              class="close-drawer-btn"
+              [attr.aria-label]="facade.lang() === 'ja' ? 'メニューを閉じる' : 'Close menu'"
+              (click)="facade.toggleSidebar(false)"
+            >
+              <svg viewBox="0 0 24 24" class="inline-svg-sm" aria-hidden="true">
+                <path
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2.2"
+                  stroke-linecap="round"
+                  d="M6 6l12 12M18 6L6 18"
+                />
+              </svg>
+            </button>
+          </div>
+
+          @if (facade.accountSummary(); as summary) {
+            <section class="account-telemetry-card">
+              <div class="account-profile-row">
+                <img
+                  [src]="summary.user.avatarUrl || 'assets/gemitec_icon.svg'"
+                  [alt]="summary.user.displayName"
+                  class="account-avatar"
+                />
+                <div class="account-identity">
+                  <div class="account-name">{{ summary.user.displayName }}</div>
+                  <div class="account-handle">{{ summary.user.xHandle }}</div>
+                </div>
+              </div>
+
+              <div class="subscription-row">
+                <span class="sub-label">{{ facade.lang() === 'ja' ? '加入プラン' : 'SUBSCRIPTION' }}</span>
+                <span class="sub-tier-pill" data-testid="sidebar-subscription-tier">
+                  {{ summary.subscription.tier }} // {{ summary.subscription.status }}
+                </span>
+              </div>
+
+              <div class="quota-block">
+                <div class="quota-header">
+                  <span>{{ facade.lang() === 'ja' ? '残りチャット回数' : 'Remaining Chat Turns' }}</span>
+                  <strong class="quota-count" data-testid="sidebar-remaining-turns">
+                    {{ summary.subscription.remainingChatTurns }} / {{ summary.subscription.dailyTurnQuota }}
+                    {{ facade.lang() === 'ja' ? '回' : 'turns' }}
+                  </strong>
+                </div>
+                <div class="quota-meter">
+                  <div
+                    class="quota-meter-fill"
+                    [style.width.%]="facade.remainingTurnsPercent()"
+                  ></div>
+                </div>
+                <div class="quota-reset-hint">
+                  {{
+                    facade.lang() === 'ja'
+                      ? '公開X記憶：片方向リードオンリー同期有効'
+                      : 'Public X Memory: Read-only 1-way sync active'
+                  }}
+                </div>
+              </div>
+            </section>
+          }
+
+          <nav class="drawer-nav" aria-label="Lounge views">
+            <button
+              id="nav-lounge-chat"
+              type="button"
+              class="drawer-nav-item"
+              [class.active]="facade.activeView() === 'CHAT'"
+              (click)="facade.navigateTo('CHAT')"
+            >
+              <span class="btn-icon-label">
+                <svg viewBox="0 0 24 24" class="inline-svg-sm" aria-hidden="true">
+                  <path
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"
+                  />
+                </svg>
+                <span>{{ facade.lang() === 'ja' ? 'プライベートチャット' : 'Private Chat' }}</span>
+              </span>
+            </button>
+
+            <button
+              id="nav-lounge-rewards"
+              type="button"
+              class="drawer-nav-item"
+              [class.active]="facade.activeView() === 'REWARDS'"
+              (click)="facade.navigateTo('REWARDS')"
+            >
+              <span class="btn-icon-label">
+                <svg viewBox="0 0 24 24" class="inline-svg-sm" aria-hidden="true">
+                  <rect
+                    x="3"
+                    y="4"
+                    width="18"
+                    height="16"
+                    rx="2"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                  />
+                  <circle cx="8.5" cy="9.5" r="1.5" fill="currentColor" />
+                  <path
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    d="M21 15l-5-5L5 20"
+                  />
+                </svg>
+                <span>{{ facade.lang() === 'ja' ? 'リワード（イラスト一覧）' : 'Rewards Illustration Gallery' }}</span>
+              </span>
+              <span class="nav-count-badge">{{ unlockedRewardsCount() }}/{{ facade.rewards().length }}</span>
+            </button>
+          </nav>
+
+          <div class="drawer-spacer"></div>
+
+          <footer class="drawer-footer">
+            <button
+              id="btn-logout"
+              type="button"
+              class="logout-btn"
+              [disabled]="facade.isLoading()"
+              (click)="facade.logout()"
+            >
+              <span class="btn-icon-label">
+                <svg viewBox="0 0 24 24" class="inline-svg-sm" aria-hidden="true">
+                  <path
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"
+                  />
+                </svg>
+                <span>{{ facade.lang() === 'ja' ? 'ログアウト' : 'Logout' }}</span>
+              </span>
+            </button>
+
+            <div class="drawer-version-row">
+              <span>Gemitec Inc.</span>
+              <span class="app-version-badge" data-testid="sidebar-version">{{ facade.appVersion() }}</span>
+            </div>
+          </footer>
+        </aside>
+      }
+
+      @if (selectedLightboxReward(); as reward) {
+        <div
+          class="lightbox-backdrop"
+          aria-hidden="true"
+          (click)="closeRewardLightbox()"
+        ></div>
+        <div
+          id="reward-lightbox-modal"
+          class="lightbox-dialog glass-panel"
+          role="dialog"
+          aria-modal="true"
+          [attr.aria-label]="facade.lang() === 'ja' ? reward.titleJa : reward.titleEn"
+        >
+          <div class="lightbox-header">
+            <div class="lightbox-badges">
+              <span class="rarity-badge inline" [class]="'rarity-' + reward.rarity.toLowerCase()">
+                {{ reward.rarity }}
+              </span>
+              <span class="code-tag inline">{{ reward.code }}</span>
+              <span class="emotion-chip">{{ reward.emotionTag }}</span>
+            </div>
+            <button
+              id="btn-close-lightbox"
+              type="button"
+              class="close-drawer-btn"
+              [attr.aria-label]="facade.lang() === 'ja' ? 'イラスト表示を閉じる' : 'Close artwork viewer'"
+              (click)="closeRewardLightbox()"
+            >
+              <svg viewBox="0 0 24 24" class="inline-svg-sm" aria-hidden="true">
+                <path
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2.2"
+                  stroke-linecap="round"
+                  d="M6 6l12 12M18 6L6 18"
+                />
+              </svg>
+            </button>
+          </div>
+          <div class="lightbox-media">
+            <img
+              [src]="reward.previewAssetPath"
+              [alt]="facade.lang() === 'ja' ? reward.titleJa : reward.titleEn"
+              class="lightbox-artwork"
+            />
+          </div>
+          <div class="lightbox-caption">
+            <h2>{{ facade.lang() === 'ja' ? reward.titleJa : reward.titleEn }}</h2>
+            <p>{{ facade.lang() === 'ja' ? reward.descriptionJa : reward.descriptionEn }}</p>
+          </div>
+        </div>
+      }
+    </div>
+  }
+</div>
