@@ -1,5 +1,5 @@
 @if (user(); as u) {
-  <div class="drawer-content" [class.chat-mode]="activeTab() === 'conversations'">
+  <div class="drawer-content">
     <!-- Segmented Control: Profile vs Conversations -->
     <div class="drawer-tabs" role="tablist">
       <button
@@ -80,7 +80,9 @@
               @for (item of parsedProfile()['attributes']; track item; let i = $index) {
                 <div class="profile-tag">
                   {{ item }}
-                  <span class="material-icons tag-close" (click)="removeTag('attributes', i)">close</span>
+                  <button type="button" class="tag-close" [attr.aria-label]="('common.delete' | translate) + ': ' + item" (click)="removeTag('attributes', i)">
+                    <span class="material-icons" aria-hidden="true">close</span>
+                  </button>
                 </div>
               }
               <input type="text" class="tag-input" [placeholder]="'user_drawer.add_attribute' | translate" (keydown.enter)="addTag('attributes', $event)" (blur)="addTag('attributes', $event)">
@@ -93,7 +95,9 @@
               @for (item of parsedProfile()['preferences']; track item; let i = $index) {
                 <div class="profile-tag">
                   {{ item }}
-                  <span class="material-icons tag-close" (click)="removeTag('preferences', i)">close</span>
+                  <button type="button" class="tag-close" [attr.aria-label]="('common.delete' | translate) + ': ' + item" (click)="removeTag('preferences', i)">
+                    <span class="material-icons" aria-hidden="true">close</span>
+                  </button>
                 </div>
               }
               <input type="text" class="tag-input" [placeholder]="'user_drawer.add_preference' | translate" (keydown.enter)="addTag('preferences', $event)" (blur)="addTag('preferences', $event)">
@@ -106,7 +110,9 @@
               @for (item of parsedProfile()['concerns']; track item; let i = $index) {
                 <div class="profile-tag">
                   {{ item }}
-                  <span class="material-icons tag-close" (click)="removeTag('concerns', i)">close</span>
+                  <button type="button" class="tag-close" [attr.aria-label]="('common.delete' | translate) + ': ' + item" (click)="removeTag('concerns', i)">
+                    <span class="material-icons" aria-hidden="true">close</span>
+                  </button>
                 </div>
               }
               <input type="text" class="tag-input" [placeholder]="'user_drawer.add_concern' | translate" (keydown.enter)="addTag('concerns', $event)" (blur)="addTag('concerns', $event)">
@@ -119,7 +125,9 @@
               @for (item of parsedProfile()['important_memories']; track item; let i = $index) {
                 <div class="profile-tag">
                   {{ item }}
-                  <span class="material-icons tag-close" (click)="removeTag('important_memories', i)">close</span>
+                  <button type="button" class="tag-close" [attr.aria-label]="('common.delete' | translate) + ': ' + item" (click)="removeTag('important_memories', i)">
+                    <span class="material-icons" aria-hidden="true">close</span>
+                  </button>
                 </div>
               }
               <input type="text" class="tag-input" [placeholder]="'user_drawer.add_memory' | translate" (keydown.enter)="addTag('important_memories', $event)" (blur)="addTag('important_memories', $event)">

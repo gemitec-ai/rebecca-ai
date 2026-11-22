@@ -124,23 +124,8 @@ export class UsersPageComponent implements OnInit {
   }
 
   openUserDrawer(userOrId: UserDetail | string) {
-    if (typeof userOrId === 'string') {
-      const user = this.users().find(u => u.id === userOrId);
-      this.selectedUserId = userOrId;
-      this.drawerTitle = `@${user?.username || userOrId}`;
-      if (!user) {
-        this.usersRepo.getById(userOrId).subscribe({
-          next: (fetchedUser) => {
-            if (fetchedUser && this.selectedUserId === userOrId) {
-              this.drawerTitle = `@${fetchedUser.username || fetchedUser.name || userOrId}`;
-            }
-          }
-        });
-      }
-    } else {
-      this.selectedUserId = userOrId.id;
-      this.drawerTitle = `@${userOrId.username || userOrId.id}`;
-    }
+    this.selectedUserId = typeof userOrId === 'string' ? userOrId : userOrId.id;
+    this.drawerTitle = this.translationService.t('dashboard.drawer_user_profile');
     this.drawerIcon = 'person';
     this.isDrawerOpen = true;
   }

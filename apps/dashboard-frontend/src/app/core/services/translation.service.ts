@@ -155,6 +155,7 @@ const TRANSLATIONS: Record<'ja' | 'en', Record<string, string>> = {
 
     // Common
     'common.loading': '読み込み中...',
+    'common.analyze': 'AI分析',
     'common.saving': '保存中...',
     'common.deleting': '削除中...',
     'common.save': '保存',
@@ -162,6 +163,7 @@ const TRANSLATIONS: Record<'ja' | 'en', Record<string, string>> = {
     'common.upload': 'アップロード',
     'common.uploading': 'アップロード中...',
     'common.cancel': 'キャンセル',
+    'common.delete': '削除',
     'common.close': '閉じる',
     'common.quick_select': 'クイック選択',
     'common.view_on_x': 'Xで表示',
@@ -517,6 +519,8 @@ const TRANSLATIONS: Record<'ja' | 'en', Record<string, string>> = {
     'toast.users_unblock_failed': 'ユーザーのブロック解除に失敗しました',
     'toast.user_profile_save_success': '{id} の基本プロフィールを保存しました',
     'toast.user_profile_save_failed': '基本プロフィールの保存に失敗しました',
+    'dashboard.drawer_user_profile': 'ユーザー詳細',
+    'dashboard.drawer_post_details': '投稿詳細',
     'toast.user_blocked_success': 'ユーザー {id} をブロックしました',
     'toast.user_unblocked_success': 'ユーザー {id} のブロックを解除しました',
     'toast.user_status_update_failed': 'ユーザーステータスの更新に失敗しました',
@@ -670,6 +674,7 @@ const TRANSLATIONS: Record<'ja' | 'en', Record<string, string>> = {
 
     // Common
     'common.loading': 'Loading...',
+    'common.analyze': 'Analyze',
     'common.saving': 'Saving...',
     'common.deleting': 'Deleting...',
     'common.save': 'Save',
@@ -677,6 +682,7 @@ const TRANSLATIONS: Record<'ja' | 'en', Record<string, string>> = {
     'common.upload': 'Upload',
     'common.uploading': 'Uploading...',
     'common.cancel': 'Cancel',
+    'common.delete': 'Delete',
     'common.close': 'Close',
     'common.quick_select': 'Quick Select',
     'common.view_on_x': 'View on X',
@@ -1032,6 +1038,8 @@ const TRANSLATIONS: Record<'ja' | 'en', Record<string, string>> = {
     'toast.users_unblock_failed': 'Failed to unblock users',
     'toast.user_profile_save_success': 'Successfully saved core profile for {id}',
     'toast.user_profile_save_failed': 'Failed to save core profile',
+    'dashboard.drawer_user_profile': 'User Profile',
+    'dashboard.drawer_post_details': 'Post Details',
     'toast.user_blocked_success': 'Successfully blocked user {id}',
     'toast.user_unblocked_success': 'Successfully unblocked user {id}',
     'toast.user_status_update_failed': 'Failed to update user status',
