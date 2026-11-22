@@ -235,6 +235,12 @@ All collections are mapped to constants in `COLLECTIONS` (`packages/db/src/index
 | `COLLECTIONS.PROCESSED_MENTIONS` | `/processed_mentions` | X tweet mention idempotency filter | None |
 | `COLLECTIONS.SYSTEM` | `/system` | System singletons (`persona`, `preferences`, `x_api_state`) | None |
 | `COLLECTIONS.SYSTEM_STATS` | `/system_stats` | Dashboard KPIs (`global`) & DAU trends (`dau_YYYY-MM-DD`) | None |
+| `COLLECTIONS.LOUNGE_USERS` | `/lounge_users` | Isolated Private Lounge users & scroll-verified consent | None |
+| `COLLECTIONS.LOUNGE_SUBSCRIPTIONS` | `/lounge_subscriptions` | Isolated Private Lounge plan tiers & daily turn quotas | None |
+| `COLLECTIONS.LOUNGE_SESSIONS` | `/lounge_sessions` | Isolated Private Lounge conversation threads | None |
+| `COLLECTIONS.LOUNGE_MESSAGES` | `/lounge_messages` | Isolated Private Lounge turn logs & token metering | None |
+| `COLLECTIONS.LOUNGE_RAG_MEMORIES` | `/lounge_rag_memories` | Isolated Private Lounge episodic memories (no X write-back) | None |
+| `COLLECTIONS.LOUNGE_REWARDS` | `/lounge_rewards` | Isolated Private Lounge unlockable illustration rewards | None |
 
 ---
 
@@ -602,6 +608,109 @@ Synthesized by `@rebecca/memory` (`DreamingConsolidationEngine`) and orchestrate
 
 ---
 
+### 4.18 Isolated Private Lounge Collections (`lounge_*`)
+
+The **Gemitec Private Lounge** stores all end-user profiles, scroll-verified legal consent records, subscription quotas, private chat threads, turn logs, episodic RAG memories, and illustration rewards inside six dedicated collections completely isolated from the Public X Bot (`users`, `conversation_logs`, `rag_memories`) and Admin Dashboard (`admin_users`):
+
+- **Strict One-Way Memory Isolation Invariant**:
+  - The Lounge BFF (`apps/lounge-backend`) reads Public X user memory **exclusively via `IPublicXMemoryReadPort` (read-only)** so the active AI persona recalls shared Public X context.
+  - Lounge interactions, prompts, and memories write strictly to `lounge_*` collections and **NEVER** mutate `users`, `conversation_logs`, or `rag_memories`.
+
+#### `lounge_users` (`COLLECTIONS.LOUNGE_USERS`)
+Document ID = Firebase Auth `uid`.
+
+| Field Name | Type | Description |
+| :--- | :--- | :--- |
+| `uid` | `string` (Doc ID) | Firebase Authentication UID linked to verified X OAuth identity. |
+| `xUserId` | `string` | Immutable X user identifier used solely for read-only Public X memory lookup. |
+| `xHandle` | `string` | Sanitized X handle (`@username`). |
+| `displayName` | `string` | Display nickname shown in the Lounge UI. |
+| `avatarUrl` | `string` | Profile avatar path or HTTPS URL. |
+| `status` | `'ACTIVE' \| 'SUSPENDED'` | Lounge account status. |
+| `disclaimerConsent` | `LoungeUserDisclaimerConsent` | Scroll-verified sign-up consent (`disclaimerVersion`, `agreedToGeminiTrainingUsage`, `agreedToZeroPiiProhibition`, `agreedToOneWayMemoryIsolation`, `scrolledToBottomAt`, `consentedAt`). |
+| `createdAt` | `Timestamp` (ISO 8601) | Account registration timestamp. |
+| `updatedAt` | `Timestamp` (ISO 8601) | Last profile update timestamp. |
+| `lastLoginAt` | `Timestamp` (ISO 8601) | Most recent authenticated login timestamp. |
+
+#### `lounge_subscriptions` (`COLLECTIONS.LOUNGE_SUBSCRIPTIONS`)
+Document ID = Firebase Auth `uid`.
+
+| Field Name | Type | Description |
+| :--- | :--- | :--- |
+| `uid` | `string` (Doc ID) | Owning Lounge user UID. |
+| `tier` | `'FREE' \| 'SUPPORTER' \| 'VIP'` | Private Lounge membership plan tier. |
+| `status` | `'ACTIVE' \| 'PAST_DUE' \| 'CANCELED'` | Billing entitlement status. |
+| `dailyTurnQuota` | `number` | Maximum daily turn allowance granted by `tier`. |
+| `remainingChatTurns` | `number` | Remaining interactive turns before next quota reset (`>= 0`). |
+| `quotaResetAt` | `Timestamp` (ISO 8601) | Scheduled ISO timestamp for daily quota replenishment. |
+| `stripeCustomerId` | `string \| undefined` | Optional Stripe Customer reference. |
+| `currentPeriodEnd` | `Timestamp` (ISO 8601) | Subscription billing period boundary. |
+| `updatedAt` | `Timestamp` (ISO 8601) | Last quota or subscription update timestamp. |
+
+#### `lounge_sessions` (`COLLECTIONS.LOUNGE_SESSIONS`)
+Document ID = Session UUID. Composite index: `uid ASC, updatedAt DESC`.
+
+| Field Name | Type | Description |
+| :--- | :--- | :--- |
+| `id` | `string` (Doc ID) | Unique Private Lounge session identifier. |
+| `uid` | `string` | Owning Lounge user UID. |
+| `title` | `string` | Conversation thread title. |
+| `messageCount` | `number` | Number of persisted messages in `lounge_messages`. |
+| `currentEmotion` | `LoungeEmotionState` | Latest persona emotion state (`NEUTRAL \| HAPPY \| TEASING \| SHY \| EXCITED \| THOUGHTFUL`). |
+| `publicXMemorySyncedAt` | `Timestamp` (ISO 8601) | Last read-only sync snapshot timestamp from `IPublicXMemoryReadPort`. |
+| `lastMessagePreview` | `string` | Short preview snippet of the latest turn. |
+| `createdAt` | `Timestamp` (ISO 8601) | Session creation timestamp. |
+| `updatedAt` | `Timestamp` (ISO 8601) | Last turn timestamp. |
+| `archivedAt` | `Timestamp \| undefined` | Optional soft-archive timestamp. |
+
+#### `lounge_messages` (`COLLECTIONS.LOUNGE_MESSAGES`)
+Document ID = Message UUID. Composite indexes: `sessionId ASC, createdAt ASC` and `sessionId ASC, createdAt DESC`.
+
+| Field Name | Type | Description |
+| :--- | :--- | :--- |
+| `id` | `string` (Doc ID) | Unique turn message identifier. |
+| `sessionId` | `string` | Parent `lounge_sessions` document ID. |
+| `uid` | `string` | Owning Lounge user UID (enforces strict owner-only queries). |
+| `role` | `'USER' \| 'ASSISTANT' \| 'SYSTEM'` | Turn speaker role. |
+| `content` | `string` | Message text content. |
+| `emotion` | `LoungeEmotionState` | Emotion tag active for this turn. |
+| `unlockedRewardId` | `string \| undefined` | Optional reward illustration unlocked during this reply. |
+| `tokenUsage` | `LoungeTokenUsage \| undefined` | Optional Gemini token usage breakdown (`promptTokens`, `candidatesTokens`, `totalTokens`). |
+| `createdAt` | `Timestamp` (ISO 8601) | Turn creation timestamp. |
+
+#### `lounge_rag_memories` (`COLLECTIONS.LOUNGE_RAG_MEMORIES`)
+Document ID = Memory UUID. Composite index: `uid ASC, updatedAt DESC`. Isolated from Public Bot `rag_memories`.
+
+| Field Name | Type | Description |
+| :--- | :--- | :--- |
+| `id` | `string` (Doc ID) | Unique Private Lounge memory record ID. |
+| `uid` | `string` | Owning Lounge user UID. |
+| `sessionId` | `string` | Source Private Lounge session ID. |
+| `category` | `'EPISODE' \| 'PREFERENCE' \| 'PROMISE' \| 'NICKNAME'` | Private memory taxonomy category. |
+| `summary` | `string` | Consolidated private memory summary (never exported to Public X). |
+| `salienceScore` | `number` | Retrieval importance weight (`0.0 - 1.0`). |
+| `createdAt` | `Timestamp` (ISO 8601) | Creation timestamp. |
+| `updatedAt` | `Timestamp` (ISO 8601) | Last salience/summary update timestamp. |
+
+#### `lounge_rewards` (`COLLECTIONS.LOUNGE_REWARDS`)
+Document ID = `<uid>_<rewardCode>`. Composite index: `uid ASC, unlocked DESC`.
+
+| Field Name | Type | Description |
+| :--- | :--- | :--- |
+| `id` | `string` (Doc ID) | Unique reward document identifier. |
+| `uid` | `string` | Owning Lounge user UID. |
+| `code` | `string` | Stable catalog code (e.g., `RW-01`). |
+| `titleJa` / `titleEn` | `string` | Bilingual reward title. |
+| `descriptionJa` / `descriptionEn` | `string` | Bilingual unlock condition or caption. |
+| `emotionTag` | `LoungeEmotionState` | Associated emotional state. |
+| `rarity` | `'SR' \| 'SSR' \| 'UR'` | Collectible illustration rarity badge. |
+| `previewAssetPath` | `string` | Static or signed illustration preview asset path. |
+| `unlocked` | `boolean` | Whether unlocked for this user. |
+| `unlockedAt` | `Timestamp \| undefined` | Unlock timestamp when `unlocked === true`. |
+| `sourceSessionId` | `string \| undefined` | Session ID in which this illustration was shared. |
+
+---
+
 ## 5. Indexing Policies (`firestore.indexes.json`)
 
 1. **Vector Indexes**:
@@ -613,6 +722,11 @@ Synthesized by `@rebecca/memory` (`DreamingConsolidationEngine`) and orchestrate
    - `campaigns`: `status` ASC + `isPaused` ASC (enables efficient active campaign resolution).
    - `support_transactions`: `status` ASC + `createdAt` DESC (enables filtering transactions by status).
    - `support_transactions`: `tier` ASC + `createdAt` DESC (enables filtering transactions by reward tier).
+   - `lounge_sessions`: `uid` ASC + `updatedAt` DESC (enables paginated owner session listings).
+   - `lounge_messages`: `sessionId` ASC + `createdAt` ASC (enables paginated chronological chat retrieval).
+   - `lounge_messages`: `sessionId` ASC + `createdAt` DESC (enables latest-turn context window fetches).
+   - `lounge_rag_memories`: `uid` ASC + `updatedAt` DESC (enables ordered private RAG memory lookup).
+   - `lounge_rewards`: `uid` ASC + `unlocked` DESC (enables unlocked-first paginated illustration gallery).
 3. **TTL Policies**:
    - `conversation_logs.expireAt`: Enabled (5-year automatic expiration).
    - `timeline_history.expireAt`: Enabled (5-year automatic expiration).
@@ -636,5 +750,6 @@ service cloud.firestore {
 - **IAM-Gated Access**: All reads and writes are strictly mediated by backend microservices:
   - `rebecca-ai-gal` (Cloud Run Bot Backend): Reads/writes via Firebase Admin SDK with Least-Privilege Service Account.
   - `rebecca-dashboard-bff` (Cloud Run Dashboard BFF): Authenticates users via Firebase Auth ID tokens, verifies `admin_users` collection for RBAC permissions, and issues Firestore operations through Admin SDK.
+  - `rebecca-lounge-bff` (Cloud Run Private Lounge BFF): Authenticates end users via X-linked Firebase Auth ID tokens, reads/writes strictly against isolated `lounge_*` collections, and accesses Public X context solely through read-only `IPublicXMemoryReadPort`.
   - Cloud Functions (Eventarc / Auth triggers): Process background events (`onConversationLogCreated`, `beforeUserCreated`, `beforeUserSignedIn`).
 - **Flat Architecture**: The database employs a 100% flat root-level collection architecture with zero nested subcollections, simplifying security rule evaluation and global index querying.

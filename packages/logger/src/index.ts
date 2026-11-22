@@ -126,7 +126,8 @@ export class Logger {
     if (!traceHeader || typeof traceHeader !== 'string') {
       return {};
     }
-    const [traceAndSpan, options] = traceHeader.split(';');
+    const sanitized = traceHeader.replace(/[\r\n]+/g, ' ').trim();
+    const [traceAndSpan, options] = sanitized.split(';');
     const [traceId, spanId] = traceAndSpan.split('/');
     const sampled = options ? options.includes('o=1') : false;
 

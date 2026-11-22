@@ -92,6 +92,42 @@ export const COLLECTIONS = {
    * Doc ID = transaction UUID.
    */
   SUPPORT_TRANSACTIONS: 'support_transactions',
+
+  /**
+   * Isolated Private Lounge end-user profiles and scroll-verified consent records.
+   * Doc ID = Firebase Auth UID (`uid`).
+   */
+  LOUNGE_USERS: 'lounge_users',
+
+  /**
+   * Isolated Private Lounge subscription tiers and daily chat quota states.
+   * Doc ID = Firebase Auth UID (`uid`).
+   */
+  LOUNGE_SUBSCRIPTIONS: 'lounge_subscriptions',
+
+  /**
+   * Isolated Private Lounge conversation sessions.
+   * Doc ID = Session UUID.
+   */
+  LOUNGE_SESSIONS: 'lounge_sessions',
+
+  /**
+   * Isolated Private Lounge chat turn history (user and assistant messages).
+   * Doc ID = Message UUID.
+   */
+  LOUNGE_MESSAGES: 'lounge_messages',
+
+  /**
+   * Isolated Private Lounge episodic RAG memories (never written back to Public X memory).
+   * Doc ID = Memory UUID.
+   */
+  LOUNGE_RAG_MEMORIES: 'lounge_rag_memories',
+
+  /**
+   * Isolated Private Lounge unlockable reward illustration records per user.
+   * Doc ID = `<uid>_<rewardCode>`.
+   */
+  LOUNGE_REWARDS: 'lounge_rewards',
 } as const;
 
 // Derive a union type for all collection name values.
@@ -214,3 +250,22 @@ export interface ListInteraction {
   /** ISO 8601 datetime string */
   lastInteractionAt: string;
 }
+
+export type {
+  LoungeAccountStatus,
+  LoungeEmotionState,
+  LoungeMemoryCategory,
+  LoungeMessageDoc,
+  LoungeRagMemoryDoc,
+  LoungeRewardDoc,
+  LoungeRewardRarity,
+  LoungeSenderRole,
+  LoungeSessionDoc,
+  LoungeSubscriptionDoc,
+  LoungeSubscriptionStatus,
+  LoungeSubscriptionTier,
+  LoungeTokenUsage,
+  LoungeUserDisclaimerConsent,
+  LoungeUserDoc,
+} from '@rebecca/types';
+

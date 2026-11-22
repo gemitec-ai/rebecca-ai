@@ -13,8 +13,29 @@ import {
   personaConverter,
   xApiStateConverter,
   campaignDocConverter,
+  loungeUserConverter,
+  loungeSubscriptionConverter,
+  loungeSessionConverter,
+  loungeMessageConverter,
+  loungeRagMemoryConverter,
+  loungeRewardConverter,
 } from '../../src/index';
-import { UserStatus, PostStatus, AssetStatus, FirestoreUser, TimelinePost, ImageDoc, ProcessedFollower, CampaignDoc } from '@rebecca/types';
+import {
+  UserStatus,
+  PostStatus,
+  AssetStatus,
+  FirestoreUser,
+  TimelinePost,
+  ImageDoc,
+  ProcessedFollower,
+  CampaignDoc,
+  LoungeUserDoc,
+  LoungeSubscriptionDoc,
+  LoungeSessionDoc,
+  LoungeMessageDoc,
+  LoungeRagMemoryDoc,
+  LoungeRewardDoc,
+} from '@rebecca/types';
 
 describe('@rebecca/db Unit Tests', () => {
   describe('COLLECTIONS constants', () => {
@@ -588,6 +609,290 @@ describe('@rebecca/db Unit Tests', () => {
       expect(collections.systemStats).toBeDefined();
       expect(collections.processedMentions).toBeDefined();
       expect(collections.campaigns).toBeDefined();
+      expect(collections.loungeUsers).toBeDefined();
+      expect(collections.loungeSubscriptions).toBeDefined();
+      expect(collections.loungeSessions).toBeDefined();
+      expect(collections.loungeMessages).toBeDefined();
+      expect(collections.loungeRagMemories).toBeDefined();
+      expect(collections.loungeRewards).toBeDefined();
+    });
+  });
+
+  describe('Isolated Private Lounge COLLECTIONS & Converters', () => {
+    it('defines six isolated lounge_* collection names distinct from public bot collections', () => {
+      expect(COLLECTIONS.LOUNGE_USERS).toBe('lounge_users');
+      expect(COLLECTIONS.LOUNGE_SUBSCRIPTIONS).toBe('lounge_subscriptions');
+      expect(COLLECTIONS.LOUNGE_SESSIONS).toBe('lounge_sessions');
+      expect(COLLECTIONS.LOUNGE_MESSAGES).toBe('lounge_messages');
+      expect(COLLECTIONS.LOUNGE_RAG_MEMORIES).toBe('lounge_rag_memories');
+      expect(COLLECTIONS.LOUNGE_REWARDS).toBe('lounge_rewards');
+      expect(COLLECTIONS.LOUNGE_USERS).not.toBe(COLLECTIONS.USERS);
+      expect(COLLECTIONS.LOUNGE_RAG_MEMORIES).not.toBe(COLLECTIONS.RAG_MEMORIES);
+    });
+
+    it('serializes and deserializes loungeUserConverter with scroll-verified consent', () => {
+      const user: LoungeUserDoc = {
+        uid: 'uid_lounge_001',
+        xUserId: '100020003000',
+        xHandle: '@user_001',
+        displayName: 'Cyber Runner 01',
+        avatarUrl: 'https://example.com/avatar.png',
+        status: 'ACTIVE',
+        disclaimerConsent: {
+          disclaimerVersion: '2026-11-22',
+          agreedToGeminiTrainingUsage: true,
+          agreedToZeroPiiProhibition: true,
+          agreedToOneWayMemoryIsolation: true,
+          scrolledToBottomAt: '2026-11-22T12:00:00.000Z',
+          consentedAt: '2026-11-22T12:00:05.000Z',
+        },
+        createdAt: '2026-11-22T12:00:05.000Z',
+        updatedAt: '2026-11-22T12:00:05.000Z',
+        lastLoginAt: '2026-11-22T12:05:00.000Z',
+      };
+
+      const raw = loungeUserConverter.toFirestore(user);
+      expect(raw['createdAt']).toBeInstanceOf(Timestamp);
+      expect(raw['disclaimerConsent']['scrolledToBottomAt']).toBeInstanceOf(Timestamp);
+
+      const roundTrip = loungeUserConverter.fromFirestore({
+        id: 'uid_lounge_001',
+        data: () => raw,
+      } as any);
+      expect(roundTrip).toEqual(user);
+
+      expect(() =>
+        loungeUserConverter.toFirestore({ ...user, createdAt: 'not-a-date' }),
+      ).toThrow(/Invalid ISO 8601 datetime string/);
+      expect(() =>
+        loungeUserConverter.fromFirestore({ id: 'bad', data: () => ({ xHandle: '@x' }) } as any),
+      ).toThrow(/Invalid or missing string field "xUserId"/);
+      expect(() =>
+        loungeUserConverter.fromFirestore({
+          id: 'bad',
+          data: () => ({
+            ...raw,
+            disclaimerConsent: null,
+          }),
+        } as any),
+      ).toThrow(/Missing "disclaimerConsent" object/);
+
+      expect(() =>
+        loungeUserConverter.fromFirestore({
+          id: 'uid_bad_avatar',
+          data: () => ({ ...raw, avatarUrl: null }),
+        } as any),
+      ).toThrow(/Invalid non-string field "avatarUrl"/);
+
+      expect(() =>
+        loungeUserConverter.fromFirestore({
+          id: 'uid_bad_bool',
+          data: () => ({
+            ...raw,
+            disclaimerConsent: {
+              ...raw['disclaimerConsent'],
+              agreedToGeminiTrainingUsage: 'false',
+            },
+          }),
+        } as any),
+      ).toThrow(/Invalid or missing boolean field "disclaimerConsent.agreedToGeminiTrainingUsage"/);
+
+      expect(() =>
+        loungeUserConverter.fromFirestore({
+          id: 'uid_bad_status',
+          data: () => ({ ...raw, status: 'UNKNOWN_STATUS' }),
+        } as any),
+      ).toThrow(/Invalid enum value "UNKNOWN_STATUS" for "status"/);
+
+      expect(() =>
+        loungeUserConverter.fromFirestore({
+          id: 'uid_bad_iso',
+          data: () => ({ ...raw, lastLoginAt: 'not-a-valid-date' }),
+        } as any),
+      ).toThrow(/Invalid or missing datetime field "lastLoginAt"/);
+    });
+
+    it('serializes and deserializes loungeSubscriptionConverter with optional stripeCustomerId', () => {
+      const baseSub: LoungeSubscriptionDoc = {
+        uid: 'uid_lounge_001',
+        tier: 'SUPPORTER',
+        status: 'ACTIVE',
+        dailyTurnQuota: 30,
+        remainingChatTurns: 24,
+        quotaResetAt: '2026-11-23T00:00:00.000Z',
+        currentPeriodEnd: '2026-12-22T12:00:00.000Z',
+        updatedAt: '2026-11-22T12:05:00.000Z',
+      };
+      const rawWithoutStripe = loungeSubscriptionConverter.toFirestore(baseSub);
+      expect('stripeCustomerId' in rawWithoutStripe).toBe(false);
+      expect(
+        loungeSubscriptionConverter.fromFirestore({ id: 'uid_lounge_001', data: () => rawWithoutStripe } as any),
+      ).toEqual(baseSub);
+
+      const withStripe: LoungeSubscriptionDoc = { ...baseSub, stripeCustomerId: 'cus_test_001' };
+      const rawWithStripe = loungeSubscriptionConverter.toFirestore(withStripe);
+      expect(rawWithStripe['stripeCustomerId']).toBe('cus_test_001');
+      expect(
+        loungeSubscriptionConverter.fromFirestore({ id: 'uid_lounge_001', data: () => rawWithStripe } as any),
+      ).toEqual(withStripe);
+
+      expect(() =>
+        loungeSubscriptionConverter.fromFirestore({
+          id: 'bad',
+          data: () => ({ ...rawWithoutStripe, dailyTurnQuota: '30' }),
+        } as any),
+      ).toThrow(/Invalid or missing numeric field "dailyTurnQuota"/);
+    });
+
+    it('serializes and deserializes loungeSessionConverter, loungeMessageConverter, loungeRagMemoryConverter, and loungeRewardConverter', () => {
+      const session: LoungeSessionDoc = {
+        id: 'sess_001',
+        uid: 'uid_lounge_001',
+        title: 'Midnight Cyber Lounge',
+        messageCount: 4,
+        currentEmotion: 'TEASING',
+        publicXMemorySyncedAt: '2026-11-22T12:00:00.000Z',
+        lastMessagePreview: 'テスト',
+        createdAt: '2026-11-22T12:00:00.000Z',
+        updatedAt: '2026-11-22T12:10:00.000Z',
+        archivedAt: '2026-11-22T13:00:00.000Z',
+      };
+      const rawSession = loungeSessionConverter.toFirestore(session);
+      expect(rawSession['archivedAt']).toBeInstanceOf(Timestamp);
+      expect(
+        loungeSessionConverter.fromFirestore({ id: 'sess_001', data: () => rawSession } as any),
+      ).toEqual(session);
+
+      const message: LoungeMessageDoc = {
+        id: 'msg_001',
+        sessionId: 'sess_001',
+        uid: 'uid_lounge_001',
+        role: 'ASSISTANT',
+        content: 'こんにちは',
+        emotion: 'HAPPY',
+        unlockedRewardId: 'rw_01',
+        tokenUsage: { promptTokens: 120, candidatesTokens: 60, totalTokens: 180 },
+        createdAt: '2026-11-22T12:02:00.000Z',
+      };
+      const rawMsg = loungeMessageConverter.toFirestore(message);
+      expect(
+        loungeMessageConverter.fromFirestore({ id: 'msg_001', data: () => rawMsg } as any),
+      ).toEqual(message);
+
+      const minimalMsg: LoungeMessageDoc = {
+        id: 'msg_002',
+        sessionId: 'sess_001',
+        uid: 'uid_lounge_001',
+        role: 'USER',
+        content: 'やあ',
+        emotion: 'NEUTRAL',
+        createdAt: '2026-11-22T12:01:00.000Z',
+      };
+      const rawMinimalMsg = loungeMessageConverter.toFirestore(minimalMsg);
+      expect('tokenUsage' in rawMinimalMsg).toBe(false);
+      expect(
+        loungeMessageConverter.fromFirestore({ id: 'msg_002', data: () => rawMinimalMsg } as any),
+      ).toEqual(minimalMsg);
+
+      const rag: LoungeRagMemoryDoc = {
+        id: 'mem_001',
+        uid: 'uid_lounge_001',
+        sessionId: 'sess_001',
+        category: 'PROMISE',
+        summary: 'Prefers dark roast coffee',
+        salienceScore: 0.92,
+        createdAt: '2026-11-22T12:03:00.000Z',
+        updatedAt: '2026-11-22T12:03:00.000Z',
+      };
+      const rawRag = loungeRagMemoryConverter.toFirestore(rag);
+      expect(
+        loungeRagMemoryConverter.fromFirestore({ id: 'mem_001', data: () => rawRag } as any),
+      ).toEqual(rag);
+
+      const reward: LoungeRewardDoc = {
+        id: 'uid_lounge_001_RW-01',
+        uid: 'uid_lounge_001',
+        code: 'RW-01',
+        titleJa: '朝の光とコーヒー',
+        titleEn: 'Morning Glow',
+        descriptionJa: '最初の対話記念',
+        descriptionEn: 'First session milestone',
+        emotionTag: 'HAPPY',
+        rarity: 'SSR',
+        previewAssetPath: 'assets/gallery_morning.webp',
+        unlocked: true,
+        unlockedAt: '2026-11-22T12:05:00.000Z',
+        sourceSessionId: 'sess_001',
+      };
+      const rawReward = loungeRewardConverter.toFirestore(reward);
+      expect(rawReward['unlockedAt']).toBeInstanceOf(Timestamp);
+      expect(
+        loungeRewardConverter.fromFirestore({ id: 'uid_lounge_001_RW-01', data: () => rawReward } as any),
+      ).toEqual(reward);
+
+      expect(() =>
+        loungeRagMemoryConverter.fromFirestore({
+          id: 'bad',
+          data: () => ({ ...rawRag, updatedAt: null }),
+        } as any),
+      ).toThrow(/Invalid or missing datetime field "updatedAt"/);
+
+      const minimalSession: LoungeSessionDoc = {
+        id: 'sess_min',
+        uid: 'uid_lounge_001',
+        title: 'Minimal Session',
+        messageCount: 0,
+        currentEmotion: 'NEUTRAL',
+        publicXMemorySyncedAt: '2026-11-22T12:00:00.000Z',
+        lastMessagePreview: '',
+        createdAt: '2026-11-22T12:00:00.000Z',
+        updatedAt: '2026-11-22T12:00:00.000Z',
+      };
+      const rawMinSession = loungeSessionConverter.toFirestore(minimalSession);
+      expect('archivedAt' in rawMinSession).toBe(false);
+      expect(() =>
+        loungeSessionConverter.fromFirestore({
+          id: 'sess_bad_preview',
+          data: () => ({ ...rawMinSession, lastMessagePreview: 123 }),
+        } as any),
+      ).toThrow(/Invalid non-string field "lastMessagePreview"/);
+
+      const lockedReward: LoungeRewardDoc = {
+        id: 'uid_lounge_001_RW-02',
+        uid: 'uid_lounge_001',
+        code: 'RW-02',
+        titleJa: 'ロック中',
+        titleEn: 'Locked',
+        descriptionJa: '',
+        descriptionEn: '',
+        emotionTag: 'SHY',
+        rarity: 'UR',
+        previewAssetPath: '',
+        unlocked: false,
+      };
+      const rawLocked = loungeRewardConverter.toFirestore(lockedReward);
+      expect('unlockedAt' in rawLocked).toBe(false);
+      expect('sourceSessionId' in rawLocked).toBe(false);
+      expect(
+        loungeRewardConverter.fromFirestore({
+          id: 'uid_lounge_001_RW-02',
+          data: () => rawLocked,
+        } as any),
+      ).toEqual(lockedReward);
+
+      expect(() =>
+        loungeRewardConverter.fromFirestore({
+          id: 'uid_bad_unlock',
+          data: () => ({ ...rawLocked, unlocked: 'false' }),
+        } as any),
+      ).toThrow(/Invalid or missing boolean field "unlocked"/);
+
+      expect(() =>
+        loungeMessageConverter.fromFirestore({
+          id: 'msg_bad_content',
+          data: () => ({ ...rawMinimalMsg, content: 99, tokenUsage: null }),
+        } as any),
+      ).toThrow(/Invalid non-string field "content"/);
     });
   });
 });

@@ -1032,4 +1032,313 @@ export function parseUpstreamApiError(error: unknown): UpstreamApiError | null {
   return new UpstreamApiError(resolvedMessage, code, { cause: error });
 }
 
+// ============================================================================
+// Gemitec Private Lounge Domain & BFF Contracts (Isolated from Public Bot/Admin)
+// ============================================================================
+
+/**
+ * Subscription plan tier governing daily turn quotas in the Private Lounge.
+ */
+export type LoungeSubscriptionTier = 'FREE' | 'SUPPORTER' | 'VIP';
+
+/**
+ * Lifecycle state of a user's Private Lounge subscription.
+ */
+export type LoungeSubscriptionStatus = 'ACTIVE' | 'PAST_DUE' | 'CANCELED';
+
+/**
+ * Account status for Private Lounge users.
+ */
+export type LoungeAccountStatus = 'ACTIVE' | 'SUSPENDED';
+
+/**
+ * AI persona emotional state surfaced on the Private Lounge stage HUD and messages.
+ */
+export type LoungeEmotionState =
+  | 'NEUTRAL'
+  | 'HAPPY'
+  | 'TEASING'
+  | 'SHY'
+  | 'EXCITED'
+  | 'THOUGHTFUL';
+
+/**
+ * Turn author role inside a Private Lounge chat session.
+ */
+export type LoungeSenderRole = 'USER' | 'ASSISTANT' | 'SYSTEM';
+
+/**
+ * Memory category for isolated Private Lounge episodic RAG memories.
+ */
+export type LoungeMemoryCategory = 'EPISODE' | 'PREFERENCE' | 'PROMISE' | 'NICKNAME';
+
+/**
+ * Collectible tier of unlockable Private Lounge illustration rewards.
+ */
+export type LoungeRewardRarity = 'SR' | 'SSR' | 'UR';
+
+/**
+ * Scroll-verified consent audit record captured during Private Lounge Sign-Up.
+ */
+export interface LoungeUserDisclaimerConsent {
+  /** SemVer or date identifier of the accepted legal/privacy disclaimer. */
+  disclaimerVersion: string;
+  /** Confirms user read and accepted Gemini API learning/improvement terms. */
+  agreedToGeminiTrainingUsage: boolean;
+  /** Confirms user agreed not to transmit PII, credentials, or sensitive data. */
+  agreedToZeroPiiProhibition: boolean;
+  /** Confirms user acknowledged one-way Public X memory isolation (no write-back). */
+  agreedToOneWayMemoryIsolation: boolean;
+  /** ISO 8601 timestamp recorded when disclaimer box reached 100% scroll depth. */
+  scrolledToBottomAt: string;
+  /** ISO 8601 timestamp recorded when the sign-up consent checkbox was submitted. */
+  consentedAt: string;
+}
+
+/**
+ * Domain model for an isolated Private Lounge end user (`lounge_users`).
+ */
+export interface LoungeUser {
+  uid: string;
+  xUserId: string;
+  xHandle: string;
+  displayName: string;
+  avatarUrl: string;
+  status: LoungeAccountStatus;
+  disclaimerConsent: LoungeUserDisclaimerConsent;
+  createdAt: string;
+  updatedAt: string;
+  lastLoginAt: string;
+}
+
+/**
+ * Persisted Firestore schema shape for `lounge_users` documents.
+ */
+export type LoungeUserDoc = LoungeUser;
+
+/**
+ * Domain model for a Private Lounge subscription and daily chat turn quota (`lounge_subscriptions`).
+ */
+export interface LoungeSubscription {
+  uid: string;
+  tier: LoungeSubscriptionTier;
+  status: LoungeSubscriptionStatus;
+  dailyTurnQuota: number;
+  remainingChatTurns: number;
+  quotaResetAt: string;
+  stripeCustomerId?: string;
+  currentPeriodEnd: string;
+  updatedAt: string;
+}
+
+/**
+ * Persisted Firestore schema shape for `lounge_subscriptions` documents.
+ */
+export type LoungeSubscriptionDoc = LoungeSubscription;
+
+/**
+ * Domain model for an isolated Private Lounge conversation thread (`lounge_sessions`).
+ */
+export interface LoungeSession {
+  id: string;
+  uid: string;
+  title: string;
+  messageCount: number;
+  currentEmotion: LoungeEmotionState;
+  publicXMemorySyncedAt: string;
+  lastMessagePreview: string;
+  createdAt: string;
+  updatedAt: string;
+  archivedAt?: string;
+}
+
+/**
+ * Persisted Firestore schema shape for `lounge_sessions` documents.
+ */
+export type LoungeSessionDoc = LoungeSession;
+
+/**
+ * Token metering snapshot stored on assistant replies in Private Lounge sessions.
+ */
+export interface LoungeTokenUsage {
+  promptTokens: number;
+  candidatesTokens: number;
+  totalTokens: number;
+}
+
+/**
+ * Domain model for an individual chat message in `lounge_messages`.
+ */
+export interface LoungeMessage {
+  id: string;
+  sessionId: string;
+  uid: string;
+  role: LoungeSenderRole;
+  content: string;
+  emotion: LoungeEmotionState;
+  unlockedRewardId?: string;
+  tokenUsage?: LoungeTokenUsage;
+  createdAt: string;
+}
+
+/**
+ * Persisted Firestore schema shape for `lounge_messages` documents.
+ */
+export type LoungeMessageDoc = LoungeMessage;
+
+/**
+ * Domain model for private RAG memories in `lounge_rag_memories` (never written to Public X).
+ */
+export interface LoungeRagMemory {
+  id: string;
+  uid: string;
+  sessionId: string;
+  category: LoungeMemoryCategory;
+  summary: string;
+  salienceScore: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
+ * Persisted Firestore schema shape for `lounge_rag_memories` documents.
+ */
+export type LoungeRagMemoryDoc = LoungeRagMemory;
+
+/**
+ * Domain model for unlockable Private Lounge illustration rewards (`lounge_rewards`).
+ */
+export interface LoungeReward {
+  id: string;
+  uid: string;
+  code: string;
+  titleJa: string;
+  titleEn: string;
+  descriptionJa: string;
+  descriptionEn: string;
+  emotionTag: LoungeEmotionState;
+  rarity: LoungeRewardRarity;
+  previewAssetPath: string;
+  unlocked: boolean;
+  unlockedAt?: string;
+  sourceSessionId?: string;
+}
+
+/**
+ * Persisted Firestore schema shape for `lounge_rewards` documents.
+ */
+export type LoungeRewardDoc = LoungeReward;
+
+/**
+ * Request DTO submitted when onboarding a new X-linked user with scroll-gated disclaimer consent.
+ */
+export interface LoungeSignUpRequestDto {
+  idToken: string;
+  xOAuthCode: string;
+  disclaimerConsent: LoungeUserDisclaimerConsent;
+}
+
+/**
+ * Request DTO submitted when signing in an existing Private Lounge user.
+ */
+export interface LoungeLoginRequestDto {
+  idToken: string;
+  xOAuthCode?: string;
+}
+
+/**
+ * Authenticated Private Lounge session state returned by `/api/v1/lounge/auth/*`.
+ */
+export interface LoungeAuthSessionDto {
+  user: LoungeUser;
+  appVersion: string;
+  issuedAt: string;
+}
+
+/**
+ * Persona display branding surfaced dynamically from `@rebecca/persona`.
+ */
+export interface LoungePersonaBranding {
+  displayName: string;
+  englishName: string;
+  brandName: string;
+  avatarPath: string;
+}
+
+/**
+ * Runtime shell configuration payload returned by `GET /api/v1/lounge/config`.
+ */
+export interface LoungeRuntimeConfigDto {
+  appVersion: string;
+  disclaimerVersion: string;
+  persona: LoungePersonaBranding;
+}
+
+/**
+ * Summary payload combining profile, subscription tier, remaining turns, and sync status.
+ */
+export interface LoungeAccountSummaryDto {
+  user: LoungeUser;
+  subscription: LoungeSubscription;
+  persona?: LoungePersonaBranding;
+  publicXMemoryOneWayActive: boolean;
+  unlockedRewardCount: number;
+  totalRewardCount: number;
+  appVersion: string;
+}
+
+/**
+ * Paginated list response for `/api/v1/lounge/sessions`.
+ */
+export interface LoungeSessionListResponseDto {
+  items: LoungeSession[];
+  nextCursor: string | null;
+  totalCount: number;
+}
+
+/**
+ * Request DTO for creating a new Private Lounge conversation session.
+ */
+export interface LoungeCreateSessionRequestDto {
+  title?: string;
+}
+
+/**
+ * Request DTO for sending a user message in a Private Lounge session.
+ */
+export interface LoungeSendMessageRequestDto {
+  content: string;
+}
+
+/**
+ * Response DTO returning both persisted user prompt, assistant reply, and updated quota.
+ */
+export interface LoungeSendMessageResponseDto {
+  session: LoungeSession;
+  userMessage: LoungeMessage;
+  assistantMessage: LoungeMessage;
+  remainingChatTurns: number;
+  unlockedReward?: LoungeReward;
+}
+
+/**
+ * Paginated list response for `/api/v1/lounge/sessions/{sessionId}/messages`.
+ */
+export interface LoungeMessageListResponseDto {
+  items: LoungeMessage[];
+  nextCursor: string | null;
+  totalCount: number;
+}
+
+/**
+ * Paginated list response for `/api/v1/lounge/rewards`.
+ */
+export interface LoungeRewardListResponseDto {
+  items: LoungeReward[];
+  unlockedCount: number;
+  totalCount: number;
+  nextCursor: string | null;
+}
+
+
 
