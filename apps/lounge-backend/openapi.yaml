@@ -3,8 +3,10 @@ info:
   title: Gemitec Private Lounge BFF API
   description: |
     Isolated Backend-for-Frontend (BFF) REST contract for the Gemitec Private Lounge.
+    Enforces 1 X account = 1 Private Lounge account = 1 continuous conversation session.
     Stores user data in dedicated `lounge_*` Firestore collections separated from Public X Bot and Admin Dashboard tables.
-    Public X memory access is strictly one-way (read-only via `IPublicXMemoryReadPort`).
+    Public X memory access (user profile, recent turns, vector RAG, and the active persona's Layer 1/2/3 post memories)
+    and Bot image asset lookups are strictly read-only.
   version: 1.45.2
 servers:
   - url: http://localhost:8083/api/v1/lounge
@@ -49,11 +51,12 @@ paths:
 
   /auth/signup:
     post:
-      summary: Register a Private Lounge user via X OAuth after scroll-verified disclaimer consent
+      summary: Register a Private Lounge user via X OAuth after scroll-verified disclaimer consent (1 account per X account)
       security: []
       description: |
         Requires verified Firebase/X OAuth identity in body (`idToken`, `xOAuthCode`) and explicit acceptance
-        of Gemini training usage, zero-PII prohibition, and one-way memory isolation after scrolling to bottom.
+        of Gemini training usage, zero-PII prohibition, and session isolation after scrolling to bottom.
+        Returns 409 Conflict if the X account or Firebase UID is already registered.
       requestBody:
         required: true
         content:
@@ -71,8 +74,8 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
 
   /auth/login:
     post:
@@ -109,7 +112,7 @@ paths:
 
   /account:
     get:
-      summary: Retrieve Private Lounge profile, subscription tier, remaining turns, and sync status
+      summary: Retrieve Private Lounge profile, subscription tier, remaining turns, and gallery summary
       responses:
         '200':
           description: Account and subscription summary
@@ -123,53 +126,64 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
-
-  /sessions:
-    get:
-      summary: List Private Lounge chat sessions with bounded pagination
-      parameters:
-        - $ref: '#/components/parameters/LimitParam'
-        - $ref: '#/components/parameters/StartAfterIdParam'
+    delete:
+      summary: Permanently withdraw and cascade-delete Private Lounge account, singleton session, memories, and gallery (no refunds)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoungeDeleteAccountRequestDto'
       responses:
-        '200':
-          description: Paginated list of Private Lounge sessions
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/LoungeSessionListResponseDto'
+        '204':
+          description: Account, singleton session, messages, Dreaming/RAG memories, gallery, and subscription deleted permanently
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
-    post:
-      summary: Create a new isolated Private Lounge conversation session
+
+  /account/preferences:
+    patch:
+      summary: Update user UI/response language and IANA timezone preferences
       requestBody:
-        required: false
+        required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/LoungeCreateSessionRequestDto'
+              $ref: '#/components/schemas/LoungeUpdatePreferencesRequestDto'
       responses:
-        '201':
-          description: Created Private Lounge session
+        '200':
+          description: Updated user profile with validated preferences
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoungeUser'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /session:
+    get:
+      summary: Retrieve (or initialize) the authenticated user's single continuous Private Lounge session
+      responses:
+        '200':
+          description: Authenticated user's single persistent Private Lounge session
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/LoungeSession'
-        '400':
-          $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
 
-  /sessions/{sessionId}/messages:
+  /session/messages:
     get:
-      summary: Retrieve paginated chat turns for a Private Lounge session
+      summary: Retrieve paginated chat turns for the authenticated user's single Private Lounge session
       parameters:
-        - name: sessionId
-          in: path
-          required: true
-          schema:
-            type: string
         - $ref: '#/components/parameters/LimitParam'
         - $ref: '#/components/parameters/StartAfterIdParam'
       responses:
@@ -183,16 +197,10 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
-        '404':
-          $ref: '#/components/responses/NotFound'
+        '403':
+          $ref: '#/components/responses/Forbidden'
     post:
-      summary: Send a user message and receive assistant reply (consumes 1 daily chat turn)
-      parameters:
-        - name: sessionId
-          in: path
-          required: true
-          schema:
-            type: string
+      summary: Send a user message in the single Private Lounge session and receive assistant reply with two-layer memory injection and optional matched Bot illustration
       requestBody:
         required: true
         content:
@@ -201,7 +209,7 @@ paths:
               $ref: '#/components/schemas/LoungeSendMessageRequestDto'
       responses:
         '201':
-          description: Message turn persisted and assistant reply returned
+          description: Message turn persisted, assistant reply returned, and matched Bot illustration saved to Gallery
           content:
             application/json:
               schema:
@@ -221,23 +229,25 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
-  /rewards:
+  /gallery:
     get:
-      summary: List collectible illustration rewards with bounded pagination
+      summary: List Bot illustrations collected in user's Gallery with bounded pagination
       parameters:
         - $ref: '#/components/parameters/LimitParam'
         - $ref: '#/components/parameters/StartAfterIdParam'
       responses:
         '200':
-          description: Paginated collectible illustration rewards
+          description: Paginated gallery items
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/LoungeRewardListResponseDto'
+                $ref: '#/components/schemas/LoungeGalleryListResponseDto'
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
 
 components:
   securitySchemes:
@@ -263,25 +273,31 @@ components:
         type: string
   responses:
     BadRequest:
-      description: Invalid request parameters or unverified disclaimer consent
+      description: Invalid request parameters, locale preference, or confirmation flags
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/ErrorResponse'
     Unauthorized:
-      description: Missing or invalid authentication token
+      description: Missing, invalid, or unregistered Firebase authentication token
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/ErrorResponse'
     Forbidden:
-      description: Suspended, inactive, or duplicate Lounge account
+      description: Account is suspended or subscription is inactive
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/ErrorResponse'
     NotFound:
       description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Conflict:
+      description: Account already exists for this X identity (1 X account = 1 Private Lounge account)
       content:
         application/json:
           schema:
@@ -293,12 +309,15 @@ components:
       properties:
         error:
           type: string
+    LoungeLanguage:
+      type: string
+      enum: [ja, en, de, pt, es, zh-HK, vi, th]
     LoungeEmotionState:
       type: string
-      enum: [NEUTRAL, HAPPY, TEASING, SHY, EXCITED, THOUGHTFUL]
+      enum: [NEUTRAL, HAPPY, TEASING, SHY, EXCITED, THOUGHTFUL, SURPRISED]
     LoungePersonaBranding:
       type: object
-      required: [displayName, englishName, brandName, avatarPath]
+      required: [displayName, englishName, brandName, avatarPath, chatIconPath, emotionAvatarPaths]
       properties:
         displayName:
           type: string
@@ -308,6 +327,12 @@ components:
           type: string
         avatarPath:
           type: string
+        chatIconPath:
+          type: string
+        emotionAvatarPaths:
+          type: object
+          additionalProperties:
+            type: string
     LoungeRuntimeConfigDto:
       type: object
       required: [appVersion, disclaimerVersion, persona]
@@ -344,7 +369,7 @@ components:
           format: date-time
     LoungeUser:
       type: object
-      required: [uid, xUserId, xHandle, displayName, avatarUrl, status, disclaimerConsent, createdAt, updatedAt, lastLoginAt]
+      required: [uid, xUserId, xHandle, displayName, avatarUrl, status, language, timezone, disclaimerConsent, createdAt, updatedAt, lastLoginAt]
       properties:
         uid:
           type: string
@@ -359,6 +384,10 @@ components:
         status:
           type: string
           enum: [ACTIVE, SUSPENDED]
+        language:
+          $ref: '#/components/schemas/LoungeLanguage'
+        timezone:
+          type: string
         disclaimerConsent:
           $ref: '#/components/schemas/LoungeUserDisclaimerConsent'
         createdAt:
@@ -370,6 +399,21 @@ components:
         lastLoginAt:
           type: string
           format: date-time
+    LoungeDeleteAccountRequestDto:
+      type: object
+      required: [confirmedIrreversibleDeletion, confirmedNoRefundForRemainingTurns]
+      properties:
+        confirmedIrreversibleDeletion:
+          type: boolean
+        confirmedNoRefundForRemainingTurns:
+          type: boolean
+    LoungeUpdatePreferencesRequestDto:
+      type: object
+      properties:
+        language:
+          $ref: '#/components/schemas/LoungeLanguage'
+        timezone:
+          type: string
     LoungeSubscription:
       type: object
       required: [uid, tier, status, dailyTurnQuota, remainingChatTurns, quotaResetAt, currentPeriodEnd, updatedAt]
@@ -452,37 +496,26 @@ components:
           type: string
         emotion:
           $ref: '#/components/schemas/LoungeEmotionState'
-        unlockedRewardId:
+        imageAssetId:
+          type: string
+        imageUrl:
           type: string
         tokenUsage:
           $ref: '#/components/schemas/LoungeTokenUsage'
         createdAt:
           type: string
           format: date-time
-    LoungeReward:
+    LoungeGalleryItem:
       type: object
-      required: [id, uid, code, titleJa, titleEn, descriptionJa, descriptionEn, emotionTag, rarity, previewAssetPath, unlocked]
+      required: [id, uid, assetId, imageUrl, unlocked]
       properties:
         id:
           type: string
         uid:
           type: string
-        code:
+        assetId:
           type: string
-        titleJa:
-          type: string
-        titleEn:
-          type: string
-        descriptionJa:
-          type: string
-        descriptionEn:
-          type: string
-        emotionTag:
-          $ref: '#/components/schemas/LoungeEmotionState'
-        rarity:
-          type: string
-          enum: [SR, SSR, UR]
-        previewAssetPath:
+        imageUrl:
           type: string
         unlocked:
           type: boolean
@@ -501,6 +534,10 @@ components:
           type: string
         disclaimerConsent:
           $ref: '#/components/schemas/LoungeUserDisclaimerConsent'
+        language:
+          $ref: '#/components/schemas/LoungeLanguage'
+        timezone:
+          type: string
     LoungeLoginRequestDto:
       type: object
       required: [idToken]
@@ -522,7 +559,7 @@ components:
           format: date-time
     LoungeAccountSummaryDto:
       type: object
-      required: [user, subscription, publicXMemoryOneWayActive, unlockedRewardCount, totalRewardCount, appVersion]
+      required: [user, subscription, unlockedGalleryCount, totalGalleryCount, appVersion]
       properties:
         user:
           $ref: '#/components/schemas/LoungeUser'
@@ -530,31 +567,11 @@ components:
           $ref: '#/components/schemas/LoungeSubscription'
         persona:
           $ref: '#/components/schemas/LoungePersonaBranding'
-        publicXMemoryOneWayActive:
-          type: boolean
-        unlockedRewardCount:
+        unlockedGalleryCount:
           type: integer
-        totalRewardCount:
+        totalGalleryCount:
           type: integer
         appVersion:
-          type: string
-    LoungeSessionListResponseDto:
-      type: object
-      required: [items, nextCursor, totalCount]
-      properties:
-        items:
-          type: array
-          items:
-            $ref: '#/components/schemas/LoungeSession'
-        nextCursor:
-          type: string
-          nullable: true
-        totalCount:
-          type: integer
-    LoungeCreateSessionRequestDto:
-      type: object
-      properties:
-        title:
           type: string
     LoungeSendMessageRequestDto:
       type: object
@@ -574,8 +591,8 @@ components:
           $ref: '#/components/schemas/LoungeMessage'
         remainingChatTurns:
           type: integer
-        unlockedReward:
-          $ref: '#/components/schemas/LoungeReward'
+        unlockedGalleryItem:
+          $ref: '#/components/schemas/LoungeGalleryItem'
     LoungeMessageListResponseDto:
       type: object
       required: [items, nextCursor, totalCount]
@@ -589,14 +606,14 @@ components:
           nullable: true
         totalCount:
           type: integer
-    LoungeRewardListResponseDto:
+    LoungeGalleryListResponseDto:
       type: object
       required: [items, unlockedCount, totalCount, nextCursor]
       properties:
         items:
           type: array
           items:
-            $ref: '#/components/schemas/LoungeReward'
+            $ref: '#/components/schemas/LoungeGalleryItem'
         unlockedCount:
           type: integer
         totalCount:

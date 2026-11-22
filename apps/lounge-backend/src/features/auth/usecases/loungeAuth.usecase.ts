@@ -1,12 +1,23 @@
 import type {
   LoungeAuthSessionDto,
+  LoungeLanguage,
   LoungeLoginRequestDto,
   LoungeSignUpRequestDto,
   LoungeUserDisclaimerConsent,
 } from '@rebecca/types';
-import type { ILoungeAuthVerifierPort } from '../../../middleware/loungeAuth';
-import { LoungeAuthError, LoungeValidationError } from '../../../utils/errors';
-import type { ILoungeAuthRepository } from '../repositories/loungeAuth.repository';
+import type { ILoungeAuthVerifierPort, LoungeVerifiedIdentity } from '../../../middleware/loungeAuth';
+import {
+  LoungeAuthError,
+  LoungeConflictError,
+  LoungeHttpError,
+  LoungeValidationError,
+} from '../../../utils/errors';
+import {
+  isStrictIsoTimestamp,
+  parseSupportedLoungeLanguage,
+  parseValidIanaTimezone,
+} from '../../../utils/locale';
+import { toPublicLoungeUser, type ILoungeAuthRepository } from '../repositories/loungeAuth.repository';
 
 /**
  * Use case contract for X-linked Private Lounge sign-up, login, and logout.
@@ -48,7 +59,9 @@ export function parseAndValidateSignUpConsent(raw: unknown): LoungeUserDisclaime
 
   if (
     typeof candidate['scrolledToBottomAt'] !== 'string' ||
-    typeof candidate['consentedAt'] !== 'string'
+    typeof candidate['consentedAt'] !== 'string' ||
+    !isStrictIsoTimestamp(candidate['scrolledToBottomAt']) ||
+    !isStrictIsoTimestamp(candidate['consentedAt'])
   ) {
     throw new LoungeValidationError(
       'Scroll and consent verification timestamps must be valid ISO 8601 strings',
@@ -117,10 +130,21 @@ export function parseAndValidateSignUpRequest(raw: unknown): LoungeSignUpRequest
     throw new LoungeValidationError('Field "xOAuthCode" is required for X OAuth sign-up');
   }
   const disclaimerConsent = parseAndValidateSignUpConsent(candidate['disclaimerConsent']);
+  const language: LoungeLanguage | undefined =
+    candidate['language'] !== undefined
+      ? parseSupportedLoungeLanguage(candidate['language'])
+      : undefined;
+  const timezone: string | undefined =
+    candidate['timezone'] !== undefined
+      ? parseValidIanaTimezone(candidate['timezone'])
+      : undefined;
+
   return {
     idToken,
     xOAuthCode,
     disclaimerConsent,
+    ...(language ? { language } : {}),
+    ...(timezone ? { timezone } : {}),
   };
 }
 
@@ -139,17 +163,17 @@ export class LoungeAuthUseCase implements ILoungeAuthUseCase {
    * zero-PII prohibition, and one-way memory isolation, then enforces 1:1 X linkage before sign-up.
    *
    * @throws LoungeValidationError When disclaimer flags or ISO audit timestamps are incomplete.
-   * @throws LoungeAuthError When UID or X user ID is already registered in `lounge_users` or token is invalid.
+   * @throws LoungeConflictError When UID or X user ID already owns a registered `lounge_users` account (`409`).
    */
   public async signUpWithX(request: LoungeSignUpRequestDto): Promise<LoungeAuthSessionDto> {
     const sanitized = parseAndValidateSignUpRequest(request);
-    const identity = await this.authVerifier.verifyBearerToken(sanitized.idToken);
+    const identity = await this.verifyIdentityToken(sanitized.idToken);
     const [existingByUid, existingByX] = await Promise.all([
       this.authRepository.findUserByUid(identity.uid),
       this.authRepository.findUserByXUserId(identity.xUserId),
     ]);
     if (existingByUid || existingByX) {
-      throw new LoungeAuthError(403, 'Private Lounge account already registered');
+      throw new LoungeConflictError('An account linked to this X account is already registered');
     }
 
     const user = await this.authRepository.createUserWithConsent({
@@ -159,10 +183,12 @@ export class LoungeAuthUseCase implements ILoungeAuthUseCase {
       displayName: identity.displayName,
       avatarUrl: identity.avatarUrl,
       disclaimerConsent: sanitized.disclaimerConsent,
+      language: sanitized.language,
+      timezone: sanitized.timezone,
     });
 
     return {
-      user,
+      user: toPublicLoungeUser(user),
       appVersion: this.appVersion,
       issuedAt: new Date().toISOString(),
     };
@@ -172,11 +198,11 @@ export class LoungeAuthUseCase implements ILoungeAuthUseCase {
    * Authenticates an existing Private Lounge user linked to X OAuth.
    *
    * @throws LoungeValidationError When `idToken` is missing/blank.
-   * @throws LoungeAuthError When account is not registered or is suspended.
+   * @throws LoungeAuthError When Firebase token is invalid (`401`) or account is unregistered (`401`) or suspended (`403`).
    */
   public async loginWithX(request: LoungeLoginRequestDto): Promise<LoungeAuthSessionDto> {
     const sanitized = parseAndValidateLoginRequest(request);
-    const identity = await this.authVerifier.verifyBearerToken(sanitized.idToken);
+    const identity = await this.verifyIdentityToken(sanitized.idToken);
     const user = await this.authRepository.findUserByUid(identity.uid);
     if (!user) {
       throw new LoungeAuthError(401, 'Private Lounge user not registered');
@@ -189,7 +215,7 @@ export class LoungeAuthUseCase implements ILoungeAuthUseCase {
     await this.authRepository.recordLoginTimestamp(user.uid, nowIso);
 
     return {
-      user: { ...user, lastLoginAt: nowIso },
+      user: toPublicLoungeUser({ ...user, lastLoginAt: nowIso }),
       appVersion: this.appVersion,
       issuedAt: nowIso,
     };
@@ -203,5 +229,16 @@ export class LoungeAuthUseCase implements ILoungeAuthUseCase {
       throw new LoungeValidationError('Authenticated UID is required');
     }
     await this.authRepository.revokeSession(uid);
+  }
+
+  private async verifyIdentityToken(idToken: string): Promise<LoungeVerifiedIdentity> {
+    try {
+      return await this.authVerifier.verifyBearerToken(idToken);
+    } catch (err) {
+      if (err instanceof LoungeHttpError) {
+        throw err;
+      }
+      throw new LoungeAuthError(401, 'Invalid or expired authentication token', { cause: err });
+    }
   }
 }

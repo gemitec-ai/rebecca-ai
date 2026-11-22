@@ -5,7 +5,6 @@ import type {
   LoungeMessageListResponseDto,
   LoungeRagMemory,
   LoungeSession,
-  LoungeSessionListResponseDto,
   LoungeTokenUsage,
 } from '@rebecca/types';
 import { LoungeNotImplementedError, normalizePaginationLimit } from '../../../utils/errors';
@@ -21,7 +20,8 @@ export interface AppendLoungeMessagePairInput {
   readonly assistantContent: string;
   readonly assistantEmotion: LoungeEmotionState;
   readonly assistantTokenUsage: LoungeTokenUsage;
-  readonly unlockedRewardId?: string;
+  readonly imageAssetId?: string;
+  readonly imageUrl?: string;
 }
 
 /**
@@ -34,27 +34,28 @@ export interface AppendLoungeMessagePairResult {
 }
 
 /**
- * Persistence contract for isolated `lounge_sessions`, `lounge_messages`, and `lounge_rag_memories`.
+ * Persistence contract for the single-session-per-user Private Lounge conversation store
+ * (`lounge_sessions`, `lounge_messages`, and vectorized `lounge_rag_memories`).
  */
 export interface ILoungeSessionRepository {
-  listSessions(
-    uid: string,
-    limit?: number,
-    startAfterId?: string,
-  ): Promise<LoungeSessionListResponseDto>;
-  getSessionById(sessionId: string): Promise<LoungeSession | null>;
-  createSession(
-    uid: string,
-    title: string,
-    publicXMemorySyncedAt: string,
-  ): Promise<LoungeSession>;
+  getOrCreateSingletonSession(uid: string, publicXMemorySyncedAt: string): Promise<LoungeSession>;
   listMessages(
-    sessionId: string,
+    uid: string,
     limit?: number,
     startAfterId?: string,
   ): Promise<LoungeMessageListResponseDto>;
+  /**
+   * Queries the newest `limit` turns using the `sessionId ASC, createdAt DESC` index and
+   * returns them ordered chronologically (`[oldest..newest]`) for LLM context assembly.
+   */
+  listRecentMessages(uid: string, limit?: number): Promise<LoungeMessage[]>;
+  searchPrivateRagMemoriesByVector(
+    uid: string,
+    queryEmbedding: readonly number[],
+    limit?: number,
+  ): Promise<LoungeRagMemory[]>;
   appendMessagePair(input: AppendLoungeMessagePairInput): Promise<AppendLoungeMessagePairResult>;
-  listRagMemories(uid: string, limit?: number): Promise<LoungeRagMemory[]>;
+  deleteAllUserSessionData(uid: string): Promise<void>;
 }
 
 /**
@@ -69,57 +70,57 @@ export class LoungeSessionRepository implements ILoungeSessionRepository {
     >,
   ) {}
 
-  /** Enforces `[1, 100]` pagination limit clamping for session/message queries. */
+  /** Enforces `[1, 100]` pagination limit clamping for message queries. */
   public clampLimit(limit?: number): number {
     return normalizePaginationLimit(limit);
   }
 
-  /** Lists paginated Private Lounge sessions owned by `uid`. */
-  public async listSessions(
+  /** Fetches or provisions the single persistent conversation session owned 1:1 by `uid`. */
+  public async getOrCreateSingletonSession(
     uid: string,
-    limit?: number,
-    startAfterId?: string,
-  ): Promise<LoungeSessionListResponseDto> {
-    const safeLimit = this.clampLimit(limit);
-    void this.collections.loungeSessions;
-    void uid;
-    void safeLimit;
-    void startAfterId;
-    throw new LoungeNotImplementedError('LoungeSessionRepository.listSessions');
-  }
-
-  /** Fetches a single Private Lounge session by ID. */
-  public async getSessionById(sessionId: string): Promise<LoungeSession | null> {
-    void this.collections.loungeSessions;
-    void sessionId;
-    throw new LoungeNotImplementedError('LoungeSessionRepository.getSessionById');
-  }
-
-  /** Creates a new Private Lounge session thread initialized with Public X sync timestamp. */
-  public async createSession(
-    uid: string,
-    title: string,
     publicXMemorySyncedAt: string,
   ): Promise<LoungeSession> {
     void this.collections.loungeSessions;
     void uid;
-    void title;
     void publicXMemorySyncedAt;
-    throw new LoungeNotImplementedError('LoungeSessionRepository.createSession');
+    throw new LoungeNotImplementedError('LoungeSessionRepository.getOrCreateSingletonSession');
   }
 
-  /** Lists paginated messages in chronological order for `sessionId`. */
+  /** Lists paginated messages in chronological order for `uid`'s single session. */
   public async listMessages(
-    sessionId: string,
+    uid: string,
     limit?: number,
     startAfterId?: string,
   ): Promise<LoungeMessageListResponseDto> {
     const safeLimit = this.clampLimit(limit);
     void this.collections.loungeMessages;
-    void sessionId;
+    void uid;
     void safeLimit;
     void startAfterId;
     throw new LoungeNotImplementedError('LoungeSessionRepository.listMessages');
+  }
+
+  /** Queries the latest `limit` messages (`createdAt DESC` index) returned oldest-to-newest for LLM context. */
+  public async listRecentMessages(uid: string, limit?: number): Promise<LoungeMessage[]> {
+    const safeLimit = this.clampLimit(limit);
+    void this.collections.loungeMessages;
+    void uid;
+    void safeLimit;
+    throw new LoungeNotImplementedError('LoungeSessionRepository.listRecentMessages');
+  }
+
+  /** Executes cosine vector search over isolated `lounge_rag_memories` owned by `uid`. */
+  public async searchPrivateRagMemoriesByVector(
+    uid: string,
+    queryEmbedding: readonly number[],
+    limit?: number,
+  ): Promise<LoungeRagMemory[]> {
+    const safeLimit = this.clampLimit(limit);
+    void this.collections.loungeRagMemories;
+    void uid;
+    void queryEmbedding;
+    void safeLimit;
+    throw new LoungeNotImplementedError('LoungeSessionRepository.searchPrivateRagMemoriesByVector');
   }
 
   /** Appends user and assistant message documents and updates session summary metadata. */
@@ -132,12 +133,15 @@ export class LoungeSessionRepository implements ILoungeSessionRepository {
     throw new LoungeNotImplementedError('LoungeSessionRepository.appendMessagePair');
   }
 
-  /** Retrieves private episodic RAG memories scoped strictly to `lounge_rag_memories`. */
-  public async listRagMemories(uid: string, limit?: number): Promise<LoungeRagMemory[]> {
-    const safeLimit = this.clampLimit(limit);
+  /**
+   * Permanently deletes the user's single session document, all raw messages in
+   * `lounge_messages`, and all episodic vectors in `lounge_rag_memories` on withdrawal.
+   */
+  public async deleteAllUserSessionData(uid: string): Promise<void> {
+    void this.collections.loungeSessions;
+    void this.collections.loungeMessages;
     void this.collections.loungeRagMemories;
     void uid;
-    void safeLimit;
-    throw new LoungeNotImplementedError('LoungeSessionRepository.listRagMemories');
+    throw new LoungeNotImplementedError('LoungeSessionRepository.deleteAllUserSessionData');
   }
 }

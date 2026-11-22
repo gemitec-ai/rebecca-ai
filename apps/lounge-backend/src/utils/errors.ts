@@ -59,6 +59,15 @@ export class LoungeAuthError extends LoungeHttpError {
 }
 
 /**
+ * Raised when an X account already owns a registered Private Lounge account (HTTP 409).
+ */
+export class LoungeConflictError extends LoungeHttpError {
+  constructor(message: string, options?: ErrorOptions) {
+    super(409, message, options);
+  }
+}
+
+/**
  * Raised when a requested Lounge resource does not exist or is not owned by the caller (HTTP 404).
  */
 export class LoungeNotFoundError extends LoungeHttpError {
@@ -93,6 +102,9 @@ export class LoungeNotImplementedError extends LoungeHttpError {
 export function normalizePaginationLimit(rawLimit: unknown, defaultLimit = 20): number {
   if (rawLimit === undefined || rawLimit === null || rawLimit === '') {
     return defaultLimit;
+  }
+  if (Array.isArray(rawLimit) || (typeof rawLimit !== 'number' && typeof rawLimit !== 'string')) {
+    throw new LoungeValidationError('Query parameter "limit" must be a positive integer');
   }
   const parsed = typeof rawLimit === 'number' ? rawLimit : Number(rawLimit);
   if (!Number.isFinite(parsed) || !Number.isInteger(parsed) || parsed < 1) {

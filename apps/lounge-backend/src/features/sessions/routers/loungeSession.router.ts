@@ -3,7 +3,7 @@ import type { LoungeAuthenticatedRequest } from '../../../middleware/loungeAuth'
 import { LoungeSessionController } from '../controllers/loungeSession.controller';
 
 /**
- * Mounts `/sessions` and `/sessions/:sessionId/messages` routes behind verified Lounge authentication.
+ * Mounts single-session routes (`/session` and `/session/messages`) behind verified Lounge authentication.
  */
 export function createLoungeSessionRouter(
   controller: LoungeSessionController,
@@ -11,20 +11,13 @@ export function createLoungeSessionRouter(
 ): Router {
   const router = Router();
   router.get('/', requireAuth, (req: LoungeAuthenticatedRequest, res: Response) =>
-    controller.listSessions(req, res),
+    controller.getSession(req, res),
   );
-  router.post('/', requireAuth, (req: LoungeAuthenticatedRequest, res: Response) =>
-    controller.createSession(req, res),
+  router.get('/messages', requireAuth, (req: LoungeAuthenticatedRequest, res: Response) =>
+    controller.listMessages(req, res),
   );
-  router.get(
-    '/:sessionId/messages',
-    requireAuth,
-    (req: LoungeAuthenticatedRequest, res: Response) => controller.listMessages(req, res),
-  );
-  router.post(
-    '/:sessionId/messages',
-    requireAuth,
-    (req: LoungeAuthenticatedRequest, res: Response) => controller.sendMessage(req, res),
+  router.post('/messages', requireAuth, (req: LoungeAuthenticatedRequest, res: Response) =>
+    controller.sendMessage(req, res),
   );
   return router;
 }

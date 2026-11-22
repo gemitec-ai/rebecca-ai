@@ -1,17 +1,17 @@
 import { Router, type NextFunction, type Response } from 'express';
 import type { LoungeAuthenticatedRequest } from '../../../middleware/loungeAuth';
-import { LoungeRewardController } from '../controllers/loungeReward.controller';
+import { LoungeGalleryController } from '../controllers/loungeGallery.controller';
 
 /**
- * Mounts `/rewards` routes behind verified Lounge authentication.
+ * Mounts `/gallery` routes behind verified Lounge authentication.
  */
-export function createLoungeRewardRouter(
-  controller: LoungeRewardController,
+export function createLoungeGalleryRouter(
+  controller: LoungeGalleryController,
   requireAuth: (req: LoungeAuthenticatedRequest, res: Response, next: NextFunction) => Promise<void>,
 ): Router {
   const router = Router();
   router.get('/', requireAuth, (req: LoungeAuthenticatedRequest, res: Response) =>
-    controller.listRewards(req, res),
+    controller.listGallery(req, res),
   );
   return router;
 }

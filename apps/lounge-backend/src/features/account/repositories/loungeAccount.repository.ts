@@ -8,6 +8,7 @@ import { LoungeNotImplementedError } from '../../../utils/errors';
 export interface ILoungeAccountRepository {
   getSubscriptionByUid(uid: string): Promise<LoungeSubscription | null>;
   decrementRemainingTurns(uid: string): Promise<LoungeSubscription>;
+  deleteSubscription(uid: string): Promise<void>;
 }
 
 /**
@@ -28,5 +29,12 @@ export class LoungeAccountRepository implements ILoungeAccountRepository {
     void this.collections.loungeSubscriptions;
     void uid;
     throw new LoungeNotImplementedError('LoungeAccountRepository.decrementRemainingTurns');
+  }
+
+  /** Permanently deletes the isolated `lounge_subscriptions` document for `uid`. */
+  public async deleteSubscription(uid: string): Promise<void> {
+    void this.collections.loungeSubscriptions;
+    void uid;
+    throw new LoungeNotImplementedError('LoungeAccountRepository.deleteSubscription');
   }
 }

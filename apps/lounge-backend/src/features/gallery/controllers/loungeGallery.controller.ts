@@ -9,25 +9,25 @@ import {
   normalizePaginationLimit,
   parseStartAfterId,
 } from '../../../utils/errors';
-import type { ILoungeRewardUseCase } from '../usecases/loungeReward.usecase';
+import type { ILoungeGalleryUseCase } from '../usecases/loungeGallery.usecase';
 
 /**
- * HTTP controller handling `GET /api/v1/lounge/rewards`.
+ * HTTP controller handling `GET /api/v1/lounge/gallery`.
  */
-export class LoungeRewardController {
-  constructor(private readonly rewardUseCase: ILoungeRewardUseCase) {}
+export class LoungeGalleryController {
+  constructor(private readonly galleryUseCase: ILoungeGalleryUseCase) {}
 
-  /** Handles `GET /api/v1/lounge/rewards`. */
-  public async listRewards(req: LoungeAuthenticatedRequest, res: Response): Promise<void> {
+  /** Handles `GET /api/v1/lounge/gallery`. */
+  public async listGallery(req: LoungeAuthenticatedRequest, res: Response): Promise<void> {
     const traceHeader = extractTraceHeader(req);
     try {
       const { uid } = requireLoungeIdentity(req);
       const limit = normalizePaginationLimit(req.query['limit']);
       const startAfterId = parseStartAfterId(req.query['startAfterId']);
-      const result = await this.rewardUseCase.listRewards(uid, limit, startAfterId);
+      const result = await this.galleryUseCase.listGallery(uid, limit, startAfterId);
       res.status(200).json(result);
     } catch (err) {
-      handleLoungeControllerError(res, err, 'GET /rewards', traceHeader);
+      handleLoungeControllerError(res, err, 'GET /gallery', traceHeader);
     }
   }
 }

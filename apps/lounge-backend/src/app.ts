@@ -12,7 +12,11 @@ import helmet from 'helmet';
 import { Firestore } from '@google-cloud/firestore';
 import { getCollections } from '@rebecca/db';
 import { getActivePersona } from '@rebecca/persona';
-import type { LoungePersonaBranding, LoungeRuntimeConfigDto } from '@rebecca/types';
+import type {
+  LoungeEmotionState,
+  LoungePersonaBranding,
+  LoungeRuntimeConfigDto,
+} from '@rebecca/types';
 import {
   createLoungeAuthMiddleware,
   type ILoungeAuthVerifierPort,
@@ -35,7 +39,9 @@ import {
   type ILoungeAccountUseCase,
 } from './features/account/usecases/loungeAccount.usecase';
 import type {
+  IBotImageAssetSearchPort,
   ILoungeChatPipelinePort,
+  ILoungeEmbeddingPort,
   ILoungeEmotionClassifierPort,
   IPublicXMemoryReadPort,
 } from './features/sessions/ports/loungeAi.port';
@@ -49,18 +55,33 @@ import {
   LoungeSessionUseCase,
   type ILoungeSessionUseCase,
 } from './features/sessions/usecases/loungeSession.usecase';
-import { LoungeRewardController } from './features/rewards/controllers/loungeReward.controller';
-import { createLoungeRewardRouter } from './features/rewards/routers/loungeReward.router';
+import { LoungeGalleryController } from './features/gallery/controllers/loungeGallery.controller';
+import { createLoungeGalleryRouter } from './features/gallery/routers/loungeGallery.router';
 import {
-  LoungeRewardRepository,
-  type ILoungeRewardRepository,
-} from './features/rewards/repositories/loungeReward.repository';
+  LoungeGalleryRepository,
+  type ILoungeGalleryRepository,
+} from './features/gallery/repositories/loungeGallery.repository';
 import {
-  LoungeRewardUseCase,
-  type ILoungeRewardUseCase,
-} from './features/rewards/usecases/loungeReward.usecase';
+  LoungeGalleryUseCase,
+  type ILoungeGalleryUseCase,
+} from './features/gallery/usecases/loungeGallery.usecase';
 import { LoungeNotImplementedError, extractTraceHeader } from './utils/errors';
 import { loungeLogger, sanitizeLogInput } from './utils/logger';
+
+/**
+ * Default emotion-to-avatar mapping resolved dynamically for the active persona.
+ */
+export function buildDefaultEmotionAvatarPaths(): Record<LoungeEmotionState, string> {
+  return {
+    NEUTRAL: 'assets/avatars/persona_neutral.png',
+    HAPPY: 'assets/avatars/persona_happy.png',
+    TEASING: 'assets/avatars/persona_teasing.png',
+    SHY: 'assets/avatars/persona_shy.png',
+    EXCITED: 'assets/avatars/persona_excited.png',
+    THOUGHTFUL: 'assets/avatars/persona_thoughtful.png',
+    SURPRISED: 'assets/avatars/persona_surprised.png',
+  };
+}
 
 /**
  * Resolves package version string dynamically from environment or workspace `package.json`.
@@ -92,7 +113,7 @@ export interface LoungeAppDependencies {
   readonly authUseCase: ILoungeAuthUseCase;
   readonly accountUseCase: ILoungeAccountUseCase;
   readonly sessionUseCase: ILoungeSessionUseCase;
-  readonly rewardUseCase: ILoungeRewardUseCase;
+  readonly galleryUseCase: ILoungeGalleryUseCase;
   readonly allowedOrigins: readonly string[];
   readonly appVersion: string;
   readonly disclaimerVersion: string;
@@ -104,7 +125,7 @@ export interface LoungeAppDependencies {
 
 /**
  * Default runtime skeleton dependencies backed by `@rebecca/db`, `@rebecca/persona`,
- * and stubbed AI/auth ports.
+ * and stubbed AI/auth/image-search ports.
  */
 export function createSkeletonLoungeDependencies(
   env: NodeJS.ProcessEnv = process.env,
@@ -125,6 +146,8 @@ export function createSkeletonLoungeDependencies(
     englishName: activePersona.metadata.englishName,
     brandName: activePersona.metadata.brandName,
     avatarPath: 'assets/persona_cutout.webp',
+    chatIconPath: 'assets/avatars/persona_icon.png',
+    emotionAvatarPaths: buildDefaultEmotionAvatarPaths(),
   };
 
   const configuredOrigins = env['CORS_ALLOWED_ORIGINS']?.trim();
@@ -142,9 +165,14 @@ export function createSkeletonLoungeDependencies(
       throw new LoungeNotImplementedError('ILoungeAuthVerifierPort.verifyBearerToken');
     },
   };
+  const embeddingPort: ILoungeEmbeddingPort = {
+    async embedQuery(): Promise<never> {
+      throw new LoungeNotImplementedError('ILoungeEmbeddingPort.embedQuery');
+    },
+  };
   const publicXMemoryPort: IPublicXMemoryReadPort = {
-    async readPublicXUserSnapshot(): Promise<never> {
-      throw new LoungeNotImplementedError('IPublicXMemoryReadPort.readPublicXUserSnapshot');
+    async readPublicXMemorySnapshot(): Promise<never> {
+      throw new LoungeNotImplementedError('IPublicXMemoryReadPort.readPublicXMemorySnapshot');
     },
   };
   const emotionClassifier: ILoungeEmotionClassifierPort = {
@@ -157,11 +185,16 @@ export function createSkeletonLoungeDependencies(
       throw new LoungeNotImplementedError('ILoungeChatPipelinePort.generateReply');
     },
   };
+  const botImageSearchPort: IBotImageAssetSearchPort = {
+    async findBestMatchingImage(): Promise<never> {
+      throw new LoungeNotImplementedError('IBotImageAssetSearchPort.findBestMatchingImage');
+    },
+  };
 
   const authRepository: ILoungeAuthRepository = new LoungeAuthRepository(collections);
   const accountRepository: ILoungeAccountRepository = new LoungeAccountRepository(collections);
   const sessionRepository: ILoungeSessionRepository = new LoungeSessionRepository(collections);
-  const rewardRepository: ILoungeRewardRepository = new LoungeRewardRepository(collections);
+  const galleryRepository: ILoungeGalleryRepository = new LoungeGalleryRepository(collections);
 
   return {
     authVerifier,
@@ -169,7 +202,8 @@ export function createSkeletonLoungeDependencies(
     accountUseCase: new LoungeAccountUseCase(
       authRepository,
       accountRepository,
-      rewardRepository,
+      galleryRepository,
+      sessionRepository,
       appVersion,
       personaBranding,
     ),
@@ -177,12 +211,14 @@ export function createSkeletonLoungeDependencies(
       sessionRepository,
       authRepository,
       accountRepository,
-      rewardRepository,
+      galleryRepository,
+      embeddingPort,
       publicXMemoryPort,
       emotionClassifier,
       chatPipeline,
+      botImageSearchPort,
     ),
-    rewardUseCase: new LoungeRewardUseCase(rewardRepository),
+    galleryUseCase: new LoungeGalleryUseCase(galleryRepository, authRepository),
     allowedOrigins,
     appVersion,
     disclaimerVersion,
@@ -252,12 +288,12 @@ export function createLoungeApp(deps: LoungeAppDependencies): Express {
   const authController = new LoungeAuthController(deps.authUseCase);
   const accountController = new LoungeAccountController(deps.accountUseCase);
   const sessionController = new LoungeSessionController(deps.sessionUseCase);
-  const rewardController = new LoungeRewardController(deps.rewardUseCase);
+  const galleryController = new LoungeGalleryController(deps.galleryUseCase);
 
   app.use('/api/v1/lounge/auth', createLoungeAuthRouter(authController, requireAuth));
   app.use('/api/v1/lounge/account', createLoungeAccountRouter(accountController, requireAuth));
-  app.use('/api/v1/lounge/sessions', createLoungeSessionRouter(sessionController, requireAuth));
-  app.use('/api/v1/lounge/rewards', createLoungeRewardRouter(rewardController, requireAuth));
+  app.use('/api/v1/lounge/session', createLoungeSessionRouter(sessionController, requireAuth));
+  app.use('/api/v1/lounge/gallery', createLoungeGalleryRouter(galleryController, requireAuth));
 
   // Express error boundary catching malformed JSON / oversized payloads and unexpected middleware failures
   app.use((err: unknown, req: Request, res: Response, next: NextFunction) => {
@@ -266,13 +302,20 @@ export function createLoungeApp(deps: LoungeAppDependencies): Express {
       return;
     }
     const traceHeader = extractTraceHeader(req);
-    const bodyErr = err as { type?: unknown; status?: unknown };
-    if (err instanceof SyntaxError && bodyErr.type === 'entity.parse.failed') {
+    const bodyErrType =
+      typeof err === 'object' && err !== null && 'type' in err
+        ? (err as { type?: unknown }).type
+        : undefined;
+    const bodyErrStatus =
+      typeof err === 'object' && err !== null && 'status' in err
+        ? (err as { status?: unknown }).status
+        : undefined;
+    if (err instanceof SyntaxError && bodyErrType === 'entity.parse.failed') {
       loungeLogger.warn('Rejected malformed JSON payload', { path: sanitizeLogInput(req.path) }, traceHeader);
       res.status(400).json({ error: 'Malformed JSON request body' });
       return;
     }
-    if (bodyErr.type === 'entity.too.large' || bodyErr.status === 413) {
+    if (bodyErrType === 'entity.too.large' || bodyErrStatus === 413) {
       loungeLogger.warn('Rejected oversized request payload', { path: sanitizeLogInput(req.path) }, traceHeader);
       res.status(413).json({ error: 'Request payload too large' });
       return;

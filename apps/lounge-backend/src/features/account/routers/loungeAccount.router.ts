@@ -13,5 +13,11 @@ export function createLoungeAccountRouter(
   router.get('/', requireAuth, (req: LoungeAuthenticatedRequest, res: Response) =>
     controller.getSummary(req, res),
   );
+  router.patch('/preferences', requireAuth, (req: LoungeAuthenticatedRequest, res: Response) =>
+    controller.updatePreferences(req, res),
+  );
+  router.delete('/', requireAuth, (req: LoungeAuthenticatedRequest, res: Response) =>
+    controller.deleteAccount(req, res),
+  );
   return router;
 }
