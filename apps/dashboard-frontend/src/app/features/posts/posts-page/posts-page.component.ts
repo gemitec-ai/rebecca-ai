@@ -41,7 +41,7 @@ export class PostsPageComponent implements OnInit {
 
   // Drawer State
   readonly isDrawerOpen = signal<boolean>(false);
-  readonly drawerTitle = signal<string>('Post Details');
+  readonly drawerTitle = signal<string>(this.translationService.t('dashboard.drawer_post_details'));
   readonly drawerIcon = signal<string>('article');
   readonly selectedItemId = signal<string | null>(null);
 
@@ -232,7 +232,7 @@ export class PostsPageComponent implements OnInit {
   openPostDrawer(id: string): void {
     if ((window.getSelection()?.toString() || '').trim().length > 0) return;
     this.selectedItemId.set(id);
-    this.drawerTitle.set('Post Details');
+    this.drawerTitle.set(this.translationService.t('dashboard.drawer_post_details'));
     this.drawerIcon.set('article');
     this.isDrawerOpen.set(true);
   }

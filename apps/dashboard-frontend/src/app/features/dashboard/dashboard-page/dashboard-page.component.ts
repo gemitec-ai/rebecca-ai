@@ -362,7 +362,7 @@ export class DashboardPageComponent implements OnInit {
     if ((window.getSelection()?.toString() || '').trim().length > 0) return;
     this.drawerType.set('post');
     this.selectedItemId.set(id);
-    this.drawerTitle.set('Post Details');
+    this.drawerTitle.set(this.translationService.t('dashboard.drawer_post_details'));
     this.drawerIcon.set('article');
     this.isDrawerOpen.set(true);
   }
@@ -371,7 +371,7 @@ export class DashboardPageComponent implements OnInit {
     if ((window.getSelection()?.toString() || '').trim().length > 0) return;
     this.drawerType.set('user');
     this.selectedItemId.set(id);
-    this.drawerTitle.set('User Profile');
+    this.drawerTitle.set(this.translationService.t('dashboard.drawer_user_profile'));
     this.drawerIcon.set('person');
     this.isDrawerOpen.set(true);
   }
