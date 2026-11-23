@@ -164,13 +164,13 @@ export class LoungeAccountUseCase implements ILoungeAccountUseCase {
       throw new LoungeNotFoundError('Lounge subscription record not found');
     }
 
-    const galleryPage = await this.galleryRepository.listGalleryByUid(uid, 100);
+    const galleryPage = await this.galleryRepository.listGalleryByUid(uid, { page: 1, limit: 1 });
     return {
       user: toPublicLoungeUser(user),
       subscription,
       ...(this.personaBranding ? { persona: this.personaBranding } : {}),
-      unlockedGalleryCount: galleryPage.unlockedCount,
-      totalGalleryCount: galleryPage.totalCount,
+      unlockedGalleryCount: galleryPage.summary.unlockedCount,
+      totalGalleryCount: galleryPage.summary.totalCount,
       appVersion: this.appVersion,
     };
   }

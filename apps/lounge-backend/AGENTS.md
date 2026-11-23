@@ -16,7 +16,7 @@ Scoped architectural and contract rules for the **Gemitec Private Lounge** Backe
 - **Locale & Time-of-Day Prompt Injection**:
   - Validate the 8 supported Lounge languages (`ja`, `en`, `de`, `pt`, `es`, `zh-HK`, `vi`, `th`) and IANA timezones strictly on `PATCH /api/v1/lounge/account/preferences`, and inject resolved local time and language directives into the AI pipeline.
 - **Mandatory Bounded Pagination**:
-  - Every collection endpoint (`GET /session/messages`, `GET /gallery`) must clamp `limit` with `Math.min(Math.max(1, limit), 100)` and support deterministic cursor pagination via `startAfterId`.
+  - Every collection endpoint (`GET /session/messages`, `GET /gallery`) must enforce the shared pagination contract (`LoungePaginationQueryDto`: `page >= 1`, `limit` clamped `[1, 100]`, optional single-string `cursor`) and return the unified `LoungePaginatedResponseDto<T>` envelope (`{ data, meta: { totalItems, totalPages, currentPage, limit, nextCursor, hasMore } }`).
 - **Zero Auth Bypass in Production**:
   - `NO_AUTH` must remain inert whenever `NODE_ENV === 'production'`. Emit 4xx/auth denials at `WARN` severity (`@rebecca/logger`); reserve `ERROR` severity exclusively for unhandled exceptions or infrastructure failures.
 

@@ -1,5 +1,5 @@
-import type { LoungeGalleryListResponseDto } from '@rebecca/types';
-import { LoungeAuthError, normalizePaginationLimit } from '../../../utils/errors';
+import type { LoungeGalleryListResponseDto, LoungePaginationQueryDto } from '@rebecca/types';
+import { LoungeAuthError, normalizePaginationQuery } from '../../../utils/errors';
 import type { ILoungeAuthRepository } from '../../auth/repositories/loungeAuth.repository';
 import type { ILoungeGalleryRepository } from '../repositories/loungeGallery.repository';
 
@@ -9,8 +9,7 @@ import type { ILoungeGalleryRepository } from '../repositories/loungeGallery.rep
 export interface ILoungeGalleryUseCase {
   listGallery(
     uid: string,
-    limit?: number,
-    startAfterId?: string,
+    query?: LoungePaginationQueryDto,
   ): Promise<LoungeGalleryListResponseDto>;
 }
 
@@ -24,14 +23,14 @@ export class LoungeGalleryUseCase implements ILoungeGalleryUseCase {
   ) {}
 
   /**
-   * Retrieves paginated gallery items with strict `[1, 100]` limit clamping after verifying active account status.
+   * Retrieves paginated gallery items using unified `page`, `[1, 100]` `limit`, and optional `cursor` validation
+   * after verifying active account status.
    *
    * @throws LoungeAuthError When user profile is missing (`401`) or suspended (`403`).
    */
   public async listGallery(
     uid: string,
-    limit?: number,
-    startAfterId?: string,
+    query?: LoungePaginationQueryDto,
   ): Promise<LoungeGalleryListResponseDto> {
     const user = await this.authRepository.findUserByUid(uid);
     if (!user) {
@@ -40,7 +39,7 @@ export class LoungeGalleryUseCase implements ILoungeGalleryUseCase {
     if (user.status !== 'ACTIVE') {
       throw new LoungeAuthError(403, 'Private Lounge account is suspended');
     }
-    const safeLimit = normalizePaginationLimit(limit);
-    return this.galleryRepository.listGalleryByUid(uid, safeLimit, startAfterId);
+    const safeQuery = normalizePaginationQuery(query);
+    return this.galleryRepository.listGalleryByUid(uid, safeQuery);
   }
 }

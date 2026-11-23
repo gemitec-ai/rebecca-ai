@@ -7,6 +7,7 @@ import type {
   LoungeGalleryListResponseDto,
   LoungeLanguage,
   LoungeMessage,
+  LoungePaginationQueryDto,
   LoungePersonaBranding,
   LoungeRagMemory,
   LoungeSession,
@@ -69,7 +70,9 @@ import {
   LoungeNotImplementedError,
   extractTraceHeader,
   normalizePaginationLimit,
-  parseStartAfterId,
+  normalizePaginationPage,
+  normalizePaginationQuery,
+  parsePaginationCursor,
 } from '../../src/utils/errors';
 import { loungeLogger, sanitizeLogInput } from '../../src/utils/logger';
 
@@ -304,13 +307,32 @@ function buildFakeDeps(
   };
 
   const galleryRepository: ILoungeGalleryRepository = {
-    async listGalleryByUid(_uid: string, limit?: number): Promise<LoungeGalleryListResponseDto> {
+    async listGalleryByUid(
+      _uid: string,
+      query?: LoungePaginationQueryDto,
+    ): Promise<LoungeGalleryListResponseDto> {
+      const limit = query?.limit ?? 20;
+      const page = query?.page ?? 1;
       lastRequestedLimit = limit;
+      const totalItems = galleryItems.length;
+      const totalPages = Math.max(1, Math.ceil(totalItems / limit));
+      const startIndex = (page - 1) * limit;
+      const data = galleryItems.slice(startIndex, startIndex + limit);
+      const hasMore = page < totalPages;
       return {
-        items: galleryItems,
-        unlockedCount: galleryItems.filter((item) => item.unlocked).length,
-        totalCount: galleryItems.length,
-        nextCursor: null,
+        data,
+        meta: {
+          totalItems,
+          totalPages,
+          currentPage: page,
+          limit,
+          nextCursor: hasMore && data.length > 0 ? data[data.length - 1].id : null,
+          hasMore,
+        },
+        summary: {
+          unlockedCount: galleryItems.filter((item) => item.unlocked).length,
+          totalCount: totalItems,
+        },
       };
     },
     async unlockGalleryItem(uid: string, assetId: string, imageUrl: string, sessionId: string) {
@@ -349,9 +371,11 @@ function buildFakeDeps(
       }
       return activeSession;
     },
-    async listMessages(uid: string, limit?: number) {
+    async listMessages(uid: string, query?: LoungePaginationQueryDto) {
+      const limit = query?.limit ?? 20;
+      const page = query?.page ?? 1;
       lastRequestedLimit = limit;
-      const items: LoungeMessage[] = activeSession
+      const allItems: LoungeMessage[] = activeSession
         ? [
             {
               id: 'msg_001',
@@ -364,7 +388,23 @@ function buildFakeDeps(
             },
           ]
         : [];
-      return { items, nextCursor: null, totalCount: items.length };
+      const totalItems = allItems.length;
+      const totalPages = Math.max(1, Math.ceil(totalItems / limit));
+      const endIndex = Math.max(0, totalItems - (page - 1) * limit);
+      const startIndex = Math.max(0, endIndex - limit);
+      const data = allItems.slice(startIndex, endIndex);
+      const hasMore = startIndex > 0;
+      return {
+        data,
+        meta: {
+          totalItems,
+          totalPages,
+          currentPage: page,
+          limit,
+          nextCursor: hasMore && data.length > 0 ? data[0].id : null,
+          hasMore,
+        },
+      };
     },
     async listRecentMessages(uid: string, limit?: number) {
       lastRequestedLimit = limit;
@@ -1053,11 +1093,26 @@ describe('Gemitec Private Lounge BFF Architecture Skeleton', () => {
     expect(sessionRes.body.id).toBe('uid_test_001');
 
     const msgsRes = await request(app)
-      .get('/api/v1/lounge/session/messages?limit=999')
+      .get('/api/v1/lounge/session/messages?limit=999&page=1')
       .set('Authorization', 'Bearer valid-token');
     expect(msgsRes.status).toBe(200);
     expect(getLastLimit()).toBe(100);
-    expect(msgsRes.body.items.length).toBe(1);
+    expect(msgsRes.body.data.length).toBe(1);
+    expect(msgsRes.body.meta).toEqual({
+      totalItems: 1,
+      totalPages: 1,
+      currentPage: 1,
+      limit: 100,
+      nextCursor: null,
+      hasMore: false,
+    });
+    expect(
+      (
+        await request(app)
+          .get('/api/v1/lounge/session/messages?page=0')
+          .set('Authorization', 'Bearer valid-token')
+      ).status,
+    ).toBe(400);
 
     // Prompt boundaries: empty, non-string, MAX_LOUNGE_MESSAGE_LENGTH exact pass vs +1 reject
     expect(
@@ -1111,10 +1166,43 @@ describe('Gemitec Private Lounge BFF Architecture Skeleton', () => {
     expect(memoryDirective).toContain('今夜のゲームセンター最高だった！');
 
     const galleryAfterSend = await request(app)
-      .get('/api/v1/lounge/gallery')
+      .get('/api/v1/lounge/gallery?page=1&limit=12')
       .set('Authorization', 'Bearer valid-token');
     expect(galleryAfterSend.status).toBe(200);
-    expect(galleryAfterSend.body.unlockedCount).toBe(1);
+    expect(galleryAfterSend.body.data.length).toBe(1);
+    expect(galleryAfterSend.body.meta).toEqual({
+      totalItems: 1,
+      totalPages: 1,
+      currentPage: 1,
+      limit: 12,
+      nextCursor: null,
+      hasMore: false,
+    });
+    expect(galleryAfterSend.body.summary).toEqual({
+      unlockedCount: 1,
+      totalCount: 1,
+    });
+    expect(
+      (
+        await request(app)
+          .get('/api/v1/lounge/gallery?page=-1')
+          .set('Authorization', 'Bearer valid-token')
+      ).status,
+    ).toBe(400);
+    expect(
+      (
+        await request(app)
+          .get('/api/v1/lounge/gallery?limit=0')
+          .set('Authorization', 'Bearer valid-token')
+      ).status,
+    ).toBe(400);
+    expect(
+      (
+        await request(app)
+          .get('/api/v1/lounge/session/messages?limit=abc')
+          .set('Authorization', 'Bearer valid-token')
+      ).status,
+    ).toBe(400);
 
     // Partial failures during image search or appendMessagePair MUST NOT burn quota
     const imageFailDeps = buildFakeDeps({ failImageSearch: true });
@@ -1388,13 +1476,28 @@ describe('Gemitec Private Lounge BFF Architecture Skeleton', () => {
     expect(standaloneMem).toContain('Recent Private Turns Count: 0');
     expect(standaloneMem).not.toContain('Read-Only Public X Context');
 
-    // Pagination & cursor parameter edge cases
+    // Unified pagination & cursor parameter boundary cases
     expect(normalizePaginationLimit(1)).toBe(1);
     expect(normalizePaginationLimit(100)).toBe(100);
     expect(normalizePaginationLimit(101)).toBe(100);
     expect(() => normalizePaginationLimit(['1'])).toThrow(/positive integer/);
-    expect(parseStartAfterId('  cursor_1  ')).toBe('cursor_1');
-    expect(() => parseStartAfterId(['bad'])).toThrow(/single string/);
+    expect(normalizePaginationPage(undefined)).toBe(1);
+    expect(normalizePaginationPage('2')).toBe(2);
+    expect(() => normalizePaginationPage(0)).toThrow(/positive integer/);
+    expect(() => normalizePaginationPage(1.5)).toThrow(/positive integer/);
+    expect(() => normalizePaginationPage(['1'])).toThrow(/positive integer/);
+    expect(parsePaginationCursor('  cursor_1  ')).toBe('cursor_1');
+    expect(parsePaginationCursor('   ')).toBeUndefined();
+    expect(() => parsePaginationCursor(['bad'])).toThrow(/single string/);
+    expect(normalizePaginationQuery({ page: '2', limit: '50', cursor: ' msg_20 ' })).toEqual({
+      page: 2,
+      limit: 50,
+      cursor: 'msg_20',
+    });
+    expect(normalizePaginationQuery(undefined, 12)).toEqual({
+      page: 1,
+      limit: 12,
+    });
 
     // Skeleton dependency container & repositories throw 501 deterministically
     expect(resolveLoungeAppVersion({ APP_VERSION: '2.0.0' })).toBe('v2.0.0');
@@ -1452,17 +1555,22 @@ describe('Gemitec Private Lounge BFF Architecture Skeleton', () => {
       LoungeNotImplementedError,
     );
     await expect(accountRepo.deleteSubscription('u1')).rejects.toThrow(LoungeNotImplementedError);
-    await expect(galleryRepo.listGalleryByUid('u1')).rejects.toThrow(LoungeNotImplementedError);
+    await expect(galleryRepo.listGalleryByUid('u1', { page: 1, limit: 12 })).rejects.toThrow(
+      LoungeNotImplementedError,
+    );
     await expect(
       galleryRepo.unlockGalleryItem('u1', 'img_01', 'assets/IMG_8649.JPG', 'u1'),
     ).rejects.toThrow(LoungeNotImplementedError);
     await expect(galleryRepo.deleteAllUserGalleryItems('u1')).rejects.toThrow(
       LoungeNotImplementedError,
     );
+    expect(sessionRepo.clampLimit(50)).toBe(50);
     await expect(
       sessionRepo.getOrCreateSingletonSession('u1', '2026-11-22T12:00:00.000Z'),
     ).rejects.toThrow(LoungeNotImplementedError);
-    await expect(sessionRepo.listMessages('u1')).rejects.toThrow(LoungeNotImplementedError);
+    await expect(sessionRepo.listMessages('u1', { page: 1, limit: 20 })).rejects.toThrow(
+      LoungeNotImplementedError,
+    );
     await expect(sessionRepo.listRecentMessages('u1')).rejects.toThrow(LoungeNotImplementedError);
     await expect(sessionRepo.searchPrivateRagMemoriesByVector('u1', [0.1])).rejects.toThrow(
       LoungeNotImplementedError,

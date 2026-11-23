@@ -1,4 +1,7 @@
-import { LOUNGE_ERROR_CODE_DISCLAIMER_RECONSENT_REQUIRED } from '@rebecca/types';
+import {
+  LOUNGE_ERROR_CODE_DISCLAIMER_RECONSENT_REQUIRED,
+  type LoungePaginationQueryDto,
+} from '@rebecca/types';
 import type { Request, Response } from 'express';
 import { loungeLogger, sanitizeLogInput } from './logger';
 
@@ -11,15 +14,15 @@ export function extractTraceHeader(req: Request): string | undefined {
 }
 
 /**
- * Parses and validates optional `startAfterId` cursor query parameter.
+ * Parses and validates optional opaque `cursor` pagination query parameter.
  * Rejects arrays or non-string parameter values with HTTP 400.
  */
-export function parseStartAfterId(rawCursor: unknown): string | undefined {
-  if (rawCursor === undefined) {
+export function parsePaginationCursor(rawCursor: unknown): string | undefined {
+  if (rawCursor === undefined || rawCursor === null) {
     return undefined;
   }
   if (typeof rawCursor !== 'string') {
-    throw new LoungeValidationError('Query parameter "startAfterId" must be a single string');
+    throw new LoungeValidationError('Query parameter "cursor" must be a single string');
   }
   const trimmed = rawCursor.trim();
   return trimmed.length > 0 ? trimmed : undefined;
@@ -125,9 +128,28 @@ export class LoungeNotImplementedError extends LoungeHttpError {
 }
 
 /**
+ * Clamps pagination page numbers to finite positive integers (`>= 1`, default `1`).
+ *
+ * @throws LoungeValidationError When a provided `page` parameter is not a positive integer.
+ */
+export function normalizePaginationPage(rawPage: unknown, defaultPage = 1): number {
+  if (rawPage === undefined || rawPage === null || rawPage === '') {
+    return defaultPage;
+  }
+  if (Array.isArray(rawPage) || (typeof rawPage !== 'number' && typeof rawPage !== 'string')) {
+    throw new LoungeValidationError('Query parameter "page" must be a positive integer');
+  }
+  const parsed = typeof rawPage === 'number' ? rawPage : Number(rawPage);
+  if (!Number.isFinite(parsed) || !Number.isInteger(parsed) || parsed < 1) {
+    throw new LoungeValidationError('Query parameter "page" must be a positive integer');
+  }
+  return parsed;
+}
+
+/**
  * Clamps pagination limits into the strict BFF `[1, 100]` boundary (default 20).
  *
- * @throws LoungeValidationError When a finite positive integer limit is violated outside bounds.
+ * @throws LoungeValidationError When a provided limit is not a finite positive integer (`>= 1`).
  */
 export function normalizePaginationLimit(rawLimit: unknown, defaultLimit = 20): number {
   if (rawLimit === undefined || rawLimit === null || rawLimit === '') {
@@ -141,6 +163,26 @@ export function normalizePaginationLimit(rawLimit: unknown, defaultLimit = 20): 
     throw new LoungeValidationError('Query parameter "limit" must be a positive integer');
   }
   return Math.min(parsed, 100);
+}
+
+/**
+ * Normalizes and validates unified Private Lounge pagination parameters (`page`, `limit`, `cursor`).
+ *
+ * @throws LoungeValidationError When any pagination field fails boundary validation.
+ */
+export function normalizePaginationQuery(
+  rawQuery?: { readonly page?: unknown; readonly limit?: unknown; readonly cursor?: unknown },
+  defaultLimit = 20,
+): Required<Pick<LoungePaginationQueryDto, 'page' | 'limit'>> &
+  Pick<LoungePaginationQueryDto, 'cursor'> {
+  const page = normalizePaginationPage(rawQuery?.page, 1);
+  const limit = normalizePaginationLimit(rawQuery?.limit, defaultLimit);
+  const cursor = parsePaginationCursor(rawQuery?.cursor);
+  return {
+    page,
+    limit,
+    ...(cursor !== undefined ? { cursor } : {}),
+  };
 }
 
 /**

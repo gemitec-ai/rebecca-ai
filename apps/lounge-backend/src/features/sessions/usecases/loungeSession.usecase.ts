@@ -2,6 +2,7 @@ import {
   CURRENT_LOUNGE_DISCLAIMER_VERSION,
   type LoungeLanguage,
   type LoungeMessageListResponseDto,
+  type LoungePaginationQueryDto,
   type LoungePrivateMemorySnapshot,
   type LoungePublicXMemorySnapshot,
   type LoungeSendMessageRequestDto,
@@ -14,7 +15,7 @@ import {
   LoungeNotFoundError,
   LoungeQuotaExhaustedError,
   LoungeValidationError,
-  normalizePaginationLimit,
+  normalizePaginationQuery,
 } from '../../../utils/errors';
 import { loungeLogger, sanitizeLogInput } from '../../../utils/logger';
 import type { ILoungeAccountRepository } from '../../account/repositories/loungeAccount.repository';
@@ -233,8 +234,7 @@ export interface ILoungeSessionUseCase {
   getSession(uid: string, xUserId: string): Promise<LoungeSession>;
   listMessages(
     uid: string,
-    limit?: number,
-    startAfterId?: string,
+    query?: LoungePaginationQueryDto,
   ): Promise<LoungeMessageListResponseDto>;
   sendMessage(
     uid: string,
@@ -275,18 +275,18 @@ export class LoungeSessionUseCase implements ILoungeSessionUseCase {
   }
 
   /**
-   * Lists paginated messages for the caller's single persistent Private Lounge session.
+   * Lists paginated messages for the caller's single persistent Private Lounge session using
+   * unified pagination bounds (`page`, `[1, 100]` `limit`, optional `cursor`).
    *
    * @throws LoungeAuthError When user profile is missing (`401`) or suspended (`403`).
    */
   public async listMessages(
     uid: string,
-    limit?: number,
-    startAfterId?: string,
+    query?: LoungePaginationQueryDto,
   ): Promise<LoungeMessageListResponseDto> {
     await this.requireActiveUser(uid);
-    const safeLimit = normalizePaginationLimit(limit);
-    return this.sessionRepository.listMessages(uid, safeLimit, startAfterId);
+    const safeQuery = normalizePaginationQuery(query);
+    return this.sessionRepository.listMessages(uid, safeQuery);
   }
 
   /**

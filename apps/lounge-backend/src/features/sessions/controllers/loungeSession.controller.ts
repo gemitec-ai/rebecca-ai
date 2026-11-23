@@ -6,8 +6,7 @@ import {
 import {
   extractTraceHeader,
   handleLoungeControllerError,
-  normalizePaginationLimit,
-  parseStartAfterId,
+  normalizePaginationQuery,
 } from '../../../utils/errors';
 import {
   parseAndValidateSendMessageRequest,
@@ -37,9 +36,12 @@ export class LoungeSessionController {
     const traceHeader = extractTraceHeader(req);
     try {
       const { uid } = requireLoungeIdentity(req);
-      const limit = normalizePaginationLimit(req.query['limit']);
-      const startAfterId = parseStartAfterId(req.query['startAfterId']);
-      const result = await this.sessionUseCase.listMessages(uid, limit, startAfterId);
+      const query = normalizePaginationQuery({
+        page: req.query['page'],
+        limit: req.query['limit'],
+        cursor: req.query['cursor'],
+      });
+      const result = await this.sessionUseCase.listMessages(uid, query);
       res.status(200).json(result);
     } catch (err) {
       handleLoungeControllerError(res, err, 'GET /session/messages', traceHeader);

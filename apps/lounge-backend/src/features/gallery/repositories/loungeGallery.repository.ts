@@ -1,6 +1,10 @@
 import { COLLECTIONS, assertLoungeRecordOwnedByUid, type DbCollections } from '@rebecca/db';
-import type { LoungeGalleryItem, LoungeGalleryListResponseDto } from '@rebecca/types';
-import { LoungeNotImplementedError, normalizePaginationLimit } from '../../../utils/errors';
+import type {
+  LoungeGalleryItem,
+  LoungeGalleryListResponseDto,
+  LoungePaginationQueryDto,
+} from '@rebecca/types';
+import { LoungeNotImplementedError, normalizePaginationQuery } from '../../../utils/errors';
 
 /**
  * Persistence boundary for isolated `lounge_gallery` user illustration unlock records.
@@ -8,8 +12,7 @@ import { LoungeNotImplementedError, normalizePaginationLimit } from '../../../ut
 export interface ILoungeGalleryRepository {
   listGalleryByUid(
     uid: string,
-    limit?: number,
-    startAfterId?: string,
+    query?: LoungePaginationQueryDto,
   ): Promise<LoungeGalleryListResponseDto>;
   unlockGalleryItem(
     uid: string,
@@ -27,17 +30,15 @@ export interface ILoungeGalleryRepository {
 export class LoungeGalleryRepository implements ILoungeGalleryRepository {
   constructor(private readonly collections: Pick<DbCollections, 'loungeGallery'>) {}
 
-  /** Lists paginated Bot illustration gallery items for `uid`. */
+  /** Lists paginated Bot illustration gallery items for `uid` using the unified pagination contract. */
   public async listGalleryByUid(
     uid: string,
-    limit?: number,
-    startAfterId?: string,
+    query?: LoungePaginationQueryDto,
   ): Promise<LoungeGalleryListResponseDto> {
     assertLoungeRecordOwnedByUid({ uid }, uid, COLLECTIONS.LOUNGE_GALLERY);
-    const safeLimit = normalizePaginationLimit(limit);
+    const safeQuery = normalizePaginationQuery(query);
     void this.collections.loungeGallery;
-    void safeLimit;
-    void startAfterId;
+    void safeQuery;
     throw new LoungeNotImplementedError('LoungeGalleryRepository.listGalleryByUid');
   }
 

@@ -3,11 +3,16 @@ import type {
   LoungeEmotionState,
   LoungeMessage,
   LoungeMessageListResponseDto,
+  LoungePaginationQueryDto,
   LoungeRagMemory,
   LoungeSession,
   LoungeTokenUsage,
 } from '@rebecca/types';
-import { LoungeNotImplementedError, normalizePaginationLimit } from '../../../utils/errors';
+import {
+  LoungeNotImplementedError,
+  normalizePaginationLimit,
+  normalizePaginationQuery,
+} from '../../../utils/errors';
 
 /**
  * Input required to append a user/assistant message turn atomically to `lounge_messages`.
@@ -41,8 +46,7 @@ export interface ILoungeSessionRepository {
   getOrCreateSingletonSession(uid: string, publicXMemorySyncedAt: string): Promise<LoungeSession>;
   listMessages(
     uid: string,
-    limit?: number,
-    startAfterId?: string,
+    query?: LoungePaginationQueryDto,
   ): Promise<LoungeMessageListResponseDto>;
   /**
    * Queries the newest `limit` turns using the `sessionId ASC, createdAt DESC` index and
@@ -86,17 +90,15 @@ export class LoungeSessionRepository implements ILoungeSessionRepository {
     throw new LoungeNotImplementedError('LoungeSessionRepository.getOrCreateSingletonSession');
   }
 
-  /** Lists paginated messages in chronological order for `uid`'s single session. */
+  /** Lists paginated messages ordered chronologically (`[oldest..newest]`) per page for `uid`'s single session. */
   public async listMessages(
     uid: string,
-    limit?: number,
-    startAfterId?: string,
+    query?: LoungePaginationQueryDto,
   ): Promise<LoungeMessageListResponseDto> {
     assertLoungeRecordOwnedByUid({ uid }, uid, COLLECTIONS.LOUNGE_MESSAGES);
-    const safeLimit = this.clampLimit(limit);
+    const safeQuery = normalizePaginationQuery(query);
     void this.collections.loungeMessages;
-    void safeLimit;
-    void startAfterId;
+    void safeQuery;
     throw new LoungeNotImplementedError('LoungeSessionRepository.listMessages');
   }
 

@@ -1404,22 +1404,55 @@ export interface LoungeSendMessageResponseDto {
 }
 
 /**
- * Paginated list response for `/api/v1/lounge/session/messages`.
+ * Shared bounded pagination query contract used across Private Lounge list endpoints
+ * (`GET /api/v1/lounge/session/messages` and `GET /api/v1/lounge/gallery`).
  */
-export interface LoungeMessageListResponseDto {
-  items: LoungeMessage[];
+export interface LoungePaginationQueryDto {
+  /** 1-based page number (`>= 1`, defaults to `1`). */
+  page?: number;
+  /** Maximum items per page clamped to `[1, 100]`. */
+  limit?: number;
+  /** Optional opaque document cursor (e.g., oldest loaded message ID for backward chat paging). */
+  cursor?: string;
+}
+
+/**
+ * Standardized Private Lounge pagination metadata extending the repository `PaginationMeta` contract.
+ */
+export interface LoungePaginationMeta extends PaginationMeta {
+  /** Cursor for fetching the next page when available, or `null` at the boundary. */
   nextCursor: string | null;
+  /** Indicates whether additional pages remain beyond `currentPage`. */
+  hasMore: boolean;
+}
+
+/**
+ * Unified Private Lounge paginated response envelope shared across Chat history and Gallery APIs.
+ */
+export interface LoungePaginatedResponseDto<T> extends PaginatedResponse<T> {
+  data: T[];
+  meta: LoungePaginationMeta;
+}
+
+/**
+ * Paginated list response for `/api/v1/lounge/session/messages`.
+ * Each page paginates backward from newest turns while returning `data` ordered chronologically (`[oldest..newest]`).
+ */
+export type LoungeMessageListResponseDto = LoungePaginatedResponseDto<LoungeMessage>;
+
+/**
+ * Collection-wide unlock counters included alongside paginated Gallery items.
+ */
+export interface LoungeGallerySummaryDto {
+  unlockedCount: number;
   totalCount: number;
 }
 
 /**
- * Paginated list response for `/api/v1/lounge/gallery`.
+ * Paginated list response for `/api/v1/lounge/gallery`, extending the shared `LoungePaginatedResponseDto`.
  */
-export interface LoungeGalleryListResponseDto {
-  items: LoungeGalleryItem[];
-  unlockedCount: number;
-  totalCount: number;
-  nextCursor: string | null;
+export interface LoungeGalleryListResponseDto extends LoungePaginatedResponseDto<LoungeGalleryItem> {
+  summary: LoungeGallerySummaryDto;
 }
 
 
