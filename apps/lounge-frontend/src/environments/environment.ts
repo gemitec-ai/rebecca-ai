@@ -15,7 +15,7 @@ export const environment: LoungeEnvironment = {
   production: false,
   apiBaseUrl: '/api/v1/lounge',
   appVersion: 'v1.45.2',
-  disclaimerVersion: '2026-11-22',
+  disclaimerVersion: 1,
   persona: {
     displayName: 'AIコンパニオン',
     englishName: 'AI Companion',

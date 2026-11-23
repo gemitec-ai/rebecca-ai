@@ -17,10 +17,15 @@ import type {
   LoungeSession,
   LoungeSignUpRequestDto,
   LoungeSubscription,
+  LoungeUpdateDisclaimerConsentRequestDto,
   LoungeUpdatePreferencesRequestDto,
   LoungeUser,
 } from '@rebecca/types';
 import { environment } from '../../../environments/environment';
+import {
+  detectInitialLoungeLanguage,
+  detectInitialLoungeTimezone,
+} from '../i18n/lounge-translations';
 import { LoungeAccountPort } from '../ports/lounge-account.port';
 import { LoungeAuthPort } from '../ports/lounge-auth.port';
 import { LoungeConfigPort } from '../ports/lounge-config.port';
@@ -163,8 +168,8 @@ export class LoungeBffAdapter
 {
   private resolvedRuntimeConfig: LoungeRuntimeConfigDto | null = null;
   private user: LoungeUser | null = null;
-  private preferredLanguage: LoungeLanguage = 'ja';
-  private preferredTimezone = 'Asia/Tokyo';
+  private preferredLanguage: LoungeLanguage = detectInitialLoungeLanguage();
+  private preferredTimezone = detectInitialLoungeTimezone();
 
   private subscription: LoungeSubscription = {
     uid: 'uid_preview_001',
@@ -220,7 +225,9 @@ export class LoungeBffAdapter
       if (
         parsed &&
         typeof parsed.appVersion === 'string' &&
-        typeof parsed.disclaimerVersion === 'string' &&
+        typeof parsed.disclaimerVersion === 'number' &&
+        Number.isInteger(parsed.disclaimerVersion) &&
+        parsed.disclaimerVersion >= 1 &&
         isValidPersonaBranding(parsed.persona)
       ) {
         const liveConfig: LoungeRuntimeConfigDto = {
@@ -241,6 +248,9 @@ export class LoungeBffAdapter
 
   /** @inheritdoc */
   public async getCurrentSession(): Promise<LoungeAuthSessionDto | null> {
+    if (!this.user) {
+      this.user = this.resolvePreviewScenarioUser();
+    }
     if (!this.user) {
       return null;
     }
@@ -282,7 +292,7 @@ export class LoungeBffAdapter
     }
     const now = new Date().toISOString();
     this.user = {
-      ...this.createPreviewUser(now),
+      ...this.createPreviewUser(now, false),
       disclaimerConsent: request.disclaimerConsent,
     };
     return {
@@ -323,11 +333,36 @@ export class LoungeBffAdapter
       this.preferredTimezone = request.timezone;
     }
     const now = new Date().toISOString();
-    const baseUser = this.user ?? this.createPreviewUser(now);
+    const baseUser = this.user ?? this.createPreviewUser(now, true);
     this.user = {
       ...baseUser,
       language: this.preferredLanguage,
       timezone: this.preferredTimezone,
+      onboardingCompleted:
+        request.completeOnboarding !== undefined
+          ? request.completeOnboarding
+          : baseUser.onboardingCompleted,
+      updatedAt: now,
+    };
+    return this.user;
+  }
+
+  /** @inheritdoc */
+  public async updateDisclaimerConsent(
+    request: LoungeUpdateDisclaimerConsentRequestDto,
+  ): Promise<LoungeUser> {
+    if (
+      !request.disclaimerConsent.agreedToGeminiTrainingUsage ||
+      !request.disclaimerConsent.agreedToZeroPiiProhibition ||
+      !request.disclaimerConsent.agreedToOneWayMemoryIsolation
+    ) {
+      throw new Error('Mandatory disclaimer clauses must be accepted');
+    }
+    const now = new Date().toISOString();
+    const baseUser = this.user ?? this.createPreviewUser(now, true);
+    this.user = {
+      ...baseUser,
+      disclaimerConsent: request.disclaimerConsent,
       updatedAt: now,
     };
     return this.user;
@@ -474,7 +509,30 @@ export class LoungeBffAdapter
     };
   }
 
-  private createPreviewUser(now: string): LoungeUser {
+  private resolvePreviewScenarioUser(): LoungeUser | null {
+    if (typeof window === 'undefined' || !window.location?.search) {
+      return null;
+    }
+    const params = new URLSearchParams(window.location.search);
+    const scenario = params.get('previewScenario');
+    if (scenario !== 'session' && scenario !== 'onboarding' && scenario !== 'reconsent') {
+      return null;
+    }
+    const now = new Date().toISOString();
+    const baseUser = this.createPreviewUser(now, scenario !== 'onboarding');
+    if (scenario === 'reconsent') {
+      return {
+        ...baseUser,
+        disclaimerConsent: {
+          ...baseUser.disclaimerConsent,
+          disclaimerVersion: 0,
+        },
+      };
+    }
+    return baseUser;
+  }
+
+  private createPreviewUser(now: string, onboardingCompleted = true): LoungeUser {
     return {
       uid: 'uid_preview_001',
       xUserId: '1000000001',
@@ -484,6 +542,7 @@ export class LoungeBffAdapter
       status: 'ACTIVE',
       language: this.preferredLanguage,
       timezone: this.preferredTimezone,
+      onboardingCompleted,
       disclaimerConsent: {
         disclaimerVersion: this.resolvedRuntimeConfig?.disclaimerVersion ?? environment.disclaimerVersion,
         agreedToGeminiTrainingUsage: true,

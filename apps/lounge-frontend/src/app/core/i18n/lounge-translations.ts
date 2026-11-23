@@ -90,6 +90,7 @@ export interface LoungeLocaleCopy {
   readonly openMenuAria: string;
   readonly closeMenuAria: string;
   readonly dismissErrorAria: string;
+  readonly dismissToastAria: string;
   readonly remainingTurnsLabel: string;
   readonly remainingTurnsUnit: string;
   readonly subscriptionLabel: string;
@@ -133,6 +134,81 @@ export interface LoungeLocaleCopy {
   readonly onboardingSubtitle: string;
   readonly onboardingChangeLaterNote: string;
   readonly onboardingStartCta: string;
+  readonly loginNewUserPrompt: string;
+  readonly loginSwitchToSignUpBtn: string;
+  readonly bootstrappingLabel: string;
+  readonly reconsentBadge: string;
+  readonly reconsentTitle: string;
+  readonly reconsentSubtitle: string;
+  readonly reconsentCta: string;
+  readonly reconsentLogoutBtn: string;
+  readonly newGalleryUnlockedTitle: string;
+  readonly newGalleryUnlockedSub: string;
+  readonly newGalleryUnlockedAction: string;
+  readonly newGalleryBadge: string;
+}
+
+/**
+ * Detects the best initial Lounge UI language from the browser's `navigator.languages` / `navigator.language`
+ * so international first-time visitors immediately see their native language or English fallback (`en`).
+ */
+export function detectInitialLoungeLanguage(nav?: {
+  readonly languages?: readonly string[];
+  readonly language?: string;
+}): LoungeLanguage {
+  const browserNav =
+    nav ?? (typeof navigator !== 'undefined' ? navigator : undefined);
+  const candidates: string[] = [];
+  if (browserNav?.languages && browserNav.languages.length > 0) {
+    candidates.push(...browserNav.languages);
+  }
+  if (browserNav?.language) {
+    candidates.push(browserNav.language);
+  }
+  for (const raw of candidates) {
+    const lower = raw.trim().toLowerCase();
+    if (!lower) {
+      continue;
+    }
+    if (
+      lower.startsWith('zh-hk') ||
+      lower.startsWith('zh-tw') ||
+      lower.startsWith('zh-mo') ||
+      lower.startsWith('zh-hant')
+    ) {
+      return 'zh-HK';
+    }
+    const base = lower.split('-')[0];
+    if (
+      base === 'ja' ||
+      base === 'en' ||
+      base === 'de' ||
+      base === 'pt' ||
+      base === 'es' ||
+      base === 'vi' ||
+      base === 'th'
+    ) {
+      return base;
+    }
+  }
+  return 'en';
+}
+
+/**
+ * Detects the user's current local IANA timezone from `Intl.DateTimeFormat`,
+ * falling back cleanly to `UTC` if unavailable or invalid.
+ */
+export function detectInitialLoungeTimezone(): string {
+  try {
+    const resolved = Intl.DateTimeFormat().resolvedOptions().timeZone?.trim();
+    if (resolved) {
+      new Intl.DateTimeFormat('en-US', { timeZone: resolved }).format(new Date());
+      return resolved;
+    }
+  } catch {
+    // Fallback below
+  }
+  return 'UTC';
 }
 
 /**
@@ -168,6 +244,7 @@ export const LOUNGE_TRANSLATIONS: Record<LoungeLanguage, LoungeLocaleCopy> = {
     openMenuAria: 'メニューを開く',
     closeMenuAria: 'メニューを閉じる',
     dismissErrorAria: 'エラーを閉じる',
+    dismissToastAria: '通知を閉じる',
     remainingTurnsLabel: '残りチャット回数',
     remainingTurnsUnit: '回',
     subscriptionLabel: '加入プラン',
@@ -211,6 +288,18 @@ export const LOUNGE_TRANSLATIONS: Record<LoungeLanguage, LoungeLocaleCopy> = {
     onboardingSubtitle: '{name}との会話で使用する言語と、あなたの現在地のタイムゾーンを確認してください。',
     onboardingChangeLaterNote: '言語とタイムゾーンは、使用開始後も左上のメニュー「オプション」からいつでも変更できます。',
     onboardingStartCta: '使用開始（ラウンジへ入る）',
+    loginNewUserPrompt: '初めてご利用の方はこちら',
+    loginSwitchToSignUpBtn: '新規登録へ進む（規約確認・X連携）',
+    bootstrappingLabel: 'ラウンジの状態を確認しています...',
+    reconsentBadge: '利用規約・免責事項の更新',
+    reconsentTitle: '規約・免責事項の再同意が必要です',
+    reconsentSubtitle: 'より快適にご利用いただくため内容が改定されました。最新の全文をご確認のうえ同意すると会話を再開できます。',
+    reconsentCta: '最新版に同意してラウンジへ戻る',
+    reconsentLogoutBtn: 'ログアウト',
+    newGalleryUnlockedTitle: '新しいギャラリーが解放されました',
+    newGalleryUnlockedSub: '{name}との会話から新しいイラストがコレクションに加わりました',
+    newGalleryUnlockedAction: 'ギャラリーで見る',
+    newGalleryBadge: 'NEW GALLERY',
   },
   en: {
     brandBadge: 'PRIVATE LOUNGE',
@@ -241,6 +330,7 @@ export const LOUNGE_TRANSLATIONS: Record<LoungeLanguage, LoungeLocaleCopy> = {
     openMenuAria: 'Open navigation menu',
     closeMenuAria: 'Close menu',
     dismissErrorAria: 'Dismiss error',
+    dismissToastAria: 'Dismiss notification',
     remainingTurnsLabel: 'Remaining Turns',
     remainingTurnsUnit: 'left',
     subscriptionLabel: 'PLAN',
@@ -284,6 +374,18 @@ export const LOUNGE_TRANSLATIONS: Record<LoungeLanguage, LoungeLocaleCopy> = {
     onboardingSubtitle: 'Confirm the language {name} replies in and your local timezone before starting your session.',
     onboardingChangeLaterNote: 'You can change your language and timezone anytime later from Options in the menu.',
     onboardingStartCta: 'Start Using Private Lounge',
+    loginNewUserPrompt: 'New to Private Lounge?',
+    loginSwitchToSignUpBtn: 'Create a New Account with X',
+    bootstrappingLabel: 'Preparing your Private Lounge...',
+    reconsentBadge: 'TERMS & DISCLAIMER UPDATED',
+    reconsentTitle: 'Updated Disclaimer Review Required',
+    reconsentSubtitle: 'Please review the updated terms to the bottom and accept to resume your private session.',
+    reconsentCta: 'Agree to Latest Terms & Resume',
+    reconsentLogoutBtn: 'Logout',
+    newGalleryUnlockedTitle: 'NEW GALLERY UNLOCKED',
+    newGalleryUnlockedSub: 'A new illustration from {name} has been saved to your Gallery',
+    newGalleryUnlockedAction: 'View Gallery',
+    newGalleryBadge: 'NEW GALLERY',
   },
   de: {
     brandBadge: 'PRIVATE LOUNGE',
@@ -314,6 +416,7 @@ export const LOUNGE_TRANSLATIONS: Record<LoungeLanguage, LoungeLocaleCopy> = {
     openMenuAria: 'Menü öffnen',
     closeMenuAria: 'Menü schließen',
     dismissErrorAria: 'Fehler schließen',
+    dismissToastAria: 'Benachrichtigung schließen',
     remainingTurnsLabel: 'Verbleibend',
     remainingTurnsUnit: 'Nachr.',
     subscriptionLabel: 'TARIF',
@@ -357,6 +460,18 @@ export const LOUNGE_TRANSLATIONS: Record<LoungeLanguage, LoungeLocaleCopy> = {
     onboardingSubtitle: 'Wähle die Sprache für {name} und deine aktuelle Zeitzone vor dem Start aus.',
     onboardingChangeLaterNote: 'Beide Einstellungen kannst du jederzeit später im Menü unter „Optionen“ ändern.',
     onboardingStartCta: 'Jetzt starten',
+    loginNewUserPrompt: 'Neu in der Private Lounge?',
+    loginSwitchToSignUpBtn: 'Neues Konto mit X erstellen',
+    bootstrappingLabel: 'Private Lounge wird vorbereitet...',
+    reconsentBadge: 'HINWEISE AKTUALISIERT',
+    reconsentTitle: 'Erneute Zustimmung erforderlich',
+    reconsentSubtitle: 'Bitte lies die aktualisierten Hinweise bis zum Ende und stimme zu, um dein Gespräch fortzusetzen.',
+    reconsentCta: 'Zustimmen & Chat fortsetzen',
+    reconsentLogoutBtn: 'Abmelden',
+    newGalleryUnlockedTitle: 'NEUE GALERIE FREIGESCHALTET',
+    newGalleryUnlockedSub: 'Eine neue Illustration von {name} wurde in deiner Galerie gespeichert',
+    newGalleryUnlockedAction: 'Galerie ansehen',
+    newGalleryBadge: 'NEU FREIGESCHALTET',
   },
   pt: {
     brandBadge: 'PRIVATE LOUNGE',
@@ -387,6 +502,7 @@ export const LOUNGE_TRANSLATIONS: Record<LoungeLanguage, LoungeLocaleCopy> = {
     openMenuAria: 'Abrir menu',
     closeMenuAria: 'Fechar menu',
     dismissErrorAria: 'Dispensar erro',
+    dismissToastAria: 'Dispensar notificação',
     remainingTurnsLabel: 'Turnos Restantes',
     remainingTurnsUnit: 'rest.',
     subscriptionLabel: 'PLANO',
@@ -430,6 +546,18 @@ export const LOUNGE_TRANSLATIONS: Record<LoungeLanguage, LoungeLocaleCopy> = {
     onboardingSubtitle: 'Confirme o idioma em que {name} responderá e seu fuso horário antes de começar.',
     onboardingChangeLaterNote: 'Essas preferências podem ser alteradas a qualquer momento em Opções no menu.',
     onboardingStartCta: 'Começar a Usar',
+    loginNewUserPrompt: 'Primeira vez aqui?',
+    loginSwitchToSignUpBtn: 'Criar Nova Conta com X',
+    bootstrappingLabel: 'Preparando sua Private Lounge...',
+    reconsentBadge: 'TERMOS ATUALIZADOS',
+    reconsentTitle: 'Nova Aceitação Obrigatória dos Termos',
+    reconsentSubtitle: 'Leia os termos atualizados até o final e concorde para continuar sua conversa particular.',
+    reconsentCta: 'Concordar e Retomar Chat',
+    reconsentLogoutBtn: 'Sair',
+    newGalleryUnlockedTitle: 'NOVA GALERIA DESBLOQUEADA',
+    newGalleryUnlockedSub: 'Uma nova ilustração de {name} foi salva na sua Galeria',
+    newGalleryUnlockedAction: 'Ver Galeria',
+    newGalleryBadge: 'NOVO NA GALERIA',
   },
   es: {
     brandBadge: 'PRIVATE LOUNGE',
@@ -460,6 +588,7 @@ export const LOUNGE_TRANSLATIONS: Record<LoungeLanguage, LoungeLocaleCopy> = {
     openMenuAria: 'Abrir menú',
     closeMenuAria: 'Cerrar menú',
     dismissErrorAria: 'Cerrar error',
+    dismissToastAria: 'Cerrar notificación',
     remainingTurnsLabel: 'Turnos restantes',
     remainingTurnsUnit: 'disp.',
     subscriptionLabel: 'PLAN',
@@ -503,6 +632,18 @@ export const LOUNGE_TRANSLATIONS: Record<LoungeLanguage, LoungeLocaleCopy> = {
     onboardingSubtitle: 'Confirma el idioma de respuesta de {name} y tu zona horaria local antes de comenzar.',
     onboardingChangeLaterNote: 'Puedes cambiar estos ajustes cuando quieras más adelante desde Opciones en el menú.',
     onboardingStartCta: 'Comenzar a chatear',
+    loginNewUserPrompt: '¿Primera vez en Private Lounge?',
+    loginSwitchToSignUpBtn: 'Crear cuenta nueva con X',
+    bootstrappingLabel: 'Preparando tu Private Lounge...',
+    reconsentBadge: 'TÉRMINOS ACTUALIZADOS',
+    reconsentTitle: 'Se requiere aceptar los nuevos términos',
+    reconsentSubtitle: 'Desplázate hasta el final del aviso actualizado y acéptalo para reanudar tu sesión privada.',
+    reconsentCta: 'Aceptar y volver al chat',
+    reconsentLogoutBtn: 'Cerrar sesión',
+    newGalleryUnlockedTitle: 'NUEVA GALERÍA DESBLOQUEADA',
+    newGalleryUnlockedSub: 'Una nueva ilustración de {name} se guardó en tu Galería',
+    newGalleryUnlockedAction: 'Ver Galería',
+    newGalleryBadge: 'NUEVA EN GALERÍA',
   },
   'zh-HK': {
     brandBadge: 'PRIVATE LOUNGE',
@@ -533,6 +674,7 @@ export const LOUNGE_TRANSLATIONS: Record<LoungeLanguage, LoungeLocaleCopy> = {
     openMenuAria: '開啟選單',
     closeMenuAria: '關閉選單',
     dismissErrorAria: '關閉錯誤訊息',
+    dismissToastAria: '關閉通知',
     remainingTurnsLabel: '剩餘對話次數',
     remainingTurnsUnit: '次',
     subscriptionLabel: '方案',
@@ -576,6 +718,18 @@ export const LOUNGE_TRANSLATIONS: Record<LoungeLanguage, LoungeLocaleCopy> = {
     onboardingSubtitle: '開始對話前，請確認 {name} 回覆使用嘅語言同你所在地嘅時區。',
     onboardingChangeLaterNote: '開始使用後，你依然可以隨時喺左上角選單嘅「選項設定」入面更改語言同時區。',
     onboardingStartCta: '開始使用私人聊天室',
+    loginNewUserPrompt: '首次使用本私人聊天室？',
+    loginSwitchToSignUpBtn: '前往註冊新帳戶（閱讀條款及連結 X）',
+    bootstrappingLabel: '正在準備你的私人聊天室...',
+    reconsentBadge: '條款及免責聲明已更新',
+    reconsentTitle: '需重新同意最新免責聲明',
+    reconsentSubtitle: '我哋更新咗服務條款。請將以下內容捲動至最底並同意，即可繼續與專屬角色對話。',
+    reconsentCta: '同意最新條款並繼續對話',
+    reconsentLogoutBtn: '登出',
+    newGalleryUnlockedTitle: '已解鎖全新畫廊插圖',
+    newGalleryUnlockedSub: '{name} 分享嘅新插圖已經收錄到你嘅畫廊',
+    newGalleryUnlockedAction: '前往畫廊',
+    newGalleryBadge: 'NEW GALLERY',
   },
   vi: {
     brandBadge: 'PRIVATE LOUNGE',
@@ -606,6 +760,7 @@ export const LOUNGE_TRANSLATIONS: Record<LoungeLanguage, LoungeLocaleCopy> = {
     openMenuAria: 'Mở menu',
     closeMenuAria: 'Đóng menu',
     dismissErrorAria: 'Đóng thông báo lỗi',
+    dismissToastAria: 'Đóng thông báo',
     remainingTurnsLabel: 'Lượt còn lại',
     remainingTurnsUnit: 'lượt',
     subscriptionLabel: 'GÓI',
@@ -649,6 +804,18 @@ export const LOUNGE_TRANSLATIONS: Record<LoungeLanguage, LoungeLocaleCopy> = {
     onboardingSubtitle: 'Hãy xác nhận ngôn ngữ trò chuyện cùng {name} và múi giờ của bạn trước khi bắt đầu.',
     onboardingChangeLaterNote: 'Bạn có thể thay đổi cài đặt ngôn ngữ và múi giờ bất kỳ lúc nào sau này trong mục Tùy chọn.',
     onboardingStartCta: 'Bắt đầu trò chuyện',
+    loginNewUserPrompt: 'Lần đầu sử dụng dịch vụ?',
+    loginSwitchToSignUpBtn: 'Đăng ký tài khoản mới bằng X',
+    bootstrappingLabel: 'Đang chuẩn bị phòng trò chuyện...',
+    reconsentBadge: 'ĐIỀU KHOẢN ĐÃ CẬP NHẬT',
+    reconsentTitle: 'Cần xác nhận lại điều khoản mới',
+    reconsentSubtitle: 'Vui lòng đọc đến cuối điều khoản cập nhật và đồng ý để tiếp tục phiên trò chuyện riêng.',
+    reconsentCta: 'Đồng ý và tiếp tục trò chuyện',
+    reconsentLogoutBtn: 'Đăng xuất',
+    newGalleryUnlockedTitle: 'ĐÃ MỞ KHÓA ẢNH MỚI',
+    newGalleryUnlockedSub: 'Một hình minh họa mới từ {name} đã được lưu vào Thư viện ảnh',
+    newGalleryUnlockedAction: 'Xem Thư viện',
+    newGalleryBadge: 'MỚI MỞ KHÓA',
   },
   th: {
     brandBadge: 'PRIVATE LOUNGE',
@@ -679,6 +846,7 @@ export const LOUNGE_TRANSLATIONS: Record<LoungeLanguage, LoungeLocaleCopy> = {
     openMenuAria: 'เปิดเมนู',
     closeMenuAria: 'ปิดเมนู',
     dismissErrorAria: 'ปิดข้อความแจ้งเตือน',
+    dismissToastAria: 'ปิดการแจ้งเตือน',
     remainingTurnsLabel: 'จำนวนครั้งคงเหลือ',
     remainingTurnsUnit: 'ครั้ง',
     subscriptionLabel: 'แพ็กเกจ',
@@ -722,6 +890,18 @@ export const LOUNGE_TRANSLATIONS: Record<LoungeLanguage, LoungeLocaleCopy> = {
     onboardingSubtitle: 'กรุณาตรวจสอบภาษาที่ต้องการให้ {name} ใช้สนทนาและเขตเวลาท้องถิ่นของคุณก่อนเริ่มใช้งาน',
     onboardingChangeLaterNote: 'คุณสามารถเปลี่ยนแปลงภาษาและเขตเวลาได้ตลอดเวลาภายหลังจากเมนูตั้งค่า',
     onboardingStartCta: 'เริ่มใช้งานห้องสนทนา',
+    loginNewUserPrompt: 'เพิ่งใช้งานครั้งแรกใช่หรือไม่?',
+    loginSwitchToSignUpBtn: 'สมัครสมาชิกใหม่ด้วยบัญชี X',
+    bootstrappingLabel: 'กำลังเตรียมห้องส่วนตัวของคุณ...',
+    reconsentBadge: 'ข้อตกลงมีการอัปเดต',
+    reconsentTitle: 'กรุณายืนยันข้อตกลงฉบับล่าสุด',
+    reconsentSubtitle: 'โปรดเลื่อนอ่านข้อตกลงฉบับอัปเดตจนจบและกดยินยอมเพื่อสนทนาต่อ',
+    reconsentCta: 'ยินยอมและเข้าสู่แชทต่อ',
+    reconsentLogoutBtn: 'ออกจากระบบ',
+    newGalleryUnlockedTitle: 'ปลดล็อกภาพแกลเลอรีใหม่แล้ว',
+    newGalleryUnlockedSub: 'ภาพประกอบใหม่จาก {name} ถูกบันทึกลงในแกลเลอรีของคุณแล้ว',
+    newGalleryUnlockedAction: 'ดูแกลเลอรี',
+    newGalleryBadge: 'ปลดล็อกใหม่',
   },
 };
 

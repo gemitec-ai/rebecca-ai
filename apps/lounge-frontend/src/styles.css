@@ -371,3 +371,309 @@ textarea:focus-visible {
     align-items: stretch;
   }
 }
+
+.boot-splash-shell {
+  position: relative;
+  min-height: 100dvh;
+  display: grid;
+  place-items: center;
+  padding: 1.5rem;
+  background: var(--bg-base, #07080c);
+  color: var(--text-primary, #f8fafc);
+  overflow: hidden;
+}
+
+.boot-splash-card {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.9rem;
+  padding: 1.75rem 2.25rem;
+  border-radius: 1.25rem;
+  border: 1px solid rgba(167, 139, 250, 0.28);
+  background: rgba(14, 17, 26, 0.88);
+  box-shadow: 0 20px 52px rgba(0, 0, 0, 0.55);
+}
+
+.boot-splash-crest {
+  width: 44px;
+  height: 44px;
+  filter: drop-shadow(0 0 8px rgba(167, 139, 250, 0.72));
+}
+
+.boot-splash-spinner {
+  color: #a78bfa;
+  font-size: 1.6rem;
+}
+
+.boot-splash-label {
+  margin: 0;
+  font-size: 0.85rem;
+  letter-spacing: 0.08em;
+  color: #cbd5e1;
+}
+
+.login-signup-bridge {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  margin-top: 0.4rem;
+  padding-top: 0.95rem;
+  border-top: 1px solid rgba(148, 163, 184, 0.16);
+}
+
+.login-signup-prompt {
+  font-size: 0.84rem;
+  color: #cbd5e1;
+}
+
+.switch-signup-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  min-height: 44px;
+  padding: 0.6rem 1rem;
+  border-radius: 0.85rem;
+  border: 1px solid rgba(167, 139, 250, 0.42);
+  background: rgba(139, 92, 246, 0.14);
+  color: #e9d5ff;
+  font-size: 0.88rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.18s ease, border-color 0.18s ease;
+}
+
+.switch-signup-btn:hover {
+  background: rgba(139, 92, 246, 0.28);
+  border-color: rgba(196, 181, 253, 0.72);
+}
+
+.reconsent-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+}
+
+.reconsent-header-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.55rem;
+}
+
+.reconsent-header-row .auth-lang-wrap {
+  flex-shrink: 0;
+  margin-left: auto;
+}
+
+.reconsent-version-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  max-width: 100%;
+  padding: 0.35rem 0.72rem;
+  border-radius: 999px;
+  border: 1px solid rgba(251, 191, 36, 0.45);
+  background: rgba(251, 191, 36, 0.12);
+  color: #fde68a;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+}
+
+.reconsent-version-pill .material-icons {
+  font-size: 1rem;
+}
+
+.reconsent-heading-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.reconsent-title {
+  margin: 0;
+  font-size: 1.2rem;
+  font-weight: 700;
+  color: #f8fafc;
+}
+
+.reconsent-subtitle {
+  margin: 0;
+  font-size: 0.86rem;
+  line-height: 1.5;
+  color: #cbd5e1;
+}
+
+.reconsent-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+
+.reconsent-logout-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  min-height: 44px;
+  padding: 0.6rem 1rem;
+  border-radius: 0.85rem;
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  background: rgba(15, 23, 42, 0.72);
+  color: #cbd5e1;
+  font-size: 0.86rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.18s ease, color 0.18s ease;
+}
+
+.reconsent-logout-btn:hover:not(:disabled) {
+  background: rgba(30, 41, 59, 0.9);
+  color: #f8fafc;
+}
+
+.gallery-unlock-toast {
+  position: fixed;
+  top: 4.35rem;
+  right: 1.25rem;
+  z-index: 35;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  max-width: min(92vw, 430px);
+  padding: 0.65rem 0.75rem;
+  border-radius: 1rem;
+  border: 1px solid rgba(52, 211, 153, 0.58);
+  background: rgba(10, 14, 24, 0.94);
+  backdrop-filter: blur(14px);
+  box-shadow:
+    0 16px 40px rgba(0, 0, 0, 0.58),
+    0 0 22px rgba(16, 185, 129, 0.22);
+}
+
+.unlock-toast-thumb {
+  width: 48px;
+  height: 48px;
+  border-radius: 0.65rem;
+  object-fit: cover;
+  border: 1px solid rgba(52, 211, 153, 0.45);
+  flex-shrink: 0;
+}
+
+.unlock-toast-body {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.unlock-toast-kicker {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  color: #6ee7b7;
+  font-size: 0.76rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.unlock-toast-kicker-icon {
+  font-size: 0.95rem;
+}
+
+.unlock-toast-sub {
+  margin: 0.15rem 0 0;
+  font-size: 0.78rem;
+  color: #e2e8f0;
+  line-height: 1.35;
+}
+
+.unlock-toast-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex-shrink: 0;
+}
+
+.unlock-toast-action-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-height: 44px;
+  padding: 0.45rem 0.78rem;
+  border-radius: 0.7rem;
+  border: 1px solid rgba(52, 211, 153, 0.55);
+  background: rgba(16, 185, 129, 0.2);
+  color: #ecfdf5;
+  font-size: 0.78rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.unlock-toast-action-btn .material-icons {
+  font-size: 0.95rem;
+}
+
+.unlock-toast-close-btn {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  background: transparent;
+  color: #cbd5e1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.inline-new-gallery-badge {
+  position: absolute;
+  top: 0.5rem;
+  left: 0.5rem;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.24rem 0.58rem;
+  border-radius: 999px;
+  border: 1px solid rgba(52, 211, 153, 0.68);
+  background: rgba(6, 78, 59, 0.88);
+  color: #a7f3d0;
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.45);
+}
+
+.inline-new-gallery-badge .material-icons {
+  font-size: 0.85rem;
+}
+
+@media (max-width: 959px) {
+  .gallery-unlock-toast {
+    left: 0.75rem;
+    right: 0.75rem;
+    top: 4.15rem;
+    max-width: none;
+    flex-wrap: wrap;
+    padding: 0.65rem 0.75rem;
+    gap: 0.6rem;
+  }
+
+  .unlock-toast-body {
+    flex: 1 1 calc(100% - 64px);
+  }
+
+  .unlock-toast-actions {
+    width: 100%;
+    justify-content: flex-end;
+    padding-top: 0.15rem;
+    border-top: 1px solid rgba(52, 211, 153, 0.18);
+  }
+}

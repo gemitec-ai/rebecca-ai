@@ -83,7 +83,7 @@ export class AppComponent {
       const authMode = this.facade.authMode();
       this.facade.lang();
       const boxEl = this.disclaimerBoxRef()?.nativeElement;
-      if (view === 'AUTH' && authMode === 'SIGNUP' && boxEl) {
+      if (((view === 'AUTH' && authMode === 'SIGNUP') || view === 'RECONSENT') && boxEl) {
         queueMicrotask(() => {
           this.checkZeroOverflowDisclaimer(boxEl);
         });
@@ -314,6 +314,12 @@ export class AppComponent {
         trigger.focus();
       });
     }
+  }
+
+  /** Navigates directly to the unlocked Lounge illustration gallery from the celebration toast. */
+  public openGalleryFromUnlockToast(): void {
+    this.facade.dismissUnlockedGalleryNotice();
+    this.facade.navigateTo('GALLERY');
   }
 
   /** Formats an ISO-8601 message timestamp into `HH:mm` (`h23`) in the active locale and timezone. */

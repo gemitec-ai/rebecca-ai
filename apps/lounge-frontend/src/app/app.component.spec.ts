@@ -15,7 +15,11 @@ import type {
 import { AppComponent } from './app.component';
 import { appConfig } from './app.config';
 import { LoungeBffAdapter } from './core/adapters/lounge-bff.adapter';
-import { LOUNGE_TRANSLATIONS } from './core/i18n/lounge-translations';
+import {
+  detectInitialLoungeLanguage,
+  detectInitialLoungeTimezone,
+  LOUNGE_TRANSLATIONS,
+} from './core/i18n/lounge-translations';
 import { LoungeAccountPort } from './core/ports/lounge-account.port';
 import { LoungeAuthPort } from './core/ports/lounge-auth.port';
 import { LoungeConfigPort } from './core/ports/lounge-config.port';
@@ -41,7 +45,12 @@ const SYNTHETIC_BRANDING: LoungePersonaBranding = {
   },
 };
 
-function createSyntheticUser(language: LoungeLanguage = 'ja', timezone = 'Asia/Tokyo'): LoungeUser {
+function createSyntheticUser(
+  language: LoungeLanguage = 'ja',
+  timezone = 'Asia/Tokyo',
+  onboardingCompleted = true,
+  disclaimerVersion = 1,
+): LoungeUser {
   const now = '2026-11-22T12:00:00.000Z';
   return {
     uid: 'uid_test_001',
@@ -52,8 +61,9 @@ function createSyntheticUser(language: LoungeLanguage = 'ja', timezone = 'Asia/T
     status: 'ACTIVE',
     language,
     timezone,
+    onboardingCompleted,
     disclaimerConsent: {
-      disclaimerVersion: '2026-11-22',
+      disclaimerVersion,
       agreedToGeminiTrainingUsage: true,
       agreedToZeroPiiProhibition: true,
       agreedToOneWayMemoryIsolation: true,
@@ -75,6 +85,8 @@ class InMemoryLoungeBffFake
     LoungeGalleryPort
 {
   public user = createSyntheticUser();
+  public currentSessionUser: LoungeUser | null = null;
+  public shouldFailGetCurrentSession = false;
   public remainingTurns = 5;
   public dailyTurnQuota = 10;
   public omitPersonaOnSummary = false;
@@ -82,6 +94,7 @@ class InMemoryLoungeBffFake
   public shouldFailLogin = false;
   public shouldFailSignUp = false;
   public shouldFailPreferences = false;
+  public shouldFailReconsent = false;
   public shouldFailDelete = false;
   public shouldFailSend = false;
   public shouldFailLogout = false;
@@ -149,16 +162,22 @@ class InMemoryLoungeBffFake
     }
     return {
       appVersion: '1.45.2',
-      disclaimerVersion: '2026-11-22',
+      disclaimerVersion: 1,
       persona: SYNTHETIC_BRANDING,
     };
   }
 
   public async getCurrentSession(): Promise<LoungeAuthSessionDto | null> {
+    if (this.shouldFailGetCurrentSession) {
+      throw new Error('Session endpoint unavailable');
+    }
+    if (!this.currentSessionUser) {
+      return null;
+    }
     return {
-      user: this.user,
+      user: this.currentSessionUser,
       appVersion: 'v1.45.2',
-      issuedAt: this.user.lastLoginAt,
+      issuedAt: this.currentSessionUser.lastLoginAt,
     };
   }
 
@@ -166,6 +185,7 @@ class InMemoryLoungeBffFake
     if (this.shouldFailLogin) {
       throw new Error('X login rejected');
     }
+    this.currentSessionUser = this.user;
     return {
       user: this.user,
       appVersion: 'v1.45.2',
@@ -183,7 +203,10 @@ class InMemoryLoungeBffFake
     this.user = createSyntheticUser(
       req.language ?? this.user.language,
       req.timezone ?? this.user.timezone,
+      false,
+      1,
     );
+    this.currentSessionUser = this.user;
     return {
       user: this.user,
       appVersion: 'v1.45.2',
@@ -195,11 +218,13 @@ class InMemoryLoungeBffFake
     if (this.shouldFailLogout) {
       throw new Error('Logout endpoint unavailable');
     }
+    this.currentSessionUser = null;
   }
 
   public async getAccountSummary(): Promise<LoungeAccountSummaryDto> {
+    const activeUser = this.currentSessionUser ?? this.user;
     return {
-      user: this.user,
+      user: activeUser,
       subscription: {
         uid: this.user.uid,
         tier: 'SUPPORTER',
@@ -220,6 +245,7 @@ class InMemoryLoungeBffFake
   public async updatePreferences(req: {
     language?: LoungeLanguage;
     timezone?: string;
+    completeOnboarding?: boolean;
   }): Promise<LoungeUser> {
     if (this.shouldFailPreferences) {
       throw new Error('Failed to persist preferences');
@@ -234,7 +260,26 @@ class InMemoryLoungeBffFake
       ...this.user,
       language: req.language ?? this.user.language,
       timezone: req.timezone ?? this.user.timezone,
+      onboardingCompleted:
+        req.completeOnboarding !== undefined
+          ? req.completeOnboarding
+          : this.user.onboardingCompleted,
     };
+    this.currentSessionUser = this.user;
+    return this.user;
+  }
+
+  public async updateDisclaimerConsent(req: {
+    disclaimerConsent: LoungeUser['disclaimerConsent'];
+  }): Promise<LoungeUser> {
+    if (this.shouldFailReconsent) {
+      throw new Error('Consent update temporarily unavailable');
+    }
+    this.user = {
+      ...this.user,
+      disclaimerConsent: req.disclaimerConsent,
+    };
+    this.currentSessionUser = this.user;
     return this.user;
   }
 
@@ -337,7 +382,7 @@ describe('Gemitec Private Lounge Root Shell (AppComponent)', () => {
     fixture = TestBed.createComponent(AppComponent);
     component = fixture.componentInstance;
     facade = fixture.componentInstance.facade;
-    await facade.loadRuntimeConfig();
+    await facade.ready;
     await fixture.whenStable();
     fixture.detectChanges();
   });
@@ -354,8 +399,20 @@ describe('Gemitec Private Lounge Root Shell (AppComponent)', () => {
     return Promise.resolve().then(() => Promise.resolve());
   }
 
-  it('wires Angular Zoneless appConfig providers and omits forbidden technical/emoji UI artifacts', () => {
+  it('wires Angular Zoneless appConfig providers, defaults to LOGIN tab, and omits forbidden UI artifacts', async () => {
     expect(appConfig.providers.length).toBeGreaterThanOrEqual(5);
+    expect(facade.isBootstrapping()).toBe(false);
+    expect(facade.activeView()).toBe('AUTH');
+    expect(facade.authMode()).toBe('LOGIN');
+
+    const tabs = (fixture.nativeElement as HTMLElement).querySelectorAll('.auth-tab');
+    expect(tabs[0]?.id).toBe('tab-login');
+    expect(tabs[1]?.id).toBe('tab-signup');
+
+    await facade.setLanguage('ja');
+    facade.setAuthMode('SIGNUP');
+    await fixture.whenStable();
+    fixture.detectChanges();
 
     const text = (fixture.nativeElement as HTMLElement).textContent ?? '';
     expect(text).not.toContain('STEP 01');
@@ -372,6 +429,15 @@ describe('Gemitec Private Lounge Root Shell (AppComponent)', () => {
   });
 
   it('guides sign-up through Consent -> X Link -> Language & Timezone Confirmation -> Start Chatting', async () => {
+    await facade.setLanguage('ja');
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    query<HTMLButtonElement>('#btn-switch-to-signup').click();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(facade.authMode()).toBe('SIGNUP');
+
     const checkbox = query<HTMLInputElement>('#checkbox-disclaimer-consent');
     const signUpBtn = query<HTMLButtonElement>('#btn-x-signup');
 
@@ -449,6 +515,10 @@ describe('Gemitec Private Lounge Root Shell (AppComponent)', () => {
   });
 
   it('supports full keyboard/pointer dropdown navigation and preserves non-preset timezone values', async () => {
+    await facade.setLanguage('ja');
+    await fixture.whenStable();
+    fixture.detectChanges();
+
     const authDropdown = query<HTMLElement>('#auth-lang-dropdown');
     const trigger = authDropdown.querySelector<HTMLButtonElement>('.dropdown-trigger');
     expect(trigger).not.toBeNull();
@@ -621,6 +691,24 @@ describe('Gemitec Private Lounge Root Shell (AppComponent)', () => {
 
     expect(facade.messages().length).toBe(4);
     expect(component.unlockedGalleryCount()).toBe(2);
+
+    // Newly unlocked Bot artwork triggers both celebratory toast and inline badge
+    expect(query<HTMLElement>('#gallery-unlock-toast')).toBeTruthy();
+    expect(query<HTMLElement>('.inline-new-gallery-badge')).toBeTruthy();
+    query<HTMLButtonElement>('#btn-unlock-toast-gallery').click();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(facade.activeView()).toBe('GALLERY');
+    expect(facade.newlyUnlockedGalleryItem()).toBeNull();
+
+    // Re-appearing toast also auto-clears when navigating directly to GALLERY via sidebar/shortcut
+    facade.newlyUnlockedGalleryItem.set(fakeBff.galleryItems[1]);
+    facade.navigateTo('GALLERY');
+    expect(facade.newlyUnlockedGalleryItem()).toBeNull();
+
+    facade.navigateTo('CHAT');
+    await fixture.whenStable();
+    fixture.detectChanges();
 
     await facade.sendMessage('   ');
     expect(facade.messages().length).toBe(4);
@@ -825,11 +913,12 @@ describe('Gemitec Private Lounge Root Shell (AppComponent)', () => {
         ok: true,
         json: async () => ({
           appVersion: 'v9.9.9',
-          disclaimerVersion: '2026-12-01',
+          disclaimerVersion: 2,
           persona: SYNTHETIC_BRANDING,
         }),
       })) as unknown as typeof fetch;
       expect((await adapter.getRuntimeConfig()).appVersion).toBe('v9.9.9');
+      expect((await adapter.getRuntimeConfig()).disclaimerVersion).toBe(2);
 
       globalThis.fetch = jest.fn(async () => ({
         ok: false,
@@ -865,7 +954,7 @@ describe('Gemitec Private Lounge Root Shell (AppComponent)', () => {
         idToken: 'tok',
         xOAuthCode: 'code',
         disclaimerConsent: {
-          disclaimerVersion: '2026-11-22',
+          disclaimerVersion: 1,
           agreedToGeminiTrainingUsage: false,
           agreedToZeroPiiProhibition: true,
           agreedToOneWayMemoryIsolation: true,
@@ -881,7 +970,7 @@ describe('Gemitec Private Lounge Root Shell (AppComponent)', () => {
       language: 'zh-HK',
       timezone: 'Asia/Hong_Kong',
       disclaimerConsent: {
-        disclaimerVersion: '2026-11-22',
+        disclaimerVersion: 1,
         agreedToGeminiTrainingUsage: true,
         agreedToZeroPiiProhibition: true,
         agreedToOneWayMemoryIsolation: true,
@@ -890,6 +979,8 @@ describe('Gemitec Private Lounge Root Shell (AppComponent)', () => {
       },
     });
     expect(signedUp.user.language).toBe('zh-HK');
+    expect(signedUp.user.onboardingCompleted).toBe(false);
+    expect(signedUp.user.disclaimerConsent.disclaimerVersion).toBe(1);
     await expect(adapter.getCurrentSession()).resolves.not.toBeNull();
 
     // Duplicate sign-up rejects (1 account per X account)
@@ -903,8 +994,37 @@ describe('Gemitec Private Lounge Root Shell (AppComponent)', () => {
 
     const summary = await adapter.getAccountSummary();
     expect(summary.totalGalleryCount).toBeGreaterThan(0);
-    const updatedPrefUser = await adapter.updatePreferences({ language: 'de', timezone: 'Europe/Berlin' });
+    const updatedPrefUser = await adapter.updatePreferences({
+      language: 'de',
+      timezone: 'Europe/Berlin',
+      completeOnboarding: true,
+    });
     expect(updatedPrefUser.language).toBe('de');
+    expect(updatedPrefUser.onboardingCompleted).toBe(true);
+
+    await expect(
+      adapter.updateDisclaimerConsent({
+        disclaimerConsent: {
+          disclaimerVersion: 2,
+          agreedToGeminiTrainingUsage: false,
+          agreedToZeroPiiProhibition: true,
+          agreedToOneWayMemoryIsolation: true,
+          scrolledToBottomAt: '2026-11-23T00:00:00.000Z',
+          consentedAt: '2026-11-23T00:00:00.000Z',
+        },
+      }),
+    ).rejects.toThrow('Mandatory disclaimer clauses');
+    const reconsentedUser = await adapter.updateDisclaimerConsent({
+      disclaimerConsent: {
+        disclaimerVersion: 2,
+        agreedToGeminiTrainingUsage: true,
+        agreedToZeroPiiProhibition: true,
+        agreedToOneWayMemoryIsolation: true,
+        scrolledToBottomAt: '2026-11-23T00:00:00.000Z',
+        consentedAt: '2026-11-23T00:00:00.000Z',
+      },
+    });
+    expect(reconsentedUser.disclaimerConsent.disclaimerVersion).toBe(2);
 
     const singleton = await adapter.getSession();
     expect(singleton.id).toBe('uid_preview_001');
@@ -939,5 +1059,138 @@ describe('Gemitec Private Lounge Root Shell (AppComponent)', () => {
     await expect(adapter.getCurrentSession()).resolves.not.toBeNull();
     await adapter.logout();
     await expect(adapter.getCurrentSession()).resolves.toBeNull();
+
+    // Preview scenario URL hooks for headless UX audits
+    const originalSearch = window.location.search;
+    try {
+      window.history.replaceState({}, '', '?previewScenario=onboarding');
+      const onboardingPreview = new LoungeBffAdapter();
+      expect((await onboardingPreview.getCurrentSession())?.user.onboardingCompleted).toBe(false);
+
+      window.history.replaceState({}, '', '?previewScenario=reconsent');
+      const reconsentPreview = new LoungeBffAdapter();
+      expect((await reconsentPreview.getCurrentSession())?.user.disclaimerConsent.disclaimerVersion).toBe(0);
+
+      window.history.replaceState({}, '', '?previewScenario=session');
+      const sessionPreview = new LoungeBffAdapter();
+      expect((await sessionPreview.getCurrentSession())?.user.onboardingCompleted).toBe(true);
+    } finally {
+      window.history.replaceState({}, '', originalSearch || '/');
+    }
+  });
+
+  it('auto-detects initial browser language and timezone across 8 locales with fallback to en/UTC', () => {
+    expect(detectInitialLoungeLanguage({ languages: ['   ', 'ja-JP', 'en-US'], language: 'en' })).toBe('ja');
+    expect(detectInitialLoungeLanguage({ languages: ['zh-TW'], language: 'zh-TW' })).toBe('zh-HK');
+    expect(detectInitialLoungeLanguage({ languages: ['zh-Hant'] })).toBe('zh-HK');
+    expect(detectInitialLoungeLanguage({ languages: ['de-DE'] })).toBe('de');
+    expect(detectInitialLoungeLanguage({ languages: ['es-MX'] })).toBe('es');
+    expect(detectInitialLoungeLanguage({ languages: ['pt-BR'] })).toBe('pt');
+    expect(detectInitialLoungeLanguage({ languages: ['vi-VN'] })).toBe('vi');
+    expect(detectInitialLoungeLanguage({ languages: ['th-TH'] })).toBe('th');
+    expect(detectInitialLoungeLanguage({ languages: ['fr-FR'] })).toBe('en');
+    expect(detectInitialLoungeLanguage({ languages: [], language: '' })).toBe('en');
+
+    const dateTimeFormatSpy = jest.spyOn(Intl, 'DateTimeFormat').mockImplementation((...args) => {
+      const options = args[1];
+      if (options?.timeZone === 'Invalid/Mock_Zone') {
+        throw new Error('Invalid timezone');
+      }
+      return {
+        resolvedOptions: () => ({ timeZone: 'Asia/Tokyo' }),
+        format: () => '2026',
+      } as unknown as Intl.DateTimeFormat;
+    });
+    try {
+      expect(detectInitialLoungeTimezone()).toBe('Asia/Tokyo');
+
+      dateTimeFormatSpy.mockImplementationOnce(() => {
+        throw new Error('Intl unavailable');
+      });
+      expect(detectInitialLoungeTimezone()).toBe('UTC');
+    } finally {
+      dateTimeFormatSpy.mockRestore();
+    }
+  });
+
+  it('silently restores active sessions via startup splash, resumes unfinished onboarding, and enforces integer disclaimer re-consent', async () => {
+    // 0. Session check error degrades cleanly to AUTH screen without throwing
+    fakeBff.shouldFailGetCurrentSession = true;
+    await facade.initializeLounge();
+    expect(facade.isBootstrapping()).toBe(false);
+    expect(facade.activeView()).toBe('AUTH');
+    fakeBff.shouldFailGetCurrentSession = false;
+
+    // 1. Outdated consent version (< 1) routes directly into blocking RECONSENT gate without showing AUTH
+    const outdatedUser = createSyntheticUser('ja', 'Asia/Tokyo', true, 0);
+    fakeBff.user = outdatedUser;
+    fakeBff.currentSessionUser = outdatedUser;
+    await facade.initializeLounge();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(facade.isBootstrapping()).toBe(false);
+    expect(facade.activeView()).toBe('RECONSENT');
+    expect(query<HTMLElement>('#reconsent-card').textContent).toContain('v1');
+
+    const submitReconsentBtn = query<HTMLButtonElement>('#btn-submit-reconsent');
+    expect(submitReconsentBtn.disabled).toBe(true);
+
+    // Attempt premature submit fails safely
+    await facade.submitDisclaimerReconsent();
+    expect(facade.errorMessage()).toBe(LOUNGE_TRANSLATIONS.ja.scrollRequiredError);
+
+    // Scroll to bottom, tick checkbox, surface BFF error cleanly, then succeed into CHAT
+    const box = query<HTMLElement>('#disclaimer-scroll-box');
+    Object.defineProperty(box, 'scrollTop', { value: 420, configurable: true });
+    Object.defineProperty(box, 'clientHeight', { value: 180, configurable: true });
+    Object.defineProperty(box, 'scrollHeight', { value: 600, configurable: true });
+    box.dispatchEvent(new Event('scroll'));
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const checkbox = query<HTMLInputElement>('#checkbox-disclaimer-consent');
+    checkbox.checked = true;
+    checkbox.dispatchEvent(new Event('change'));
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(submitReconsentBtn.disabled).toBe(false);
+
+    fakeBff.shouldFailReconsent = true;
+    submitReconsentBtn.click();
+    await flushMicrotasks();
+    expect(facade.errorMessage()).toBe('Consent update temporarily unavailable');
+    expect(facade.activeView()).toBe('RECONSENT');
+    fakeBff.shouldFailReconsent = false;
+
+    submitReconsentBtn.click();
+    await flushMicrotasks();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(facade.activeView()).toBe('CHAT');
+
+    // 2. Escape hatch button in RECONSENT logs user out cleanly
+    const outdatedAgain = createSyntheticUser('ja', 'Asia/Tokyo', true, 0);
+    fakeBff.user = outdatedAgain;
+    fakeBff.currentSessionUser = outdatedAgain;
+    await facade.initializeLounge();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(facade.activeView()).toBe('RECONSENT');
+    query<HTMLButtonElement>('#btn-reconsent-logout').click();
+    await flushMicrotasks();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(facade.activeView()).toBe('AUTH');
+
+    // 3. Unfinished onboarding resumes straight into ONBOARDING
+    const unfinishedUser = createSyntheticUser('en', 'UTC', false, 1);
+    fakeBff.user = unfinishedUser;
+    fakeBff.currentSessionUser = unfinishedUser;
+    await facade.initializeLounge();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(facade.activeView()).toBe('ONBOARDING');
+    expect(facade.lang()).toBe('en');
   });
 });

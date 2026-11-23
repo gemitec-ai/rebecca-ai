@@ -6,10 +6,13 @@ import type {
   LoungeMessage,
   LoungePersonaBranding,
   LoungeSession,
+  LoungeUser,
 } from '@rebecca/types';
 import { environment } from '../../../environments/environment';
 import {
   LOUNGE_TRANSLATIONS,
+  detectInitialLoungeLanguage,
+  detectInitialLoungeTimezone,
   formatLoungeCopy,
   type LoungeLocaleCopy,
 } from '../i18n/lounge-translations';
@@ -20,7 +23,7 @@ import { LoungeGalleryPort } from '../ports/lounge-gallery.port';
 import { LoungeSessionPort } from '../ports/lounge-session.port';
 
 /** Top-level UI views in the Gemitec Private Lounge application. */
-export type LoungeActiveView = 'AUTH' | 'ONBOARDING' | 'CHAT' | 'GALLERY' | 'OPTIONS';
+export type LoungeActiveView = 'AUTH' | 'RECONSENT' | 'ONBOARDING' | 'CHAT' | 'GALLERY' | 'OPTIONS';
 
 /** Authentication tab modes on the X-linked entrance view. */
 export type LoungeAuthMode = 'LOGIN' | 'SIGNUP';
@@ -33,9 +36,9 @@ function resolveFallbackPersonaBranding(): LoungePersonaBranding {
 }
 
 /**
- * Signal-driven application facade orchestrating Auth, Onboarding locale confirmation,
- * Single-Session Chat, Slide-Over Sidebar, Gallery collection, Options preferences, and
- * 2-step irreversible Account Withdrawal.
+ * Signal-driven application facade orchestrating Bootstrapping Auto-Resume, Auth (`LOGIN`-first),
+ * Integer-Versioned Re-Consent Gate, Onboarding locale confirmation, Single-Session Chat with
+ * Gallery Unlock Juice, Slide-Over Sidebar, Gallery collection, Options, and 2-step Withdrawal.
  */
 @Injectable({ providedIn: 'root' })
 export class LoungeFacadeService {
@@ -45,14 +48,15 @@ export class LoungeFacadeService {
   private readonly sessionPort = inject(LoungeSessionPort);
   private readonly galleryPort = inject(LoungeGalleryPort);
 
+  public readonly isBootstrapping = signal<boolean>(true);
   public readonly activeView = signal<LoungeActiveView>('AUTH');
-  public readonly authMode = signal<LoungeAuthMode>('SIGNUP');
+  public readonly authMode = signal<LoungeAuthMode>('LOGIN');
   public readonly isSidebarOpen = signal<boolean>(false);
-  public readonly lang = signal<LoungeLanguage>('ja');
-  public readonly timezone = signal<string>('Asia/Tokyo');
+  public readonly lang = signal<LoungeLanguage>(detectInitialLoungeLanguage());
+  public readonly timezone = signal<string>(detectInitialLoungeTimezone());
   public readonly optionsSavedNotice = signal<string | null>(null);
   public readonly appVersion = signal<string>(environment.appVersion);
-  public readonly disclaimerVersion = signal<string>(environment.disclaimerVersion);
+  public readonly disclaimerVersion = signal<number>(environment.disclaimerVersion);
 
   public readonly disclaimerScrollProgress = signal<number>(0);
   public readonly disclaimerScrolledToBottom = signal<boolean>(false);
@@ -71,6 +75,8 @@ export class LoungeFacadeService {
   public readonly activeSession = signal<LoungeSession | null>(null);
   public readonly messages = signal<readonly LoungeMessage[]>([]);
   public readonly galleryItems = signal<readonly LoungeGalleryItem[]>([]);
+  public readonly newlyUnlockedGalleryItem = signal<LoungeGalleryItem | null>(null);
+  public readonly newlyUnlockedAssetIds = signal<readonly string[]>([]);
 
   public readonly personaBranding = signal<LoungePersonaBranding>(resolveFallbackPersonaBranding());
 
@@ -104,8 +110,36 @@ export class LoungeFacadeService {
     return Math.min(100, Math.max(0, Math.round((sub.remainingChatTurns / sub.dailyTurnQuota) * 100)));
   });
 
+  /** Promise resolving when initial startup config and silent session restoration finish. */
+  public readonly ready: Promise<void>;
+
   constructor() {
-    void this.loadRuntimeConfig();
+    if (typeof document !== 'undefined') {
+      document.documentElement.lang = this.lang();
+    }
+    this.ready = this.initializeLounge();
+  }
+
+  /**
+   * Loads runtime configuration and silently checks `authPort.getCurrentSession()` before clearing
+   * the startup splash state so authenticated users jump directly to their active screen without flicker.
+   */
+  public async initializeLounge(): Promise<void> {
+    this.isBootstrapping.set(true);
+    try {
+      await this.loadRuntimeConfig();
+      const session = await this.authPort.getCurrentSession();
+      if (session) {
+        await this.hydrateAuthenticatedLounge();
+        this.resolvePostAuthView(this.accountSummary()?.user ?? session.user);
+      } else {
+        this.activeView.set('AUTH');
+      }
+    } catch {
+      this.activeView.set('AUTH');
+    } finally {
+      this.isBootstrapping.set(false);
+    }
   }
 
   /** Interpolates `{name}` in localized copy templates using current active persona name. */
@@ -210,14 +244,14 @@ export class LoungeFacadeService {
     this.disclaimerChecked.set(checked);
   }
 
-  /** Authenticates an existing X-linked user and opens their persistent Private Lounge Chat session. */
+  /** Authenticates an existing X-linked user and routes to RECONSENT, ONBOARDING, or CHAT cleanly. */
   public async submitLoginWithX(idToken = 'x-session-id-token'): Promise<void> {
     this.isLoading.set(true);
     this.errorMessage.set(null);
     try {
-      await this.authPort.loginWithX({ idToken });
+      const authSession = await this.authPort.loginWithX({ idToken });
       await this.hydrateAuthenticatedLounge();
-      this.activeView.set('CHAT');
+      this.resolvePostAuthView(this.accountSummary()?.user ?? authSession.user);
       this.isSidebarOpen.set(false);
     } catch (err) {
       this.errorMessage.set(err instanceof Error ? err.message : 'Login failed');
@@ -242,7 +276,7 @@ export class LoungeFacadeService {
     this.errorMessage.set(null);
     try {
       const scrolledAt = this.disclaimerScrolledAt() ?? new Date().toISOString();
-      await this.authPort.signUpWithX({
+      const authSession = await this.authPort.signUpWithX({
         idToken,
         xOAuthCode,
         language: this.lang(),
@@ -257,7 +291,7 @@ export class LoungeFacadeService {
         },
       });
       await this.hydrateAuthenticatedLounge();
-      this.activeView.set('ONBOARDING');
+      this.resolvePostAuthView(this.accountSummary()?.user ?? authSession.user);
       this.isSidebarOpen.set(false);
     } catch (err) {
       this.errorMessage.set(err instanceof Error ? err.message : 'Sign-up failed');
@@ -267,7 +301,39 @@ export class LoungeFacadeService {
   }
 
   /**
-   * Completes Sign-Up Step 3 & Step 4 (`言語・タイムゾーン確定 -> 使用開始`) and enters Chat.
+   * Submits scroll-verified re-acceptance when the legal/privacy disclaimer version has increased,
+   * unlocking `ONBOARDING` (if incomplete) or returning cleanly to `CHAT`.
+   */
+  public async submitDisclaimerReconsent(): Promise<void> {
+    if (!this.canSubmitSignUp()) {
+      this.errorMessage.set(this.t('scrollRequiredError'));
+      return;
+    }
+    this.isLoading.set(true);
+    this.errorMessage.set(null);
+    try {
+      const scrolledAt = this.disclaimerScrolledAt() ?? new Date().toISOString();
+      const updatedUser = await this.accountPort.updateDisclaimerConsent({
+        disclaimerConsent: {
+          disclaimerVersion: this.disclaimerVersion(),
+          agreedToGeminiTrainingUsage: true,
+          agreedToZeroPiiProhibition: true,
+          agreedToOneWayMemoryIsolation: true,
+          scrolledToBottomAt: scrolledAt,
+          consentedAt: new Date().toISOString(),
+        },
+      });
+      this.accountSummary.update((prev) => (prev ? { ...prev, user: updatedUser } : prev));
+      this.resolvePostAuthView(updatedUser);
+    } catch (err) {
+      this.errorMessage.set(err instanceof Error ? err.message : 'Failed to update consent');
+    } finally {
+      this.isLoading.set(false);
+    }
+  }
+
+  /**
+   * Completes Sign-Up Step 3 & Step 4 (`言語・タイムゾーン確定 -> 使用開始`) and marks `onboardingCompleted = true`.
    */
   public async completeOnboarding(): Promise<void> {
     this.isLoading.set(true);
@@ -276,6 +342,7 @@ export class LoungeFacadeService {
       const updatedUser = await this.accountPort.updatePreferences({
         language: this.lang(),
         timezone: this.timezone(),
+        completeOnboarding: true,
       });
       this.accountSummary.update((prev) => (prev ? { ...prev, user: updatedUser } : prev));
       this.activeView.set('CHAT');
@@ -295,8 +362,21 @@ export class LoungeFacadeService {
   /** Navigates across authenticated Lounge views and closes the Sidebar drawer automatically. */
   public navigateTo(view: 'CHAT' | 'GALLERY' | 'OPTIONS'): void {
     this.optionsSavedNotice.set(null);
+    if (view === 'GALLERY') {
+      this.newlyUnlockedGalleryItem.set(null);
+    }
     this.activeView.set(view);
     this.isSidebarOpen.set(false);
+  }
+
+  /** Dismisses the celebratory New Gallery Unlock toast notification cleanly. */
+  public dismissUnlockedGalleryNotice(): void {
+    this.newlyUnlockedGalleryItem.set(null);
+  }
+
+  /** Returns whether the given Bot asset ID was unlocked during the active session turn. */
+  public isNewlyUnlockedAsset(assetId?: string): boolean {
+    return Boolean(assetId && this.newlyUnlockedAssetIds().includes(assetId));
   }
 
   /** Submits a new chat turn in the user's single session and updates messages, quota, and Gallery. */
@@ -314,6 +394,10 @@ export class LoungeFacadeService {
 
       const unlocked = res.unlockedGalleryItem;
       if (unlocked) {
+        const alreadyUnlocked = this.galleryItems().some(
+          (item) =>
+            (item.id === unlocked.id || item.assetId === unlocked.assetId) && item.unlocked,
+        );
         this.galleryItems.update((items) => {
           const exists = items.some(
             (item) => item.id === unlocked.id || item.assetId === unlocked.assetId,
@@ -324,6 +408,12 @@ export class LoungeFacadeService {
               )
             : [unlocked, ...items];
         });
+        if (!alreadyUnlocked && unlocked.unlocked) {
+          this.newlyUnlockedGalleryItem.set(unlocked);
+          this.newlyUnlockedAssetIds.update((ids) =>
+            ids.includes(unlocked.assetId) ? ids : [...ids, unlocked.assetId],
+          );
+        }
       }
 
       this.accountSummary.update((prev) =>
@@ -422,16 +512,35 @@ export class LoungeFacadeService {
     this.activeSession.set(null);
     this.messages.set([]);
     this.galleryItems.set([]);
+    this.newlyUnlockedGalleryItem.set(null);
+    this.newlyUnlockedAssetIds.set([]);
     this.composerDraft.set('');
     this.optionsSavedNotice.set(null);
-    this.disclaimerChecked.set(false);
-    this.disclaimerScrolledToBottom.set(false);
-    this.disclaimerScrollProgress.set(0);
-    this.disclaimerScrolledAt.set(null);
+    this.resetDisclaimerScrollState();
     this.closeDeleteAccountModal();
     this.isSidebarOpen.set(false);
     this.activeView.set('AUTH');
     this.authMode.set(nextAuthMode);
+  }
+
+  private resetDisclaimerScrollState(): void {
+    this.disclaimerChecked.set(false);
+    this.disclaimerScrolledToBottom.set(false);
+    this.disclaimerScrollProgress.set(0);
+    this.disclaimerScrolledAt.set(null);
+  }
+
+  private resolvePostAuthView(user: LoungeUser): void {
+    if (user.disclaimerConsent.disclaimerVersion < this.disclaimerVersion()) {
+      this.resetDisclaimerScrollState();
+      this.activeView.set('RECONSENT');
+      return;
+    }
+    if (!user.onboardingCompleted) {
+      this.activeView.set('ONBOARDING');
+      return;
+    }
+    this.activeView.set('CHAT');
   }
 
   private markDisclaimerScrolledToBottom(): void {
