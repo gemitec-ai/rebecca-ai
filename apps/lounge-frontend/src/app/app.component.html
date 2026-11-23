@@ -581,7 +581,7 @@
     }
 
     <!-- Main Content Viewport -->
-    <main class="lounge-workspace">
+    <main #loungeWorkspace class="lounge-workspace">
       @switch (facade.activeView()) {
         @case ('CHAT') {
           <div class="chat-layout">
@@ -617,65 +617,110 @@
 
             <!-- Primary Single-Session Chat Stream & Composer -->
             <section class="chat-panel">
-              <div #chatStream id="chat-message-stream" class="chat-stream" aria-live="polite">
-                @for (msg of facade.messages(); track msg.id) {
-                  @if (msg.role === 'ASSISTANT') {
-                    <article class="message-row from-assistant">
-                      <img
-                        class="ai-chat-avatar"
-                        [src]="getEmotionAvatarPath(msg.emotion)"
-                        [alt]="facade.personaDisplayName()"
-                      />
-                      <div class="message-bubble assistant-bubble">
-                        <div class="message-meta">
-                          <span class="sender-name">{{ facade.personaDisplayName() }}</span>
-                          <time class="message-time" [attr.datetime]="msg.createdAt">
-                            {{ formatMessageTime(msg.createdAt) }}
-                          </time>
-                        </div>
-                        <p class="message-text">{{ msg.content }}</p>
-
-                        @if (msg.imageUrl) {
-                          <button
-                            type="button"
-                            class="chat-inline-image-btn"
-                            [attr.aria-label]="facade.t('viewFullImageAria')"
-                            (click)="openImagePreview(msg.imageUrl, $event)"
-                          >
-                            <img
-                              class="chat-inline-image"
-                              [src]="msg.imageUrl"
-                              [alt]="facade.personaDisplayName()"
-                              (load)="scrollChatToBottom()"
-                            />
-                            <span class="inline-image-zoom-hint" aria-hidden="true">
-                              <span class="material-icons">zoom_in</span>
-                            </span>
-                            @if (facade.isNewlyUnlockedAsset(msg.imageAssetId)) {
-                              <span class="inline-new-gallery-badge">
-                                <span class="material-icons" aria-hidden="true">photo_library</span>
-                                <span>{{ facade.t('newGalleryBadge') }}</span>
-                              </span>
-                            }
-                          </button>
-                        }
-                      </div>
-                    </article>
-                  } @else {
-                    <article class="message-row from-user">
-                      <div class="message-bubble user-bubble">
-                        <div class="message-meta">
-                          <span class="sender-name">
-                            {{ facade.accountSummary()?.user?.xHandle ?? '@you' }}
-                          </span>
-                          <time class="message-time" [attr.datetime]="msg.createdAt">
-                            {{ formatMessageTime(msg.createdAt) }}
-                          </time>
-                        </div>
-                        <p class="message-text">{{ msg.content }}</p>
-                      </div>
-                    </article>
+              <div class="chat-stream-stage">
+                <div
+                  #chatStream
+                  id="chat-message-stream"
+                  class="chat-stream"
+                  aria-live="polite"
+                  (scroll)="onChatScroll($event)"
+                >
+                  @if (facade.isLoadingOlderMessages()) {
+                    <div id="chat-history-loading" class="chat-history-status" role="status">
+                      <span class="material-icons spin-icon" aria-hidden="true">autorenew</span>
+                      <span>{{ facade.t('chatLoadingOlder') }}</span>
+                    </div>
+                  } @else if (facade.hasMoreMessages()) {
+                    <div class="chat-history-status">
+                      <button
+                        id="btn-load-older-messages"
+                        type="button"
+                        class="chat-load-older-btn"
+                        (click)="triggerLoadOlderMessages()"
+                      >
+                        <span class="material-icons" aria-hidden="true">history</span>
+                        <span>{{ facade.t('chatLoadOlderBtn') }}</span>
+                      </button>
+                    </div>
+                  } @else if (facade.messages().length > 0) {
+                    <div id="chat-history-beginning" class="chat-history-beginning" role="status">
+                      {{ facade.t('chatBeginningOfHistory') }}
+                    </div>
                   }
+
+                  @for (msg of facade.messages(); track msg.id) {
+                    @if (msg.role === 'ASSISTANT') {
+                      <article class="message-row from-assistant">
+                        <img
+                          class="ai-chat-avatar"
+                          [src]="getEmotionAvatarPath(msg.emotion)"
+                          [alt]="facade.personaDisplayName()"
+                        />
+                        <div class="message-bubble assistant-bubble">
+                          <div class="message-meta">
+                            <span class="sender-name">{{ facade.personaDisplayName() }}</span>
+                            <time class="message-time" [attr.datetime]="msg.createdAt">
+                              {{ formatMessageTime(msg.createdAt) }}
+                            </time>
+                          </div>
+                          <p class="message-text">{{ msg.content }}</p>
+
+                          @if (msg.imageUrl) {
+                            <button
+                              type="button"
+                              class="chat-inline-image-btn"
+                              [attr.aria-label]="facade.t('viewFullImageAria')"
+                              (click)="openImagePreview(msg.imageUrl, $event)"
+                            >
+                              <img
+                                class="chat-inline-image"
+                                [src]="msg.imageUrl"
+                                [alt]="facade.personaDisplayName()"
+                                (load)="onInlineImageLoad()"
+                              />
+                              <span class="inline-image-zoom-hint" aria-hidden="true">
+                                <span class="material-icons">zoom_in</span>
+                              </span>
+                              @if (facade.isNewlyUnlockedAsset(msg.imageAssetId)) {
+                                <span class="inline-new-gallery-badge">
+                                  <span class="material-icons" aria-hidden="true"
+                                    >photo_library</span
+                                  >
+                                  <span>{{ facade.t('newGalleryBadge') }}</span>
+                                </span>
+                              }
+                            </button>
+                          }
+                        </div>
+                      </article>
+                    } @else {
+                      <article class="message-row from-user">
+                        <div class="message-bubble user-bubble">
+                          <div class="message-meta">
+                            <span class="sender-name">
+                              {{ facade.accountSummary()?.user?.xHandle ?? '@you' }}
+                            </span>
+                            <time class="message-time" [attr.datetime]="msg.createdAt">
+                              {{ formatMessageTime(msg.createdAt) }}
+                            </time>
+                          </div>
+                          <p class="message-text">{{ msg.content }}</p>
+                        </div>
+                      </article>
+                    }
+                  }
+                </div>
+
+                @if (showJumpToLatest()) {
+                  <button
+                    id="btn-jump-to-latest"
+                    type="button"
+                    class="chat-jump-latest-btn"
+                    (click)="jumpToLatestMessage()"
+                  >
+                    <span class="material-icons" aria-hidden="true">arrow_downward</span>
+                    <span>{{ facade.t('chatJumpToLatest') }}</span>
+                  </button>
                 }
               </div>
 
@@ -754,7 +799,10 @@
               </div>
             </header>
 
-            <div class="gallery-grid">
+            <div
+              class="gallery-grid"
+              [attr.aria-busy]="facade.isLoadingGalleryPage() ? 'true' : null"
+            >
               @for (item of facade.galleryItems(); track item.id) {
                 @if (item.unlocked) {
                   <button
@@ -783,6 +831,23 @@
                 }
               }
             </div>
+
+            @if (facade.galleryTotalPages() > 1 || facade.galleryTotalItems() > 0) {
+              <app-lounge-pagination
+                id="gallery-pagination"
+                [currentPage]="facade.galleryCurrentPage()"
+                [totalPages]="facade.galleryTotalPages()"
+                [totalItems]="facade.galleryTotalItems()"
+                [pageSize]="galleryPageSize"
+                [loading]="facade.isLoadingGalleryPage()"
+                [showingLabel]="facade.t('paginationShowingLabel')"
+                [pageLabel]="facade.t('paginationPageLabel')"
+                [itemsUnit]="facade.t('paginationItemsUnit')"
+                [prevAriaLabel]="facade.t('paginationPrevAria')"
+                [nextAriaLabel]="facade.t('paginationNextAria')"
+                (pageChange)="onGalleryPageChange($event)"
+              />
+            }
           </section>
         }
 

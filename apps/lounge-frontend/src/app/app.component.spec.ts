@@ -8,7 +8,11 @@ import type {
   LoungeDeleteAccountRequestDto,
   LoungeEmotionState,
   LoungeGalleryItem,
+  LoungeGalleryListResponseDto,
   LoungeLanguage,
+  LoungeMessage,
+  LoungeMessageListResponseDto,
+  LoungePaginationQueryDto,
   LoungePersonaBranding,
   LoungeSendMessageResponseDto,
   LoungeSession,
@@ -32,6 +36,7 @@ import { LoungeGalleryPort } from './core/ports/lounge-gallery.port';
 import { LoungeSessionPort } from './core/ports/lounge-session.port';
 import { LoungeFacadeService } from './core/services/lounge-facade.service';
 import { LoungeDropdownComponent } from './shared/components/lounge-dropdown/lounge-dropdown.component';
+import { LoungePaginationComponent } from './shared/components/lounge-pagination/lounge-pagination.component';
 import { ReconsentModalComponent } from './shared/components/reconsent-modal/reconsent-modal.component';
 
 const SYNTHETIC_BRANDING: LoungePersonaBranding = {
@@ -104,6 +109,8 @@ class InMemoryLoungeBffFake
   public shouldFailDelete = false;
   public shouldFailSend = false;
   public shouldFailLogout = false;
+  public shouldFailListMessages = false;
+  public shouldFailListGallery = false;
   public simulatedMidSessionRequiredVersion?: number;
   public deleteRequests: LoungeDeleteAccountRequestDto[] = [];
   public lastRequestedLanguage?: LoungeLanguage;
@@ -121,23 +128,23 @@ class InMemoryLoungeBffFake
     updatedAt: '2026-11-22T12:05:00.000Z',
   };
 
-  public messages = [
+  public messages: LoungeMessage[] = [
     {
       id: 'msg_init_u',
       sessionId: 'uid_test_001',
       uid: 'uid_test_001',
-      role: 'USER' as const,
+      role: 'USER',
       content: 'こんにちは',
-      emotion: 'NEUTRAL' as LoungeEmotionState,
+      emotion: 'NEUTRAL',
       createdAt: '2026-11-22T12:01:00.000Z',
     },
     {
       id: 'msg_init_a',
       sessionId: 'uid_test_001',
       uid: 'uid_test_001',
-      role: 'ASSISTANT' as const,
+      role: 'ASSISTANT',
       content: 'おっ、来たじゃん！',
-      emotion: 'SURPRISED' as LoungeEmotionState,
+      emotion: 'SURPRISED',
       imageAssetId: 'bot_img_01',
       imageUrl: 'assets/gallery_morning.webp',
       createdAt: '2026-11-22T12:02:00.000Z',
@@ -301,11 +308,60 @@ class InMemoryLoungeBffFake
     return this.session;
   }
 
-  public async listMessages() {
+  public async listMessages(
+    query?: LoungePaginationQueryDto,
+  ): Promise<LoungeMessageListResponseDto> {
+    if (this.shouldFailListMessages) {
+      throw new Error('Failed to load conversation history');
+    }
+    const rawLimit = query?.limit;
+    const limit =
+      typeof rawLimit === 'number' && Number.isFinite(rawLimit)
+        ? Math.min(Math.max(Math.trunc(rawLimit), 1), 100)
+        : 20;
+    const totalItems = this.messages.length;
+    const totalPages = Math.max(1, Math.ceil(totalItems / limit));
+
+    if (query?.cursor) {
+      const cursorIndex = this.messages.findIndex((msg) => msg.id === query.cursor);
+      if (cursorIndex <= 0) {
+        return {
+          data: [],
+          meta: {
+            currentPage: totalPages,
+            limit,
+            totalItems,
+            totalPages,
+            nextCursor: null,
+            hasMore: false,
+          },
+        };
+      }
+      const startIdx = Math.max(0, cursorIndex - limit);
+      const data = this.messages.slice(startIdx, cursorIndex);
+      const hasMore = startIdx > 0;
+      const nextCursor = hasMore && data.length > 0 ? data[0].id : null;
+      const page =
+        totalItems === 0 ? 1 : Math.min(totalPages, Math.ceil((totalItems - startIdx) / limit));
+      return {
+        data,
+        meta: { currentPage: page, limit, totalItems, totalPages, nextCursor, hasMore },
+      };
+    }
+
+    const rawPage = query?.page;
+    const page =
+      typeof rawPage === 'number' && Number.isFinite(rawPage)
+        ? Math.max(1, Math.trunc(rawPage))
+        : 1;
+    const endIdx = Math.max(0, totalItems - (page - 1) * limit);
+    const startIdx = Math.max(0, endIdx - limit);
+    const data = this.messages.slice(startIdx, endIdx);
+    const hasMore = startIdx > 0;
+    const nextCursor = hasMore && data.length > 0 ? data[0].id : null;
     return {
-      items: this.messages,
-      nextCursor: null,
-      totalCount: this.messages.length,
+      data,
+      meta: { currentPage: page, limit, totalItems, totalPages, nextCursor, hasMore },
     };
   }
 
@@ -334,7 +390,12 @@ class InMemoryLoungeBffFake
       unlockedAt: '2026-11-22T12:10:00.000Z',
       sourceSessionId: this.session.id,
     };
-    this.galleryItems = [this.galleryItems[0], unlockedGalleryItem];
+    const existsInGallery = this.galleryItems.some((item) => item.id === unlockedGalleryItem.id);
+    this.galleryItems = existsInGallery
+      ? this.galleryItems.map((item) =>
+          item.id === unlockedGalleryItem.id ? unlockedGalleryItem : item,
+        )
+      : [...this.galleryItems, unlockedGalleryItem];
     this.remainingTurns = Math.max(0, this.remainingTurns - 1);
 
     return {
@@ -368,12 +429,36 @@ class InMemoryLoungeBffFake
     };
   }
 
-  public async listGallery() {
+  public async listGallery(
+    query?: LoungePaginationQueryDto,
+  ): Promise<LoungeGalleryListResponseDto> {
+    if (this.shouldFailListGallery) {
+      throw new Error('Failed to load gallery collection');
+    }
+    const rawLimit = query?.limit;
+    const limit =
+      typeof rawLimit === 'number' && Number.isFinite(rawLimit)
+        ? Math.min(Math.max(Math.trunc(rawLimit), 1), 100)
+        : 12;
+    const totalItems = this.galleryItems.length;
+    const totalPages = Math.max(1, Math.ceil(totalItems / limit));
+    const unlockedCount = this.galleryItems.filter((item) => item.unlocked).length;
+
+    const rawPage = query?.page;
+    const page =
+      typeof rawPage === 'number' && Number.isFinite(rawPage)
+        ? Math.max(1, Math.trunc(rawPage))
+        : 1;
+    const startIdx = (page - 1) * limit;
+    const endIdx = Math.min(totalItems, startIdx + limit);
+    const data = startIdx < totalItems ? this.galleryItems.slice(startIdx, endIdx) : [];
+    const hasMore = endIdx < totalItems;
+    const nextCursor = hasMore && data.length > 0 ? data[data.length - 1].id : null;
+
     return {
-      items: this.galleryItems,
-      unlockedCount: this.galleryItems.filter((item) => item.unlocked).length,
-      totalCount: this.galleryItems.length,
-      nextCursor: null,
+      data,
+      meta: { currentPage: page, limit, totalItems, totalPages, nextCursor, hasMore },
+      summary: { unlockedCount, totalCount: totalItems },
     };
   }
 }
@@ -1059,14 +1144,72 @@ describe('Gemitec Private Lounge Root Shell (AppComponent)', () => {
 
     const singleton = await adapter.getSession();
     expect(singleton.id).toBe('uid_preview_001');
-    const msgs = await adapter.listMessages();
-    expect(msgs.items.length).toBe(3);
+    const msgsPage1 = await adapter.listMessages({ page: 1, limit: 20 });
+    expect(msgsPage1.data.length).toBe(20);
+    expect(msgsPage1.meta).toEqual({
+      currentPage: 1,
+      limit: 20,
+      totalItems: 26,
+      totalPages: 2,
+      nextCursor: 'msg_007',
+      hasMore: true,
+    });
+    const nextChatCursor = msgsPage1.meta.nextCursor;
+    if (!nextChatCursor) {
+      throw new Error('Expected nextCursor on chat page 1');
+    }
+    const msgsPage2 = await adapter.listMessages({
+      limit: 20,
+      cursor: nextChatCursor,
+    });
+    expect(msgsPage2.data.length).toBe(6);
+    expect(msgsPage2.data[0].id).toBe('msg_001');
+    expect(msgsPage2.meta).toEqual({
+      currentPage: 2,
+      limit: 20,
+      totalItems: 26,
+      totalPages: 2,
+      nextCursor: null,
+      hasMore: false,
+    });
+    const invalidCursorMsgs = await adapter.listMessages({
+      limit: 20,
+      cursor: 'missing_msg_cursor',
+    });
+    expect(invalidCursorMsgs.data).toEqual([]);
+    expect(invalidCursorMsgs.meta.hasMore).toBe(false);
+
+    const galleryPage1 = await adapter.listGallery({ page: 1, limit: 12 });
+    expect(galleryPage1.data.length).toBe(12);
+    expect(galleryPage1.meta.totalPages).toBe(2);
+    expect(galleryPage1.meta.hasMore).toBe(true);
+    expect(galleryPage1.summary).toEqual({ unlockedCount: 5, totalCount: 18 });
+    const galleryPage2 = await adapter.listGallery({ page: 2, limit: 12 });
+    expect(galleryPage2.data.length).toBe(6);
+    expect(galleryPage2.meta.hasMore).toBe(false);
+    expect(galleryPage2.meta.nextCursor).toBeNull();
+    const nextGalleryCursor = galleryPage1.meta.nextCursor;
+    if (!nextGalleryCursor) {
+      throw new Error('Expected nextCursor on gallery page 1');
+    }
+    const galleryByCursor = await adapter.listGallery({
+      limit: 12,
+      cursor: nextGalleryCursor,
+    });
+    expect(galleryByCursor.data.map((item) => item.id)).toEqual(
+      galleryPage2.data.map((item) => item.id),
+    );
+    const invalidCursorGallery = await adapter.listGallery({
+      limit: 12,
+      cursor: 'missing_gallery_cursor',
+    });
+    expect(invalidCursorGallery.data).toEqual([]);
 
     await expect(adapter.sendMessage({ content: '   ' })).rejects.toThrow('cannot be empty');
     const turnRes = await adapter.sendMessage({ content: 'こんにちは' });
     expect(turnRes.unlockedGalleryItem?.unlocked).toBe(true);
-    const gallery = await adapter.listGallery();
-    expect(gallery.unlockedCount).toBeGreaterThanOrEqual(2);
+    const gallery = await adapter.listGallery({ page: 1, limit: 12 });
+    expect(gallery.summary.unlockedCount).toBe(6);
 
     // Exhaust preview quota and assert quota error
     for (let i = 0; i < 23; i++) {
@@ -1378,5 +1521,283 @@ describe('Gemitec Private Lounge Root Shell (AppComponent)', () => {
     expect(facade.activeView()).toBe('ONBOARDING');
     expect(facade.isReconsentRequired()).toBe(false);
     expect(facade.lang()).toBe('en');
+  });
+
+  it('supports Gallery multi-page navigation, preserves unlocked count across pages, and refreshes on out-of-page unlock', async () => {
+    fakeBff.galleryItems = Array.from({ length: 18 }, (_, idx) => {
+      const seq = String(idx + 1).padStart(2, '0');
+      const assetId = `bot_img_${seq}`;
+      const unlocked = idx < 5;
+      return {
+        id: `uid_test_001_${assetId}`,
+        uid: 'uid_test_001',
+        assetId,
+        imageUrl: unlocked ? 'assets/gallery_morning.webp' : '',
+        unlocked,
+        ...(unlocked
+          ? { unlockedAt: '2026-11-22T12:00:00.000Z', sourceSessionId: 'uid_test_001' }
+          : {}),
+      };
+    });
+
+    await facade.submitLoginWithX();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    facade.navigateTo('GALLERY');
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(facade.galleryCurrentPage()).toBe(1);
+    expect(facade.galleryTotalPages()).toBe(2);
+    expect(facade.galleryItems().length).toBe(12);
+    expect(component.unlockedGalleryCount()).toBe(5);
+    expect(component.totalGalleryCount()).toBe(18);
+    expect(fixture.nativeElement.querySelectorAll('.gallery-tile').length).toBe(12);
+
+    const paginationEl = query<HTMLElement>('#gallery-pagination');
+    const page2Btn = Array.from(paginationEl.querySelectorAll('button')).find(
+      (btn) => btn.textContent?.trim() === '2',
+    );
+    if (!page2Btn) {
+      throw new Error('Expected page 2 button');
+    }
+    page2Btn.click();
+    await flushMicrotasks();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(facade.galleryCurrentPage()).toBe(2);
+    expect(facade.galleryItems().length).toBe(6);
+    expect(fixture.nativeElement.querySelectorAll('.gallery-tile').length).toBe(6);
+    expect(component.unlockedGalleryCount()).toBe(5);
+
+    // Out-of-page already-unlocked encounter while viewing Page 2 must NOT inflate count
+    // and refreshes Page 1 cleanly upon returning to GALLERY
+    await facade.sendMessage('Page 2滞在中の既存アンロック確認');
+    expect(component.unlockedGalleryCount()).toBe(5);
+    facade.navigateTo('GALLERY');
+    await flushMicrotasks();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(facade.galleryCurrentPage()).toBe(1);
+    expect(component.unlockedGalleryCount()).toBe(5);
+
+    // Gallery fetch failure sets explicit errorMessage and resets loading flag
+    fakeBff.shouldFailListGallery = true;
+    await facade.loadGalleryPage(2);
+    expect(facade.errorMessage()).toBe('Failed to load gallery collection');
+    expect(facade.isLoadingGalleryPage()).toBe(false);
+    fakeBff.shouldFailListGallery = false;
+
+    // Unlocking a brand-new item when a session starts with an empty gallery increments counts 0 -> 1
+    await facade.logout();
+    fakeBff.galleryItems = [];
+    await facade.submitLoginWithX();
+    expect(component.totalGalleryCount()).toBe(0);
+    await facade.sendMessage('空ギャラリーからの初回解放');
+    expect(facade.galleryTotalItems()).toBe(1);
+    expect(component.totalGalleryCount()).toBe(1);
+    expect(component.unlockedGalleryCount()).toBe(1);
+  });
+
+  it('lazy-loads older Chat turns upward without a sort toggle, anchors scroll position, and toggles Jump-to-latest', async () => {
+    fakeBff.messages = Array.from({ length: 26 }, (_, idx) => {
+      const seq = String(idx + 1).padStart(3, '0');
+      return {
+        id: `msg_${seq}`,
+        sessionId: 'uid_test_001',
+        uid: 'uid_test_001',
+        role: idx % 2 === 0 ? 'ASSISTANT' : 'USER',
+        content: `Conversation message ${seq}`,
+        emotion: idx % 2 === 0 ? 'HAPPY' : 'NEUTRAL',
+        createdAt: new Date(Date.parse('2026-11-21T10:00:00.000Z') + idx * 60_000).toISOString(),
+      };
+    });
+
+    await facade.submitLoginWithX();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(facade.messages().length).toBe(20);
+    expect(facade.messages()[0].id).toBe('msg_007');
+    expect(facade.messages()[19].id).toBe('msg_026');
+    expect(facade.hasMoreMessages()).toBe(true);
+    expect(facade.oldestMessageCursor()).toBe('msg_007');
+    expect(facade.messagesTotalItems()).toBe(26);
+    expect(query<HTMLButtonElement>('#btn-load-older-messages')).toBeTruthy();
+
+    // Verify no oldest-first / newest-first sort toggle exists anywhere in Chat DOM
+    const chatPanelText = query<HTMLElement>('.chat-panel').textContent ?? '';
+    expect(chatPanelText).not.toMatch(/古い順|新しい順|Sort order/i);
+
+    const streamEl = query<HTMLElement>('#chat-message-stream');
+    let currentScrollTop = 500;
+    const getScrollHeight = () => (facade.messages().length >= 26 ? 1480 : 1000);
+    Object.defineProperty(streamEl, 'scrollHeight', {
+      get: getScrollHeight,
+      configurable: true,
+    });
+    Object.defineProperty(streamEl, 'clientHeight', {
+      value: 400,
+      configurable: true,
+    });
+    Object.defineProperty(streamEl, 'scrollTop', {
+      get: () => currentScrollTop,
+      set: (val: number) => {
+        currentScrollTop = val;
+      },
+      configurable: true,
+    });
+
+    // Scrolled far from bottom (> 80px) reveals Jump-to-latest pill & guards onInlineImageLoad()
+    streamEl.dispatchEvent(new Event('scroll'));
+    fixture.detectChanges();
+    expect(component.showJumpToLatest()).toBe(true);
+    expect(query<HTMLButtonElement>('#btn-jump-to-latest')).toBeTruthy();
+    component.onInlineImageLoad();
+    expect(currentScrollTop).toBe(500);
+
+    // Trigger upward boundary at scrollTop <= 40 -> prepends msg_001..006 & anchors scrollTop by delta (+480)
+    currentScrollTop = 10;
+    streamEl.dispatchEvent(new Event('scroll'));
+    await flushMicrotasks();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(facade.messages().length).toBe(26);
+    expect(facade.messages()[0].id).toBe('msg_001');
+    expect(facade.hasMoreMessages()).toBe(false);
+    expect(facade.oldestMessageCursor()).toBeNull();
+    expect(currentScrollTop).toBe(490);
+    expect(query<HTMLElement>('#chat-history-beginning')).toBeTruthy();
+
+    // Scrolling again once exhausted or without cursor returns false safely
+    expect(await facade.loadOlderMessages()).toBe(false);
+    facade.hasMoreMessages.set(true);
+    facade.oldestMessageCursor.set(null);
+    expect(await facade.loadOlderMessages()).toBe(false);
+
+    // Jump-to-latest pill returns scroll position to bottom & hides pill; positive onInlineImageLoad anchors bottom
+    query<HTMLButtonElement>('#btn-jump-to-latest').click();
+    fixture.detectChanges();
+    expect(currentScrollTop).toBe(getScrollHeight());
+    expect(component.showJumpToLatest()).toBe(false);
+    currentScrollTop = 120;
+    component.onInlineImageLoad();
+    expect(currentScrollTop).toBe(getScrollHeight());
+
+    // Upward fetch error populates errorMessage cleanly
+    fakeBff.shouldFailListMessages = true;
+    facade.hasMoreMessages.set(true);
+    facade.oldestMessageCursor.set('msg_007');
+    expect(await facade.loadOlderMessages()).toBe(false);
+    expect(facade.errorMessage()).toBe('Failed to load conversation history');
+    expect(facade.isLoadingOlderMessages()).toBe(false);
+
+    // Logout resets all pagination state cleanly
+    await facade.logout();
+    expect(facade.hasMoreMessages()).toBe(false);
+    expect(facade.oldestMessageCursor()).toBeNull();
+    expect(facade.messagesTotalItems()).toBe(0);
+    expect(facade.galleryCurrentPage()).toBe(1);
+    expect(facade.galleryTotalPages()).toBe(1);
+    expect(facade.galleryTotalItems()).toBe(0);
+    expect(facade.galleryUnlockedCount()).toBe(0);
+  });
+});
+
+describe('LoungePaginationComponent (Smart Windowing & Boundary Contract)', () => {
+  beforeEach(async () => {
+    await TestBed.configureTestingModule({
+      imports: [LoungePaginationComponent],
+      providers: [provideZonelessChangeDetection()],
+    }).compileComponents();
+  });
+
+  it('renders contiguous pages when totalPages <= 5 and handles 0-item edge range', () => {
+    const fixture = TestBed.createComponent(LoungePaginationComponent);
+    fixture.componentRef.setInput('currentPage', 1);
+    fixture.componentRef.setInput('totalPages', 1);
+    fixture.componentRef.setInput('totalItems', 0);
+    fixture.componentRef.setInput('pageSize', 12);
+    fixture.detectChanges();
+
+    expect(fixture.componentInstance.rangeStart()).toBe(0);
+    expect(fixture.componentInstance.rangeEnd()).toBe(0);
+    expect(fixture.componentInstance.paginationTokens()).toEqual([
+      { key: 'page-1', kind: 'page', page: 1 },
+    ]);
+
+    fixture.componentRef.setInput('totalPages', 4);
+    fixture.componentRef.setInput('totalItems', 42);
+    fixture.componentRef.setInput('currentPage', 2);
+    fixture.detectChanges();
+
+    expect(fixture.componentInstance.rangeStart()).toBe(13);
+    expect(fixture.componentInstance.rangeEnd()).toBe(24);
+    expect(fixture.componentInstance.paginationTokens().map((t) => t.key)).toEqual([
+      'page-1',
+      'page-2',
+      'page-3',
+      'page-4',
+    ]);
+  });
+
+  it('windows start, middle (unique left/right ellipses), and end ranges across > 5 pages and guards emits', () => {
+    const fixture = TestBed.createComponent(LoungePaginationComponent);
+    const emitted: number[] = [];
+    fixture.componentInstance.pageChange.subscribe((page) => emitted.push(page));
+
+    // Start window (page 2 of 8)
+    fixture.componentRef.setInput('currentPage', 2);
+    fixture.componentRef.setInput('totalPages', 8);
+    fixture.componentRef.setInput('totalItems', 96);
+    fixture.detectChanges();
+    expect(fixture.componentInstance.paginationTokens().map((t) => t.key)).toEqual([
+      'page-1',
+      'page-2',
+      'page-3',
+      'page-4',
+      'ellipsis-right',
+      'page-8',
+    ]);
+
+    // Middle window (page 4 of 8 -> both ellipsis-left and ellipsis-right must have distinct keys)
+    fixture.componentRef.setInput('currentPage', 4);
+    fixture.detectChanges();
+    expect(fixture.componentInstance.paginationTokens().map((t) => t.key)).toEqual([
+      'page-1',
+      'ellipsis-left',
+      'page-3',
+      'page-4',
+      'page-5',
+      'ellipsis-right',
+      'page-8',
+    ]);
+
+    // End window (page 7 of 8)
+    fixture.componentRef.setInput('currentPage', 7);
+    fixture.detectChanges();
+    expect(fixture.componentInstance.paginationTokens().map((t) => t.key)).toEqual([
+      'page-1',
+      'ellipsis-left',
+      'page-5',
+      'page-6',
+      'page-7',
+      'page-8',
+    ]);
+
+    // Interactive click emits valid page, while active / out-of-range / loading suppress emission
+    fixture.componentInstance.selectPage(5);
+    fixture.componentInstance.selectPage(7);
+    fixture.componentInstance.selectPage(0);
+    fixture.componentInstance.selectPage(9);
+    fixture.componentRef.setInput('loading', true);
+    fixture.detectChanges();
+    fixture.componentInstance.selectPage(3);
+
+    expect(emitted).toEqual([5]);
   });
 });

@@ -29,6 +29,12 @@ export type LoungeActiveView = 'AUTH' | 'ONBOARDING' | 'CHAT' | 'GALLERY' | 'OPT
 /** Authentication tab modes on the X-linked entrance view. */
 export type LoungeAuthMode = 'LOGIN' | 'SIGNUP';
 
+/** Fixed page size for upward chat history pagination (`desc` windowing). */
+export const LOUNGE_CHAT_PAGE_SIZE = 20;
+
+/** Fixed page size for numbered Gallery collection pagination (12 slots/page). */
+export const LOUNGE_GALLERY_PAGE_SIZE = 12;
+
 const DISCLAIMER_RECONSENT_REQUIRED_CODE: typeof LOUNGE_ERROR_CODE_DISCLAIMER_RECONSENT_REQUIRED =
   'DISCLAIMER_RECONSENT_REQUIRED';
 
@@ -93,9 +99,22 @@ export class LoungeFacadeService {
   public readonly accountSummary = signal<LoungeAccountSummaryDto | null>(null);
   public readonly activeSession = signal<LoungeSession | null>(null);
   public readonly messages = signal<readonly LoungeMessage[]>([]);
+  public readonly isLoadingOlderMessages = signal<boolean>(false);
+  public readonly hasMoreMessages = signal<boolean>(false);
+  public readonly oldestMessageCursor = signal<string | null>(null);
+  public readonly messagesTotalItems = signal<number>(0);
+  public readonly latestMessageAnchorSeq = signal<number>(0);
+
   public readonly galleryItems = signal<readonly LoungeGalleryItem[]>([]);
+  public readonly isLoadingGalleryPage = signal<boolean>(false);
+  public readonly galleryCurrentPage = signal<number>(1);
+  public readonly galleryTotalPages = signal<number>(1);
+  public readonly galleryTotalItems = signal<number>(0);
+  public readonly galleryUnlockedCount = signal<number>(0);
   public readonly newlyUnlockedGalleryItem = signal<LoungeGalleryItem | null>(null);
   public readonly newlyUnlockedAssetIds = signal<readonly string[]>([]);
+  private readonly unlockedGalleryItemIds = new Set<string>();
+  private galleryNeedsRefresh = false;
 
   public readonly personaBranding = signal<LoungePersonaBranding>(resolveFallbackPersonaBranding());
 
@@ -383,9 +402,95 @@ export class LoungeFacadeService {
     this.optionsSavedNotice.set(null);
     if (view === 'GALLERY') {
       this.newlyUnlockedGalleryItem.set(null);
+      if (this.galleryNeedsRefresh) {
+        void this.loadGalleryPage(1);
+      }
     }
     this.activeView.set(view);
     this.isSidebarOpen.set(false);
+  }
+
+  /** Loads a specific 1-based Gallery page via the unified bounded pagination contract. */
+  public async loadGalleryPage(page: number): Promise<void> {
+    if (!Number.isFinite(page)) {
+      return;
+    }
+    const targetPage = Math.max(1, Math.trunc(page));
+    if (this.isLoadingGalleryPage() || !this.activeSession()) {
+      return;
+    }
+    this.isLoadingGalleryPage.set(true);
+    this.errorMessage.set(null);
+    try {
+      const res = await this.galleryPort.listGallery({
+        page: targetPage,
+        limit: LOUNGE_GALLERY_PAGE_SIZE,
+      });
+      if (res.summary.unlockedCount === 0) {
+        this.unlockedGalleryItemIds.clear();
+      }
+      for (const item of res.data) {
+        if (item.unlocked) {
+          this.unlockedGalleryItemIds.add(item.id);
+          this.unlockedGalleryItemIds.add(item.assetId);
+        }
+      }
+      this.galleryItems.set(res.data);
+      this.galleryCurrentPage.set(res.meta.currentPage);
+      this.galleryTotalPages.set(res.meta.totalPages);
+      this.galleryTotalItems.set(res.meta.totalItems);
+      this.galleryUnlockedCount.set(res.summary.unlockedCount);
+      this.galleryNeedsRefresh = false;
+      this.accountSummary.update((prev) =>
+        prev
+          ? {
+              ...prev,
+              unlockedGalleryCount: res.summary.unlockedCount,
+              totalGalleryCount: res.summary.totalCount,
+            }
+          : prev,
+      );
+    } catch (err) {
+      this.errorMessage.set(err instanceof Error ? err.message : 'Failed to load gallery page');
+    } finally {
+      this.isLoadingGalleryPage.set(false);
+    }
+  }
+
+  /**
+   * Prepends the next older slice of conversation turns via `oldestMessageCursor`,
+   * deduplicating by message ID and preserving `latestMessageAnchorSeq`.
+   */
+  public async loadOlderMessages(): Promise<boolean> {
+    if (this.isLoadingOlderMessages() || !this.hasMoreMessages()) {
+      return false;
+    }
+    const cursor = this.oldestMessageCursor();
+    if (!cursor) {
+      this.hasMoreMessages.set(false);
+      return false;
+    }
+    this.isLoadingOlderMessages.set(true);
+    try {
+      const page = await this.sessionPort.listMessages({
+        limit: LOUNGE_CHAT_PAGE_SIZE,
+        cursor,
+      });
+      this.messages.update((prev) => {
+        const existingIds = new Set(prev.map((msg) => msg.id));
+        const older = page.data.filter((msg) => !existingIds.has(msg.id));
+        return older.length > 0 ? [...older, ...prev] : prev;
+      });
+      this.hasMoreMessages.set(page.meta.hasMore);
+      this.oldestMessageCursor.set(page.meta.nextCursor);
+      this.messagesTotalItems.set(page.meta.totalItems);
+      return page.data.length > 0;
+    } catch (err) {
+      this.errorMessage.set(err instanceof Error ? err.message : 'Failed to load older messages');
+      return false;
+    } finally {
+      this.isLoadingOlderMessages.set(false);
+    }
   }
 
   /** Dismisses the celebratory New Gallery Unlock toast notification cleanly. */
@@ -410,24 +515,53 @@ export class LoungeFacadeService {
       const res = await this.sessionPort.sendMessage({ content: trimmed });
       this.activeSession.set(res.session);
       this.messages.update((prev) => [...prev, res.userMessage, res.assistantMessage]);
+      this.messagesTotalItems.update((count) => Math.max(count + 2, this.messages().length));
+      this.latestMessageAnchorSeq.update((seq) => seq + 1);
 
       const unlocked = res.unlockedGalleryItem;
+      let nextUnlockedCount = this.galleryUnlockedCount();
+      let nextTotalCount = this.galleryTotalItems();
       if (unlocked) {
-        const alreadyUnlocked = this.galleryItems().some(
-          (item) =>
-            (item.id === unlocked.id || item.assetId === unlocked.assetId) && item.unlocked,
-        );
+        const alreadyUnlocked =
+          this.unlockedGalleryItemIds.has(unlocked.assetId) ||
+          this.unlockedGalleryItemIds.has(unlocked.id) ||
+          this.newlyUnlockedAssetIds().includes(unlocked.assetId) ||
+          this.galleryItems().some(
+            (item) =>
+              (item.id === unlocked.id || item.assetId === unlocked.assetId) && item.unlocked,
+          );
+        let updatedInPlace = false;
+        let insertedOnPage1 = false;
         this.galleryItems.update((items) => {
           const exists = items.some(
             (item) => item.id === unlocked.id || item.assetId === unlocked.assetId,
           );
-          return exists
-            ? items.map((item) =>
-                item.id === unlocked.id || item.assetId === unlocked.assetId ? unlocked : item,
-              )
-            : [unlocked, ...items];
+          if (exists) {
+            updatedInPlace = true;
+            return items.map((item) =>
+              item.id === unlocked.id || item.assetId === unlocked.assetId ? unlocked : item,
+            );
+          }
+          if (this.galleryCurrentPage() === 1 && this.galleryTotalItems() < LOUNGE_GALLERY_PAGE_SIZE) {
+            insertedOnPage1 = true;
+            return [unlocked, ...items];
+          }
+          return items;
         });
+        if (insertedOnPage1) {
+          nextTotalCount += 1;
+          this.galleryTotalItems.set(nextTotalCount);
+          this.galleryTotalPages.set(Math.max(1, Math.ceil(nextTotalCount / LOUNGE_GALLERY_PAGE_SIZE)));
+        } else if (!updatedInPlace) {
+          this.galleryNeedsRefresh = true;
+        }
+        if (unlocked.unlocked) {
+          this.unlockedGalleryItemIds.add(unlocked.id);
+          this.unlockedGalleryItemIds.add(unlocked.assetId);
+        }
         if (!alreadyUnlocked && unlocked.unlocked) {
+          nextUnlockedCount += 1;
+          this.galleryUnlockedCount.set(nextUnlockedCount);
           this.newlyUnlockedGalleryItem.set(unlocked);
           this.newlyUnlockedAssetIds.update((ids) =>
             ids.includes(unlocked.assetId) ? ids : [...ids, unlocked.assetId],
@@ -439,9 +573,8 @@ export class LoungeFacadeService {
         prev
           ? {
               ...prev,
-              unlockedGalleryCount: unlocked
-                ? this.galleryItems().filter((item) => item.unlocked).length
-                : prev.unlockedGalleryCount,
+              unlockedGalleryCount: nextUnlockedCount,
+              totalGalleryCount: Math.max(prev.totalGalleryCount, nextTotalCount),
               subscription: {
                 ...prev.subscription,
                 remainingChatTurns: res.remainingChatTurns,
@@ -545,9 +678,21 @@ export class LoungeFacadeService {
     this.accountSummary.set(null);
     this.activeSession.set(null);
     this.messages.set([]);
+    this.isLoadingOlderMessages.set(false);
+    this.hasMoreMessages.set(false);
+    this.oldestMessageCursor.set(null);
+    this.messagesTotalItems.set(0);
+    this.latestMessageAnchorSeq.set(0);
     this.galleryItems.set([]);
+    this.isLoadingGalleryPage.set(false);
+    this.galleryCurrentPage.set(1);
+    this.galleryTotalPages.set(1);
+    this.galleryTotalItems.set(0);
+    this.galleryUnlockedCount.set(0);
     this.newlyUnlockedGalleryItem.set(null);
     this.newlyUnlockedAssetIds.set([]);
+    this.unlockedGalleryItemIds.clear();
+    this.galleryNeedsRefresh = false;
     this.composerDraft.set('');
     this.optionsSavedNotice.set(null);
     this.resetDisclaimerScrollState();
@@ -589,8 +734,8 @@ export class LoungeFacadeService {
     const [summary, session, galleryPage, messagesPage] = await Promise.all([
       this.accountPort.getAccountSummary(),
       this.sessionPort.getSession(),
-      this.galleryPort.listGallery(50),
-      this.sessionPort.listMessages(50),
+      this.galleryPort.listGallery({ page: 1, limit: LOUNGE_GALLERY_PAGE_SIZE }),
+      this.sessionPort.listMessages({ page: 1, limit: LOUNGE_CHAT_PAGE_SIZE }),
     ]);
     this.accountSummary.set(summary);
     this.lang.set(summary.user.language);
@@ -601,8 +746,25 @@ export class LoungeFacadeService {
     if (summary.persona) {
       this.personaBranding.set(summary.persona);
     }
-    this.galleryItems.set(galleryPage.items);
+    this.unlockedGalleryItemIds.clear();
+    for (const item of galleryPage.data) {
+      if (item.unlocked) {
+        this.unlockedGalleryItemIds.add(item.id);
+        this.unlockedGalleryItemIds.add(item.assetId);
+      }
+    }
+    this.galleryItems.set(galleryPage.data);
+    this.galleryCurrentPage.set(galleryPage.meta.currentPage);
+    this.galleryTotalPages.set(galleryPage.meta.totalPages);
+    this.galleryTotalItems.set(galleryPage.meta.totalItems);
+    this.galleryUnlockedCount.set(galleryPage.summary.unlockedCount);
+    this.galleryNeedsRefresh = false;
+
     this.activeSession.set(session);
-    this.messages.set(messagesPage.items);
+    this.messages.set(messagesPage.data);
+    this.hasMoreMessages.set(messagesPage.meta.hasMore);
+    this.oldestMessageCursor.set(messagesPage.meta.nextCursor);
+    this.messagesTotalItems.set(messagesPage.meta.totalItems);
+    this.latestMessageAnchorSeq.update((seq) => seq + 1);
   }
 }

@@ -7,6 +7,7 @@ Scoped architectural and UI governance for the **Gemitec Private Lounge** Angula
 - Use `provideZonelessChangeDetection()` (`src/app/app.config.ts`) and manage UI state strictly with Angular **Signals**.
 - Keep UI components decoupled from raw HTTP / `HttpClient` transport via abstract ports (`src/app/core/ports/*.port.ts`) bound in `appConfig` to `LoungeBffAdapter` (`src/app/core/adapters/lounge-bff.adapter.ts`).
 - Consume character branding dynamically from `LoungeConfigPort` (`/api/v1/lounge/config`) and `@rebecca/types` rather than importing `@rebecca/persona` or hardcoding persona lore in Angular templates.
+- Paginate Gallery collections via `<app-lounge-pagination>` (numbered page controls aligned with Dashboard Assets) and lazy-load Chat history upward via cursor-based `LoungePaginatedResponseDto<T>` (`LOUNGE_CHAT_PAGE_SIZE = 20`, without oldest-first/newest-first sort toggles).
 
 ## 2. UI Security, Onboarding & Accessibility Invariants
 

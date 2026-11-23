@@ -1,5 +1,6 @@
 import type {
   LoungeMessageListResponseDto,
+  LoungePaginationQueryDto,
   LoungeSendMessageRequestDto,
   LoungeSendMessageResponseDto,
   LoungeSession,
@@ -12,10 +13,9 @@ export abstract class LoungeSessionPort {
   /** Retrieves (or initializes) the signed-in user's single continuous Private Lounge conversation session. */
   public abstract getSession(): Promise<LoungeSession>;
 
-  /** Retrieves paginated chat turns for the user's single session. */
+  /** Retrieves paginated chat turns for the user's single session in chronological display order. */
   public abstract listMessages(
-    limit?: number,
-    startAfterId?: string,
+    query?: LoungePaginationQueryDto,
   ): Promise<LoungeMessageListResponseDto>;
 
   /** Sends a user message and returns the assistant reply with updated turn quota and optional matched illustration. */

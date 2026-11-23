@@ -1,0 +1,53 @@
+<nav
+  class="lounge-pagination-bar"
+  [attr.aria-label]="pageLabel() + ' ' + currentPage() + ' / ' + totalPages()"
+>
+  <div class="lounge-pagination-summary">
+    <span class="lounge-pagination-range">
+      {{ showingLabel() }} {{ rangeStart() }}-{{ rangeEnd() }} / {{ totalItems() }} {{ itemsUnit() }}
+    </span>
+    <span class="lounge-pagination-indicator" aria-hidden="true">·</span>
+    <span class="lounge-pagination-page-meta">
+      {{ pageLabel() }} {{ currentPage() }} / {{ totalPages() }}
+    </span>
+  </div>
+
+  <div class="lounge-pagination-controls">
+    <button
+      type="button"
+      class="lounge-page-btn lounge-page-nav"
+      [disabled]="loading() || currentPage() <= 1"
+      [attr.aria-label]="prevAriaLabel()"
+      (click)="selectPage(currentPage() - 1)"
+    >
+      <span aria-hidden="true">‹</span>
+    </button>
+
+    @for (token of paginationTokens(); track token.key) {
+      @if (token.kind === 'ellipsis') {
+        <span class="lounge-page-ellipsis" aria-hidden="true">…</span>
+      } @else {
+        <button
+          type="button"
+          class="lounge-page-btn"
+          [class.active]="token.page === currentPage()"
+          [attr.aria-current]="token.page === currentPage() ? 'page' : null"
+          [disabled]="loading()"
+          (click)="selectPage(token.page)"
+        >
+          {{ token.page }}
+        </button>
+      }
+    }
+
+    <button
+      type="button"
+      class="lounge-page-btn lounge-page-nav"
+      [disabled]="loading() || currentPage() >= totalPages()"
+      [attr.aria-label]="nextAriaLabel()"
+      (click)="selectPage(currentPage() + 1)"
+    >
+      <span aria-hidden="true">›</span>
+    </button>
+  </div>
+</nav>

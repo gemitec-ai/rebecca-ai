@@ -1,0 +1,114 @@
+.lounge-pagination-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem 1rem;
+  margin-top: 1.25rem;
+  padding: 0.75rem 1rem;
+  border-radius: 0.95rem;
+  border: 1px solid var(--border-purple);
+  background: var(--bg-surface);
+  backdrop-filter: blur(12px);
+}
+
+.lounge-pagination-summary {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 0.8rem;
+  font-family: var(--font-mono);
+  color: var(--text-secondary);
+}
+
+.lounge-pagination-indicator {
+  color: var(--gemitec-purple-light);
+}
+
+.lounge-pagination-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.lounge-page-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 2.35rem;
+  min-height: 2.35rem;
+  padding: 0 0.65rem;
+  border-radius: 0.65rem;
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-surface-elevated);
+  color: var(--text-primary);
+  font-size: 0.84rem;
+  font-weight: 600;
+  font-family: var(--font-mono);
+  cursor: pointer;
+  transition:
+    border-color 0.16s ease,
+    background-color 0.16s ease,
+    color 0.16s ease,
+    box-shadow 0.16s ease;
+}
+
+.lounge-page-btn:hover:not(:disabled) {
+  border-color: var(--gemitec-purple-light);
+  background: rgba(139, 92, 246, 0.2);
+  color: var(--text-primary);
+}
+
+.lounge-page-btn.active {
+  border-color: var(--gemitec-purple-light);
+  background: linear-gradient(135deg, rgba(139, 92, 246, 0.42), rgba(236, 72, 153, 0.26));
+  color: var(--text-primary);
+  box-shadow: 0 0 14px rgba(139, 92, 246, 0.32);
+}
+
+.lounge-page-btn:disabled {
+  opacity: 0.38;
+  cursor: not-allowed;
+}
+
+.lounge-page-btn:focus-visible {
+  outline: 2px solid var(--gemitec-purple-light);
+  outline-offset: 2px;
+}
+
+.lounge-page-ellipsis {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.5rem;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+}
+
+@media (max-width: 960px) {
+  .lounge-page-btn {
+    min-width: 44px;
+    min-height: 44px;
+  }
+}
+
+@media (max-width: 640px) {
+  .lounge-pagination-bar {
+    flex-direction: column;
+    align-items: stretch;
+    padding: 0.75rem;
+  }
+
+  .lounge-pagination-summary {
+    justify-content: space-between;
+  }
+
+  .lounge-pagination-indicator {
+    display: none;
+  }
+
+  .lounge-pagination-controls {
+    justify-content: center;
+  }
+}

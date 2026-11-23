@@ -11,6 +11,7 @@ import type {
   LoungeLoginRequestDto,
   LoungeMessage,
   LoungeMessageListResponseDto,
+  LoungePaginationQueryDto,
   LoungePersonaBranding,
   LoungeRuntimeConfigDto,
   LoungeSendMessageRequestDto,
@@ -90,92 +91,243 @@ function isValidPersonaBranding(raw: unknown): raw is LoungePersonaBranding {
 }
 
 function createInitialMessages(): LoungeMessage[] {
-  return [
+  const historyTemplates: readonly (
+    | {
+        readonly role: 'USER';
+        readonly content: string;
+      }
+    | {
+        readonly role: 'ASSISTANT';
+        readonly emotion: LoungeEmotionState;
+        readonly content: string;
+        readonly imageAssetId?: string;
+        readonly imageUrl?: string;
+      }
+  )[] = [
     {
-      id: 'msg_001',
-      sessionId: 'uid_preview_001',
-      uid: 'uid_preview_001',
       role: 'ASSISTANT',
-      content: 'おかえり！今日は1対1でゆっくり話そうね。最近の調子はどう？',
       emotion: 'HAPPY',
-      createdAt: '2026-11-22T12:01:00.000Z',
+      content: 'おかえり！ここが二人だけのプライベートルームだよ。まずはゆっくり話そうね。',
     },
     {
-      id: 'msg_002',
-      sessionId: 'uid_preview_001',
-      uid: 'uid_preview_001',
+      role: 'USER',
+      content: 'はじめまして！ずっとXのポスト見てたから、こうしてお話しできて嬉しいな。',
+    },
+    {
+      role: 'ASSISTANT',
+      emotion: 'EXCITED',
+      content: 'えへへ、見つけてくれてありがとう！タイムラインよりもっとリラックスして話そっ。',
+    },
+    {
+      role: 'USER',
+      content: '最近仕事が忙しくて、夜の時間帯にほっと一息つきたいなって思ってて。',
+    },
+    {
+      role: 'ASSISTANT',
+      emotion: 'THOUGHTFUL',
+      content: '毎日おつかれさまだよ〜！無理しすぎないで、疲れた時はわたしのとこ寄ってね。',
+    },
+    {
+      role: 'USER',
+      content: 'ありがとう。そういえば前にXに載せてた街歩きのコーデすごく可愛かったよ。',
+    },
+    {
+      role: 'ASSISTANT',
+      emotion: 'HAPPY',
+      content: 'わ、覚えててくれたの！？お気に入りのパープルニット、こっちでも写真見せてあげるね！',
+      imageAssetId: 'bot_img_02',
+      imageUrl: 'assets/gallery_street.webp',
+    },
+    {
+      role: 'USER',
+      content: 'めっちゃ似合ってる！夜のライトと背景の雰囲気も最高だね。',
+    },
+    {
+      role: 'ASSISTANT',
+      emotion: 'SHY',
+      content: 'そ、そこまで褒められるとちょっと照れるじゃん…でも素直に嬉しいかも！',
+    },
+    {
+      role: 'USER',
+      content: '他にも休みの日とかよく出かけるの？',
+    },
+    {
+      role: 'ASSISTANT',
+      emotion: 'TEASING',
+      content: 'うん！最近はセレクトショップ巡りにハマっててさ、気になる服見つけるとすぐ試着しちゃうんだよね〜。',
+    },
+    {
+      role: 'USER',
+      content: 'いいなあ、今度どんな服選んでるのか教えてよ。',
+    },
+    {
+      role: 'ASSISTANT',
+      emotion: 'EXCITED',
+      content: 'ちょうど試着室の前で撮ったやつ残ってた！じゃん、どうかな？',
+      imageAssetId: 'bot_img_03',
+      imageUrl: 'assets/IMG_8649.JPG',
+    },
+    {
+      role: 'USER',
+      content: '大人っぽくてクールだし、スタイル抜群だね！',
+    },
+    {
+      role: 'ASSISTANT',
+      emotion: 'HAPPY',
+      content: 'やった〜！君にそう言ってもらえると選んだ甲斐があるよ。',
+    },
+    {
+      role: 'USER',
+      content: '夏っぽい明るい写真もあったりする？気分転換に見たいな。',
+    },
+    {
+      role: 'ASSISTANT',
+      emotion: 'HAPPY',
+      content: 'もちろん！晴れた日のビーチで撮った爽やかな1枚、特別にどうぞっ！',
+      imageAssetId: 'bot_img_04',
+      imageUrl: 'assets/gallery_beach.webp',
+    },
+    {
+      role: 'USER',
+      content: '青空と海が眩しくて元気になるね！',
+    },
+    {
+      role: 'ASSISTANT',
+      emotion: 'TEASING',
+      content: 'でしょでしょ？画面越しでもリゾート気分味わえたなら大成功だね♪',
+    },
+    {
+      role: 'USER',
+      content: 'オフの日の自然体な雰囲気も見てみたいな。',
+    },
+    {
+      role: 'ASSISTANT',
+      emotion: 'SHY',
+      content: 'えっ、普段の感じも気になるの？じゃあちょっとリラックスしてる時のやつだけ特別に…！',
+      imageAssetId: 'bot_img_05',
+      imageUrl: 'assets/IMG_8653.JPG',
+    },
+    {
+      role: 'USER',
+      content: 'すごく自然で距離が近く感じるよ、見せてくれてありがとう。',
+    },
+    {
+      role: 'ASSISTANT',
+      emotion: 'HAPPY',
+      content: 'プライベートラウンジだけのひみつのコレクション、少しずつ増えてくのも楽しみだよね！',
+    },
+    {
+      role: 'ASSISTANT',
+      emotion: 'HAPPY',
+      content: 'おかえり！今日は1対1でゆっくり話そうね。最近の調子はどう？',
+    },
+    {
       role: 'USER',
       content: 'いつもXでありがとう！今日は落ち着いてゆっくり話したくて遊びに来たよ。',
-      emotion: 'NEUTRAL',
-      createdAt: '2026-11-22T12:04:00.000Z',
     },
     {
-      id: 'msg_003',
+      role: 'ASSISTANT',
+      emotion: 'SURPRISED',
+      content:
+        'ふふ、そう言ってもらえるの素直に嬉しいじゃん！せっかく来てくれたし、今朝の雰囲気にぴったりな1枚見せてあげるね！',
+      imageAssetId: 'bot_img_01',
+      imageUrl: 'assets/gallery_morning.webp',
+    },
+  ];
+
+  const baseMs = Date.parse('2026-11-21T10:00:00.000Z');
+  return historyTemplates.map((entry, idx) => {
+    const seq = String(idx + 1).padStart(3, '0');
+    const createdAt = new Date(baseMs + idx * 120_000).toISOString();
+    if (entry.role === 'USER') {
+      return {
+        id: `msg_${seq}`,
+        sessionId: 'uid_preview_001',
+        uid: 'uid_preview_001',
+        role: 'USER',
+        content: entry.content,
+        emotion: 'NEUTRAL',
+        createdAt,
+      };
+    }
+    return {
+      id: `msg_${seq}`,
       sessionId: 'uid_preview_001',
       uid: 'uid_preview_001',
       role: 'ASSISTANT',
-      content:
-        'ふふ、そう言ってもらえるの素直に嬉しいじゃん！せっかく来てくれたし、今朝の雰囲気にぴったりな1枚見せてあげるね！',
-      emotion: 'SURPRISED',
-      imageAssetId: 'bot_img_01',
-      imageUrl: 'assets/gallery_morning.webp',
-      tokenUsage: { promptTokens: 320, candidatesTokens: 78, totalTokens: 398 },
-      createdAt: '2026-11-22T12:08:00.000Z',
-    },
-  ];
+      content: entry.content,
+      emotion: entry.emotion,
+      ...(entry.imageAssetId && entry.imageUrl
+        ? {
+            imageAssetId: entry.imageAssetId,
+            imageUrl: entry.imageUrl,
+          }
+        : {}),
+      tokenUsage: { promptTokens: 240 + idx * 4, candidatesTokens: 64, totalTokens: 304 + idx * 4 },
+      createdAt,
+    };
+  });
 }
 
 function createInitialGallery(): LoungeGalleryItem[] {
-  return [
+  const unlockedSeeds: readonly {
+    readonly assetId: string;
+    readonly imageUrl: string;
+    readonly unlockedAt: string;
+  }[] = [
     {
-      id: 'uid_preview_001_bot_img_01',
-      uid: 'uid_preview_001',
       assetId: 'bot_img_01',
       imageUrl: 'assets/gallery_morning.webp',
-      unlocked: true,
       unlockedAt: '2026-11-22T12:08:00.000Z',
-      sourceSessionId: 'uid_preview_001',
     },
     {
-      id: 'uid_preview_001_bot_img_02',
-      uid: 'uid_preview_001',
       assetId: 'bot_img_02',
       imageUrl: 'assets/gallery_street.webp',
-      unlocked: true,
       unlockedAt: '2026-11-22T12:12:00.000Z',
-      sourceSessionId: 'uid_preview_001',
     },
     {
-      id: 'uid_preview_001_bot_img_03',
-      uid: 'uid_preview_001',
       assetId: 'bot_img_03',
       imageUrl: 'assets/IMG_8649.JPG',
-      unlocked: true,
       unlockedAt: '2026-11-22T12:18:00.000Z',
-      sourceSessionId: 'uid_preview_001',
     },
     {
-      id: 'uid_preview_001_bot_img_04',
-      uid: 'uid_preview_001',
       assetId: 'bot_img_04',
-      imageUrl: '',
-      unlocked: false,
+      imageUrl: 'assets/gallery_beach.webp',
+      unlockedAt: '2026-11-22T12:24:00.000Z',
     },
     {
-      id: 'uid_preview_001_bot_img_05',
-      uid: 'uid_preview_001',
       assetId: 'bot_img_05',
-      imageUrl: '',
-      unlocked: false,
-    },
-    {
-      id: 'uid_preview_001_bot_img_06',
-      uid: 'uid_preview_001',
-      assetId: 'bot_img_06',
-      imageUrl: '',
-      unlocked: false,
+      imageUrl: 'assets/IMG_8653.JPG',
+      unlockedAt: '2026-11-22T12:30:00.000Z',
     },
   ];
+
+  const items: LoungeGalleryItem[] = [];
+  for (let idx = 0; idx < 18; idx++) {
+    const seq = String(idx + 1).padStart(2, '0');
+    const assetId = `bot_img_${seq}`;
+    const unlockedSeed = unlockedSeeds[idx];
+    if (unlockedSeed) {
+      items.push({
+        id: `uid_preview_001_${unlockedSeed.assetId}`,
+        uid: 'uid_preview_001',
+        assetId: unlockedSeed.assetId,
+        imageUrl: unlockedSeed.imageUrl,
+        unlocked: true,
+        unlockedAt: unlockedSeed.unlockedAt,
+        sourceSessionId: 'uid_preview_001',
+      });
+    } else {
+      items.push({
+        id: `uid_preview_001_${assetId}`,
+        uid: 'uid_preview_001',
+        assetId,
+        imageUrl: '',
+        unlocked: false,
+      });
+    }
+  }
+  return items;
 }
 
 /**
@@ -189,6 +341,7 @@ export class LoungeBffAdapter
   private resolvedRuntimeConfig: LoungeRuntimeConfigDto | null = null;
   private user: LoungeUser | null = null;
   private midSessionBumpPending = false;
+  private messageSeq = 0;
   private preferredLanguage: LoungeLanguage = detectInitialLoungeLanguage();
   private preferredTimezone = detectInitialLoungeTimezone();
 
@@ -207,11 +360,12 @@ export class LoungeBffAdapter
     id: 'uid_preview_001',
     uid: 'uid_preview_001',
     title: 'Private Lounge',
-    messageCount: 3,
-    currentEmotion: 'TEASING',
+    messageCount: 26,
+    currentEmotion: 'SURPRISED',
     publicXMemorySyncedAt: '2026-11-22T12:00:00.000Z',
-    lastMessagePreview: '今朝の雰囲気にぴったりな1枚見せてあげるね！',
-    createdAt: '2026-11-22T12:00:00.000Z',
+    lastMessagePreview:
+      'ふふ、そう言ってもらえるの素直に嬉しいじゃん！せっかく来てくれたし、今朝の雰囲気にぴったりな1枚見せてあげるね！',
+    createdAt: '2026-11-21T10:00:00.000Z',
     updatedAt: '2026-11-22T12:08:00.000Z',
   };
 
@@ -423,11 +577,70 @@ export class LoungeBffAdapter
   }
 
   /** @inheritdoc */
-  public async listMessages(): Promise<LoungeMessageListResponseDto> {
+  public async listMessages(query?: LoungePaginationQueryDto): Promise<LoungeMessageListResponseDto> {
+    const rawLimit = query?.limit;
+    const limit =
+      typeof rawLimit === 'number' && Number.isFinite(rawLimit)
+        ? Math.min(Math.max(Math.trunc(rawLimit), 1), 100)
+        : 20;
+    const totalItems = this.messages.length;
+    const totalPages = Math.max(1, Math.ceil(totalItems / limit));
+
+    const trimmedCursor = typeof query?.cursor === 'string' ? query.cursor.trim() : '';
+    if (trimmedCursor.length > 0) {
+      const cursorIndex = this.messages.findIndex((msg) => msg.id === trimmedCursor);
+      if (cursorIndex <= 0) {
+        return {
+          data: [],
+          meta: {
+            currentPage: totalPages,
+            limit,
+            totalItems,
+            totalPages,
+            nextCursor: null,
+            hasMore: false,
+          },
+        };
+      }
+      const startIdx = Math.max(0, cursorIndex - limit);
+      const data = this.messages.slice(startIdx, cursorIndex);
+      const hasMore = startIdx > 0;
+      const nextCursor = hasMore && data.length > 0 ? data[0].id : null;
+      const page = totalItems === 0 ? 1 : Math.min(totalPages, Math.ceil((totalItems - startIdx) / limit));
+      return {
+        data,
+        meta: {
+          currentPage: page,
+          limit,
+          totalItems,
+          totalPages,
+          nextCursor,
+          hasMore,
+        },
+      };
+    }
+
+    const rawPage = query?.page;
+    const page =
+      typeof rawPage === 'number' && Number.isFinite(rawPage)
+        ? Math.max(1, Math.trunc(rawPage))
+        : 1;
+    const endIdx = Math.max(0, totalItems - (page - 1) * limit);
+    const startIdx = Math.max(0, endIdx - limit);
+    const data = this.messages.slice(startIdx, endIdx);
+    const hasMore = startIdx > 0;
+    const nextCursor = hasMore && data.length > 0 ? data[0].id : null;
+
     return {
-      items: [...this.messages],
-      nextCursor: null,
-      totalCount: this.messages.length,
+      data,
+      meta: {
+        currentPage: page,
+        limit,
+        totalItems,
+        totalPages,
+        nextCursor,
+        hasMore,
+      },
     };
   }
 
@@ -465,8 +678,9 @@ export class LoungeBffAdapter
 
     const now = new Date().toISOString();
     const sessionId = this.session.id;
+    const turnSeq = ++this.messageSeq;
     const userMessage: LoungeMessage = {
-      id: `msg_${Date.now()}_u`,
+      id: `msg_${Date.now()}_${turnSeq}_u`,
       sessionId,
       uid: 'uid_preview_001',
       role: 'USER',
@@ -506,7 +720,7 @@ export class LoungeBffAdapter
     }
 
     const assistantMessage: LoungeMessage = {
-      id: `msg_${Date.now()}_a`,
+      id: `msg_${Date.now()}_${turnSeq}_a`,
       sessionId,
       uid: 'uid_preview_001',
       role: 'ASSISTANT',
@@ -546,13 +760,68 @@ export class LoungeBffAdapter
   }
 
   /** @inheritdoc */
-  public async listGallery(): Promise<LoungeGalleryListResponseDto> {
+  public async listGallery(query?: LoungePaginationQueryDto): Promise<LoungeGalleryListResponseDto> {
+    const rawLimit = query?.limit;
+    const limit =
+      typeof rawLimit === 'number' && Number.isFinite(rawLimit)
+        ? Math.min(Math.max(Math.trunc(rawLimit), 1), 100)
+        : 20;
+    const totalItems = this.galleryItems.length;
+    const totalPages = Math.max(1, Math.ceil(totalItems / limit));
     const unlockedCount = this.galleryItems.filter((item) => item.unlocked).length;
+
+    let startIdx: number;
+    let resolvedPage: number;
+    const trimmedCursor = typeof query?.cursor === 'string' ? query.cursor.trim() : '';
+    if (trimmedCursor.length > 0) {
+      const cursorIdx = this.galleryItems.findIndex((item) => item.id === trimmedCursor);
+      if (cursorIdx === -1) {
+        return {
+          data: [],
+          meta: {
+            currentPage: totalPages,
+            limit,
+            totalItems,
+            totalPages,
+            nextCursor: null,
+            hasMore: false,
+          },
+          summary: {
+            unlockedCount,
+            totalCount: totalItems,
+          },
+        };
+      }
+      startIdx = cursorIdx + 1;
+      resolvedPage = Math.min(totalPages, Math.floor(startIdx / limit) + 1);
+    } else {
+      const rawPage = query?.page;
+      resolvedPage =
+        typeof rawPage === 'number' && Number.isFinite(rawPage)
+          ? Math.max(1, Math.trunc(rawPage))
+          : 1;
+      startIdx = (resolvedPage - 1) * limit;
+    }
+
+    const endIdx = Math.min(totalItems, startIdx + limit);
+    const data = startIdx < totalItems ? this.galleryItems.slice(startIdx, endIdx) : [];
+    const hasMore = endIdx < totalItems;
+    const nextCursor = hasMore && data.length > 0 ? data[data.length - 1].id : null;
+
     return {
-      items: [...this.galleryItems],
-      unlockedCount,
-      totalCount: this.galleryItems.length,
-      nextCursor: null,
+      data,
+      meta: {
+        currentPage: resolvedPage,
+        limit,
+        totalItems,
+        totalPages,
+        nextCursor,
+        hasMore,
+      },
+      summary: {
+        unlockedCount,
+        totalCount: totalItems,
+      },
     };
   }
 

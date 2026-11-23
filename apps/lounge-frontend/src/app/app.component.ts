@@ -2,6 +2,8 @@ import {
   Component,
   ElementRef,
   HostListener,
+  Injector,
+  afterNextRender,
   computed,
   effect,
   inject,
@@ -13,8 +15,12 @@ import {
   LOUNGE_LANGUAGE_OPTIONS,
   LOUNGE_TIMEZONE_OPTIONS,
 } from './core/i18n/lounge-translations';
-import { LoungeFacadeService } from './core/services/lounge-facade.service';
+import {
+  LOUNGE_GALLERY_PAGE_SIZE,
+  LoungeFacadeService,
+} from './core/services/lounge-facade.service';
 import { LoungeDropdownComponent } from './shared/components/lounge-dropdown/lounge-dropdown.component';
+import { LoungePaginationComponent } from './shared/components/lounge-pagination/lounge-pagination.component';
 import { ReconsentModalComponent } from './shared/components/reconsent-modal/reconsent-modal.component';
 
 /**
@@ -23,17 +29,20 @@ import { ReconsentModalComponent } from './shared/components/reconsent-modal/rec
  */
 @Component({
   selector: 'app-root',
-  imports: [LoungeDropdownComponent, ReconsentModalComponent],
+  imports: [LoungeDropdownComponent, LoungePaginationComponent, ReconsentModalComponent],
   templateUrl: './app.component.html',
   styleUrl: './app.component.css',
 })
 export class AppComponent {
   public readonly facade = inject(LoungeFacadeService);
+  private readonly injector = inject(Injector);
 
   public readonly languageOptions = LOUNGE_LANGUAGE_OPTIONS;
   public readonly timezoneOptions = LOUNGE_TIMEZONE_OPTIONS;
+  public readonly galleryPageSize = LOUNGE_GALLERY_PAGE_SIZE;
 
   public readonly selectedImageUrl = signal<string | null>(null);
+  public readonly showJumpToLatest = signal<boolean>(false);
 
   public readonly formattedVersion = computed(() => {
     const raw = this.facade.appVersion().trim();
@@ -43,21 +52,22 @@ export class AppComponent {
     return raw.startsWith('v') ? raw : `v${raw}`;
   });
 
-  public readonly unlockedGalleryCount = computed(() => {
-    const loadedCount = this.facade.galleryItems().filter((item) => item.unlocked).length;
-    const summaryCount = this.facade.accountSummary()?.unlockedGalleryCount ?? 0;
-    return Math.max(loadedCount, summaryCount);
-  });
+  public readonly unlockedGalleryCount = computed(() =>
+    this.facade.galleryTotalItems() > 0 || this.facade.galleryUnlockedCount() > 0
+      ? this.facade.galleryUnlockedCount()
+      : (this.facade.accountSummary()?.unlockedGalleryCount ?? 0),
+  );
 
-  public readonly totalGalleryCount = computed(() => {
-    const loadedCount = this.facade.galleryItems().length;
-    const summaryCount = this.facade.accountSummary()?.totalGalleryCount ?? 0;
-    return Math.max(loadedCount, summaryCount);
-  });
+  public readonly totalGalleryCount = computed(() =>
+    this.facade.galleryTotalItems() > 0
+      ? this.facade.galleryTotalItems()
+      : (this.facade.accountSummary()?.totalGalleryCount ?? 0),
+  );
 
   private readonly disclaimerBoxRef = viewChild<ElementRef<HTMLElement>>('disclaimerBox');
   private readonly composerInputRef = viewChild<ElementRef<HTMLTextAreaElement>>('composerInput');
   private readonly chatStreamRef = viewChild<ElementRef<HTMLElement>>('chatStream');
+  private readonly loungeWorkspaceRef = viewChild<ElementRef<HTMLElement>>('loungeWorkspace');
   private readonly sidebarDrawerRef = viewChild<ElementRef<HTMLElement>>('sidebarDrawer');
   private readonly closeSidebarButtonRef =
     viewChild<ElementRef<HTMLButtonElement>>('closeSidebarButton');
@@ -93,12 +103,16 @@ export class AppComponent {
     });
 
     effect(() => {
-      const msgCount = this.facade.messages().length;
+      const anchorSeq = this.facade.latestMessageAnchorSeq();
       const view = this.facade.activeView();
-      if (view === 'CHAT' && msgCount > 0) {
-        queueMicrotask(() => {
-          this.scrollChatToBottom();
-        });
+      if (view === 'CHAT' && anchorSeq > 0) {
+        afterNextRender(
+          () => {
+            this.showJumpToLatest.set(false);
+            this.scrollChatToBottom();
+          },
+          { injector: this.injector },
+        );
       }
     });
 
@@ -145,6 +159,69 @@ export class AppComponent {
     if (el) {
       el.scrollTop = el.scrollHeight;
     }
+  }
+
+  /** Tracks chat scroll position to toggle Jump-to-latest pill and upward lazy-load older turns. */
+  public onChatScroll(event: Event): void {
+    const target = event.target;
+    if (!(target instanceof HTMLElement)) {
+      return;
+    }
+    const distanceFromBottom = target.scrollHeight - target.scrollTop - target.clientHeight;
+    this.showJumpToLatest.set(distanceFromBottom > 80);
+
+    if (
+      target.scrollTop <= 40 &&
+      this.facade.hasMoreMessages() &&
+      !this.facade.isLoadingOlderMessages()
+    ) {
+      void this.triggerLoadOlderMessages();
+    }
+  }
+
+  /**
+   * Prepends the next older page of conversation turns and preserves viewport scroll offset
+   * (`prevScrollTop + (newScrollHeight - prevScrollHeight)`) strictly after Zoneless DOM commit.
+   */
+  public async triggerLoadOlderMessages(): Promise<void> {
+    const el = this.chatStreamRef()?.nativeElement;
+    const prevScrollHeight = el?.scrollHeight ?? 0;
+    const prevScrollTop = el?.scrollTop ?? 0;
+    const loaded = await this.facade.loadOlderMessages();
+    if (!loaded || !el) {
+      return;
+    }
+    afterNextRender(
+      () => {
+        const delta = el.scrollHeight - prevScrollHeight;
+        el.scrollTop = Math.max(0, prevScrollTop + delta);
+        const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+        this.showJumpToLatest.set(distanceFromBottom > 80);
+      },
+      { injector: this.injector },
+    );
+  }
+
+  /** Returns the chat viewport immediately to the latest message and hides the jump pill. */
+  public jumpToLatestMessage(): void {
+    this.showJumpToLatest.set(false);
+    this.scrollChatToBottom();
+  }
+
+  /** Scrolls to bottom after inline image load only while anchored near latest messages. */
+  public onInlineImageLoad(): void {
+    if (!this.showJumpToLatest()) {
+      this.scrollChatToBottom();
+    }
+  }
+
+  /** Changes the active Gallery page and scrolls the gallery workspace back to top. */
+  public onGalleryPageChange(page: number): void {
+    const workspaceEl = this.loungeWorkspaceRef()?.nativeElement;
+    if (workspaceEl) {
+      workspaceEl.scrollTop = 0;
+    }
+    void this.facade.loadGalleryPage(page);
   }
 
   /**

@@ -152,6 +152,15 @@ export interface LoungeLocaleCopy {
   readonly newGalleryUnlockedSub: string;
   readonly newGalleryUnlockedAction: string;
   readonly newGalleryBadge: string;
+  readonly paginationShowingLabel: string;
+  readonly paginationPageLabel: string;
+  readonly paginationItemsUnit: string;
+  readonly paginationPrevAria: string;
+  readonly paginationNextAria: string;
+  readonly chatLoadingOlder: string;
+  readonly chatLoadOlderBtn: string;
+  readonly chatBeginningOfHistory: string;
+  readonly chatJumpToLatest: string;
 }
 
 /**
@@ -312,6 +321,15 @@ export const LOUNGE_TRANSLATIONS: Record<LoungeLanguage, LoungeLocaleCopy> = {
     newGalleryUnlockedSub: '{name}との会話から新しいイラストがコレクションに加わりました',
     newGalleryUnlockedAction: 'ギャラリーで見る',
     newGalleryBadge: 'NEW GALLERY',
+    paginationShowingLabel: '表示中',
+    paginationPageLabel: 'ページ',
+    paginationItemsUnit: '枚',
+    paginationPrevAria: '前のページへ',
+    paginationNextAria: '次のページへ',
+    chatLoadingOlder: '過去の会話履歴を読み込み中...',
+    chatLoadOlderBtn: 'さらに過去の会話を読み込む',
+    chatBeginningOfHistory: '— 最初の会話に到達しました —',
+    chatJumpToLatest: '最新へ戻る',
   },
   en: {
     brandBadge: 'PRIVATE LOUNGE',
@@ -404,6 +422,15 @@ export const LOUNGE_TRANSLATIONS: Record<LoungeLanguage, LoungeLocaleCopy> = {
     newGalleryUnlockedSub: 'A new illustration from {name} has been saved to your Gallery',
     newGalleryUnlockedAction: 'View Gallery',
     newGalleryBadge: 'NEW GALLERY',
+    paginationShowingLabel: 'Showing',
+    paginationPageLabel: 'Page',
+    paginationItemsUnit: 'items',
+    paginationPrevAria: 'Previous page',
+    paginationNextAria: 'Next page',
+    chatLoadingOlder: 'Loading earlier conversation history...',
+    chatLoadOlderBtn: 'Load earlier messages',
+    chatBeginningOfHistory: '— Reached beginning of conversation —',
+    chatJumpToLatest: 'Jump to latest',
   },
   de: {
     brandBadge: 'PRIVATE LOUNGE',
@@ -496,6 +523,15 @@ export const LOUNGE_TRANSLATIONS: Record<LoungeLanguage, LoungeLocaleCopy> = {
     newGalleryUnlockedSub: 'Eine neue Illustration von {name} wurde in deiner Galerie gespeichert',
     newGalleryUnlockedAction: 'Galerie ansehen',
     newGalleryBadge: 'NEU FREIGESCHALTET',
+    paginationShowingLabel: 'Angezeigt',
+    paginationPageLabel: 'Seite',
+    paginationItemsUnit: 'Einträge',
+    paginationPrevAria: 'Vorherige Seite',
+    paginationNextAria: 'Nächste Seite',
+    chatLoadingOlder: 'Älterer Gesprächsverlauf wird geladen...',
+    chatLoadOlderBtn: 'Ältere Nachrichten laden',
+    chatBeginningOfHistory: '— Anfang des Gesprächs erreicht —',
+    chatJumpToLatest: 'Zum Neuesten',
   },
   pt: {
     brandBadge: 'PRIVATE LOUNGE',
@@ -588,6 +624,15 @@ export const LOUNGE_TRANSLATIONS: Record<LoungeLanguage, LoungeLocaleCopy> = {
     newGalleryUnlockedSub: 'Uma nova ilustração de {name} foi salva na sua Galeria',
     newGalleryUnlockedAction: 'Ver Galeria',
     newGalleryBadge: 'NOVO NA GALERIA',
+    paginationShowingLabel: 'Exibindo',
+    paginationPageLabel: 'Página',
+    paginationItemsUnit: 'itens',
+    paginationPrevAria: 'Página anterior',
+    paginationNextAria: 'Próxima página',
+    chatLoadingOlder: 'Carregando histórico anterior...',
+    chatLoadOlderBtn: 'Carregar mensagens anteriores',
+    chatBeginningOfHistory: '— Início da conversa alcançado —',
+    chatJumpToLatest: 'Ir para o mais recente',
   },
   es: {
     brandBadge: 'PRIVATE LOUNGE',
@@ -680,6 +725,15 @@ export const LOUNGE_TRANSLATIONS: Record<LoungeLanguage, LoungeLocaleCopy> = {
     newGalleryUnlockedSub: 'Una nueva ilustración de {name} se guardó en tu Galería',
     newGalleryUnlockedAction: 'Ver Galería',
     newGalleryBadge: 'NUEVA EN GALERÍA',
+    paginationShowingLabel: 'Mostrando',
+    paginationPageLabel: 'Página',
+    paginationItemsUnit: 'elementos',
+    paginationPrevAria: 'Página anterior',
+    paginationNextAria: 'Página siguiente',
+    chatLoadingOlder: 'Cargando historial anterior...',
+    chatLoadOlderBtn: 'Cargar mensajes anteriores',
+    chatBeginningOfHistory: '— Inicio de la conversación alcanzado —',
+    chatJumpToLatest: 'Ir al más reciente',
   },
   'zh-HK': {
     brandBadge: 'PRIVATE LOUNGE',
@@ -772,6 +826,15 @@ export const LOUNGE_TRANSLATIONS: Record<LoungeLanguage, LoungeLocaleCopy> = {
     newGalleryUnlockedSub: '{name} 分享嘅新插圖已經收錄到你嘅畫廊',
     newGalleryUnlockedAction: '前往畫廊',
     newGalleryBadge: 'NEW GALLERY',
+    paginationShowingLabel: '顯示中',
+    paginationPageLabel: '頁',
+    paginationItemsUnit: '張',
+    paginationPrevAria: '上一頁',
+    paginationNextAria: '下一頁',
+    chatLoadingOlder: '正在載入更早的對話紀錄...',
+    chatLoadOlderBtn: '載入更早訊息',
+    chatBeginningOfHistory: '— 已到達對話最開頭 —',
+    chatJumpToLatest: '返回最新對話',
   },
   vi: {
     brandBadge: 'PRIVATE LOUNGE',
@@ -864,6 +927,15 @@ export const LOUNGE_TRANSLATIONS: Record<LoungeLanguage, LoungeLocaleCopy> = {
     newGalleryUnlockedSub: 'Một hình minh họa mới từ {name} đã được lưu vào Thư viện ảnh',
     newGalleryUnlockedAction: 'Xem Thư viện',
     newGalleryBadge: 'MỚI MỞ KHÓA',
+    paginationShowingLabel: 'Đang hiển thị',
+    paginationPageLabel: 'Trang',
+    paginationItemsUnit: 'mục',
+    paginationPrevAria: 'Trang trước',
+    paginationNextAria: 'Trang sau',
+    chatLoadingOlder: 'Đang tải lịch sử trò chuyện cũ hơn...',
+    chatLoadOlderBtn: 'Tải tin nhắn cũ hơn',
+    chatBeginningOfHistory: '— Đã đến đầu cuộc trò chuyện —',
+    chatJumpToLatest: 'Về tin nhắn mới nhất',
   },
   th: {
     brandBadge: 'PRIVATE LOUNGE',
@@ -956,6 +1028,15 @@ export const LOUNGE_TRANSLATIONS: Record<LoungeLanguage, LoungeLocaleCopy> = {
     newGalleryUnlockedSub: 'ภาพประกอบใหม่จาก {name} ถูกบันทึกลงในแกลเลอรีของคุณแล้ว',
     newGalleryUnlockedAction: 'ดูแกลเลอรี',
     newGalleryBadge: 'ปลดล็อกใหม่',
+    paginationShowingLabel: 'กำลังแสดง',
+    paginationPageLabel: 'หน้า',
+    paginationItemsUnit: 'รายการ',
+    paginationPrevAria: 'หน้าก่อนหน้า',
+    paginationNextAria: 'หน้าถัดไป',
+    chatLoadingOlder: 'กำลังโหลดประวัติการสนทนาก่อนหน้า...',
+    chatLoadOlderBtn: 'โหลดข้อความเก่ากว่านี้',
+    chatBeginningOfHistory: '— ถึงจุดเริ่มต้นของบทสนทนาแล้ว —',
+    chatJumpToLatest: 'กลับไปยังข้อความล่าสุด',
   },
 };
 
