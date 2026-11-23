@@ -1,9 +1,11 @@
-import type {
-  LoungeAccountSummaryDto,
-  LoungeDeleteAccountRequestDto,
-  LoungePersonaBranding,
-  LoungeUpdatePreferencesRequestDto,
-  LoungeUser,
+import {
+  CURRENT_LOUNGE_DISCLAIMER_VERSION,
+  type LoungeAccountSummaryDto,
+  type LoungeDeleteAccountRequestDto,
+  type LoungePersonaBranding,
+  type LoungeUpdateDisclaimerConsentRequestDto,
+  type LoungeUpdatePreferencesRequestDto,
+  type LoungeUser,
 } from '@rebecca/types';
 import {
   LoungeAuthError,
@@ -15,6 +17,7 @@ import {
   parseSupportedLoungeLanguage,
   parseValidIanaTimezone,
 } from '../../../utils/locale';
+import { parseAndValidateSignUpConsent } from '../../auth/usecases/loungeAuth.usecase';
 import { toPublicLoungeUser, type ILoungeAuthRepository } from '../../auth/repositories/loungeAuth.repository';
 import type { ILoungeGalleryRepository } from '../../gallery/repositories/loungeGallery.repository';
 import type { ILoungeSessionRepository } from '../../sessions/repositories/loungeSession.repository';
@@ -23,9 +26,9 @@ import type { ILoungeAccountRepository } from '../repositories/loungeAccount.rep
 export { SUPPORTED_LOUNGE_LANGUAGES };
 
 /**
- * Validates and whitelists user preference update payloads (`language`, `timezone`).
+ * Validates and whitelists user preference update payloads (`language`, `timezone`, `completeOnboarding`).
  *
- * @throws LoungeValidationError When payload is non-object, empty, or contains an unsupported language or invalid IANA timezone.
+ * @throws LoungeValidationError When payload is non-object, empty, or contains invalid values.
  */
 export function parseAndValidatePreferencesRequest(
   raw: unknown,
@@ -44,11 +47,45 @@ export function parseAndValidatePreferencesRequest(
     result.timezone = parseValidIanaTimezone(candidate['timezone']);
   }
 
-  if (result.language === undefined && result.timezone === undefined) {
-    throw new LoungeValidationError('At least one of "language" or "timezone" must be provided');
+  if (candidate['completeOnboarding'] !== undefined) {
+    if (typeof candidate['completeOnboarding'] !== 'boolean') {
+      throw new LoungeValidationError('Field "completeOnboarding" must be a boolean');
+    }
+    result.completeOnboarding = candidate['completeOnboarding'];
+  }
+
+  if (
+    result.language === undefined &&
+    result.timezone === undefined &&
+    result.completeOnboarding === undefined
+  ) {
+    throw new LoungeValidationError(
+      'At least one of "language", "timezone", or "completeOnboarding" must be provided',
+    );
   }
 
   return result;
+}
+
+/**
+ * Validates and whitelists updated disclaimer re-consent payloads against `requiredVersion`.
+ *
+ * @throws LoungeValidationError When payload is invalid or does not match `requiredVersion`.
+ */
+export function parseAndValidateReconsentRequest(
+  raw: unknown,
+  requiredVersion?: number,
+): LoungeUpdateDisclaimerConsentRequestDto {
+  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) {
+    throw new LoungeValidationError('Re-consent payload must be a JSON object');
+  }
+  const candidate = raw as Record<string, unknown>;
+  return {
+    disclaimerConsent: parseAndValidateSignUpConsent(
+      candidate['disclaimerConsent'],
+      requiredVersion,
+    ),
+  };
 }
 
 /**
@@ -85,12 +122,16 @@ export function parseAndValidateDeleteAccountRequest(
 export interface ILoungeAccountUseCase {
   getAccountSummary(uid: string): Promise<LoungeAccountSummaryDto>;
   updatePreferences(uid: string, request: LoungeUpdatePreferencesRequestDto): Promise<LoungeUser>;
+  updateDisclaimerConsent(
+    uid: string,
+    request: LoungeUpdateDisclaimerConsentRequestDto,
+  ): Promise<LoungeUser>;
   deleteAccount(uid: string, request: LoungeDeleteAccountRequestDto): Promise<void>;
 }
 
 /**
  * Aggregates profile, subscription tier, remaining chat turns, gallery count, locale preferences,
- * and cascading irreversible account withdrawal across all isolated `lounge_*` stores.
+ * disclaimer re-consent updates, and cascading irreversible account withdrawal across `lounge_*` stores.
  */
 export class LoungeAccountUseCase implements ILoungeAccountUseCase {
   constructor(
@@ -100,6 +141,7 @@ export class LoungeAccountUseCase implements ILoungeAccountUseCase {
     private readonly sessionRepository: ILoungeSessionRepository,
     private readonly appVersion: string,
     private readonly personaBranding?: LoungePersonaBranding,
+    private readonly disclaimerVersion: number = CURRENT_LOUNGE_DISCLAIMER_VERSION,
   ) {}
 
   /**
@@ -156,6 +198,32 @@ export class LoungeAccountUseCase implements ILoungeAccountUseCase {
       uid,
       sanitized.language,
       sanitized.timezone,
+      sanitized.completeOnboarding,
+    );
+    return toPublicLoungeUser(updated);
+  }
+
+  /**
+   * Records scroll-verified acceptance of the latest legal/privacy disclaimer version for an active user.
+   *
+   * @throws LoungeAuthError When user profile does not exist (`401`) or is suspended (`403`).
+   * @throws LoungeValidationError When consent payload or version does not match `this.disclaimerVersion`.
+   */
+  public async updateDisclaimerConsent(
+    uid: string,
+    request: LoungeUpdateDisclaimerConsentRequestDto,
+  ): Promise<LoungeUser> {
+    const parsed = parseAndValidateReconsentRequest(request, this.disclaimerVersion);
+    const user = await this.authRepository.findUserByUid(uid);
+    if (!user) {
+      throw new LoungeAuthError(401, 'Private Lounge user profile not found');
+    }
+    if (user.status !== 'ACTIVE') {
+      throw new LoungeAuthError(403, 'Private Lounge account is suspended');
+    }
+    const updated = await this.authRepository.updateUserDisclaimerConsent(
+      uid,
+      parsed.disclaimerConsent,
     );
     return toPublicLoungeUser(updated);
   }

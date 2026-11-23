@@ -16,6 +16,9 @@ export function createLoungeAccountRouter(
   router.patch('/preferences', requireAuth, (req: LoungeAuthenticatedRequest, res: Response) =>
     controller.updatePreferences(req, res),
   );
+  router.post('/consent', requireAuth, (req: LoungeAuthenticatedRequest, res: Response) =>
+    controller.updateConsent(req, res),
+  );
   router.delete('/', requireAuth, (req: LoungeAuthenticatedRequest, res: Response) =>
     controller.deleteAccount(req, res),
   );

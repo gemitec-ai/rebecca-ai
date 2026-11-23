@@ -1,9 +1,10 @@
-import type {
-  LoungeAuthSessionDto,
-  LoungeLanguage,
-  LoungeLoginRequestDto,
-  LoungeSignUpRequestDto,
-  LoungeUserDisclaimerConsent,
+import {
+  CURRENT_LOUNGE_DISCLAIMER_VERSION,
+  type LoungeAuthSessionDto,
+  type LoungeLanguage,
+  type LoungeLoginRequestDto,
+  type LoungeSignUpRequestDto,
+  type LoungeUserDisclaimerConsent,
 } from '@rebecca/types';
 import type { ILoungeAuthVerifierPort, LoungeVerifiedIdentity } from '../../../middleware/loungeAuth';
 import {
@@ -29,22 +30,27 @@ export interface ILoungeAuthUseCase {
 }
 
 /**
- * Validates and whitelists scroll-verified sign-up consent at the trust boundary.
+ * Validates and whitelists scroll-verified sign-up or re-consent terms at the trust boundary.
  * Never returns unwhitelisted client properties.
  *
- * @throws LoungeValidationError When fields are non-object, missing, falsy/non-boolean, or chronologically invalid.
+ * @throws LoungeValidationError When fields are non-object, version is invalid/outdated, clauses are unaccepted, or timestamps are chronologically invalid.
  */
-export function parseAndValidateSignUpConsent(raw: unknown): LoungeUserDisclaimerConsent {
+export function parseAndValidateSignUpConsent(
+  raw: unknown,
+  requiredVersion?: number,
+): LoungeUserDisclaimerConsent {
   if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) {
     throw new LoungeValidationError('Field "disclaimerConsent" must be an object');
   }
   const candidate = raw as Record<string, unknown>;
-  const disclaimerVersion =
-    typeof candidate['disclaimerVersion'] === 'string'
-      ? candidate['disclaimerVersion'].trim()
-      : '';
-  if (!disclaimerVersion) {
-    throw new LoungeValidationError('Disclaimer version is required');
+  const rawVersion = candidate['disclaimerVersion'];
+  if (typeof rawVersion !== 'number' || !Number.isInteger(rawVersion) || rawVersion < 1) {
+    throw new LoungeValidationError('Disclaimer version must be a positive integer');
+  }
+  if (requiredVersion !== undefined && rawVersion !== requiredVersion) {
+    throw new LoungeValidationError(
+      `Outdated or mismatched disclaimer version (${rawVersion}); latest version ${requiredVersion} must be accepted`,
+    );
   }
 
   if (
@@ -77,7 +83,7 @@ export function parseAndValidateSignUpConsent(raw: unknown): LoungeUserDisclaime
   }
 
   return {
-    disclaimerVersion,
+    disclaimerVersion: rawVersion,
     agreedToGeminiTrainingUsage: true,
     agreedToZeroPiiProhibition: true,
     agreedToOneWayMemoryIsolation: true,
@@ -115,7 +121,10 @@ export function parseAndValidateLoginRequest(raw: unknown): LoungeLoginRequestDt
  *
  * @throws LoungeValidationError When payload tokens or scroll-gated consent terms are invalid.
  */
-export function parseAndValidateSignUpRequest(raw: unknown): LoungeSignUpRequestDto {
+export function parseAndValidateSignUpRequest(
+  raw: unknown,
+  requiredVersion?: number,
+): LoungeSignUpRequestDto {
   if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) {
     throw new LoungeValidationError('Invalid sign-up request payload');
   }
@@ -129,7 +138,10 @@ export function parseAndValidateSignUpRequest(raw: unknown): LoungeSignUpRequest
   if (!xOAuthCode) {
     throw new LoungeValidationError('Field "xOAuthCode" is required for X OAuth sign-up');
   }
-  const disclaimerConsent = parseAndValidateSignUpConsent(candidate['disclaimerConsent']);
+  const disclaimerConsent = parseAndValidateSignUpConsent(
+    candidate['disclaimerConsent'],
+    requiredVersion,
+  );
   const language: LoungeLanguage | undefined =
     candidate['language'] !== undefined
       ? parseSupportedLoungeLanguage(candidate['language'])
@@ -156,17 +168,18 @@ export class LoungeAuthUseCase implements ILoungeAuthUseCase {
     private readonly authRepository: ILoungeAuthRepository,
     private readonly authVerifier: ILoungeAuthVerifierPort,
     private readonly appVersion: string,
+    private readonly disclaimerVersion: number = CURRENT_LOUNGE_DISCLAIMER_VERSION,
   ) {}
 
   /**
    * Validates that the user scrolled the disclaimer to bottom and agreed to Gemini training,
    * zero-PII prohibition, and one-way memory isolation, then enforces 1:1 X linkage before sign-up.
    *
-   * @throws LoungeValidationError When disclaimer flags or ISO audit timestamps are incomplete.
+   * @throws LoungeValidationError When disclaimer version is invalid/outdated or timestamps are invalid.
    * @throws LoungeConflictError When UID or X user ID already owns a registered `lounge_users` account (`409`).
    */
   public async signUpWithX(request: LoungeSignUpRequestDto): Promise<LoungeAuthSessionDto> {
-    const sanitized = parseAndValidateSignUpRequest(request);
+    const sanitized = parseAndValidateSignUpRequest(request, this.disclaimerVersion);
     const identity = await this.verifyIdentityToken(sanitized.idToken);
     const [existingByUid, existingByX] = await Promise.all([
       this.authRepository.findUserByUid(identity.uid),
@@ -183,6 +196,7 @@ export class LoungeAuthUseCase implements ILoungeAuthUseCase {
       displayName: identity.displayName,
       avatarUrl: identity.avatarUrl,
       disclaimerConsent: sanitized.disclaimerConsent,
+      onboardingCompleted: false,
       language: sanitized.language,
       timezone: sanitized.timezone,
     });

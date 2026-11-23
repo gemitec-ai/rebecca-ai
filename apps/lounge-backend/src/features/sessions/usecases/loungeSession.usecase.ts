@@ -1,11 +1,12 @@
-import type {
-  LoungeLanguage,
-  LoungeMessageListResponseDto,
-  LoungePrivateMemorySnapshot,
-  LoungePublicXMemorySnapshot,
-  LoungeSendMessageRequestDto,
-  LoungeSendMessageResponseDto,
-  LoungeSession,
+import {
+  CURRENT_LOUNGE_DISCLAIMER_VERSION,
+  type LoungeLanguage,
+  type LoungeMessageListResponseDto,
+  type LoungePrivateMemorySnapshot,
+  type LoungePublicXMemorySnapshot,
+  type LoungeSendMessageRequestDto,
+  type LoungeSendMessageResponseDto,
+  type LoungeSession,
 } from '@rebecca/types';
 import {
   LoungeAuthError,
@@ -257,6 +258,7 @@ export class LoungeSessionUseCase implements ILoungeSessionUseCase {
     private readonly emotionClassifier: ILoungeEmotionClassifierPort,
     private readonly chatPipeline: ILoungeChatPipelinePort,
     private readonly botImageSearchPort: IBotImageAssetSearchPort,
+    private readonly requiredDisclaimerVersion: number = CURRENT_LOUNGE_DISCLAIMER_VERSION,
   ) {}
 
   /**
@@ -306,6 +308,12 @@ export class LoungeSessionUseCase implements ILoungeSessionUseCase {
     const { content } = parseAndValidateSendMessageRequest(request);
 
     const user = await this.requireActiveUser(uid);
+    if (user.disclaimerConsent.disclaimerVersion < this.requiredDisclaimerVersion) {
+      throw new LoungeAuthError(
+        403,
+        'Updated disclaimer consent is required before continuing conversation',
+      );
+    }
     const subscription = await this.accountRepository.getSubscriptionByUid(uid);
     if (!subscription) {
       throw new LoungeNotFoundError(`Lounge subscription for user "${uid}" was not found`);

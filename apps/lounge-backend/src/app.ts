@@ -12,10 +12,11 @@ import helmet from 'helmet';
 import { Firestore } from '@google-cloud/firestore';
 import { getCollections } from '@rebecca/db';
 import { getActivePersona } from '@rebecca/persona';
-import type {
-  LoungeEmotionState,
-  LoungePersonaBranding,
-  LoungeRuntimeConfigDto,
+import {
+  CURRENT_LOUNGE_DISCLAIMER_VERSION,
+  type LoungeEmotionState,
+  type LoungePersonaBranding,
+  type LoungeRuntimeConfigDto,
 } from '@rebecca/types';
 import {
   createLoungeAuthMiddleware,
@@ -116,11 +117,27 @@ export interface LoungeAppDependencies {
   readonly galleryUseCase: ILoungeGalleryUseCase;
   readonly allowedOrigins: readonly string[];
   readonly appVersion: string;
-  readonly disclaimerVersion: string;
+  readonly disclaimerVersion: number;
   readonly personaBranding: LoungePersonaBranding;
   readonly noAuth?: boolean;
   readonly nodeEnv?: string;
   readonly authEmulatorHost?: string;
+}
+
+/**
+ * Resolves the active positive integer disclaimer version from `DISCLAIMER_VERSION` env var,
+ * falling back cleanly to `CURRENT_LOUNGE_DISCLAIMER_VERSION`.
+ */
+export function resolveDisclaimerVersion(env: NodeJS.ProcessEnv = process.env): number {
+  const raw = env['DISCLAIMER_VERSION']?.trim();
+  if (!raw) {
+    return CURRENT_LOUNGE_DISCLAIMER_VERSION;
+  }
+  const parsed = Number(raw);
+  if (Number.isInteger(parsed) && parsed >= 1) {
+    return parsed;
+  }
+  return CURRENT_LOUNGE_DISCLAIMER_VERSION;
 }
 
 /**
@@ -138,7 +155,7 @@ export function createSkeletonLoungeDependencies(
   const firestore = new Firestore(projectId ? { projectId } : undefined);
   const collections = getCollections(firestore);
   const appVersion = resolveLoungeAppVersion(env);
-  const disclaimerVersion = env['DISCLAIMER_VERSION']?.trim() || '2026-11-22';
+  const disclaimerVersion = resolveDisclaimerVersion(env);
 
   const activePersona = getActivePersona(env['ACTIVE_PERSONA_ID']);
   const personaBranding: LoungePersonaBranding = {
@@ -198,7 +215,7 @@ export function createSkeletonLoungeDependencies(
 
   return {
     authVerifier,
-    authUseCase: new LoungeAuthUseCase(authRepository, authVerifier, appVersion),
+    authUseCase: new LoungeAuthUseCase(authRepository, authVerifier, appVersion, disclaimerVersion),
     accountUseCase: new LoungeAccountUseCase(
       authRepository,
       accountRepository,
@@ -206,6 +223,7 @@ export function createSkeletonLoungeDependencies(
       sessionRepository,
       appVersion,
       personaBranding,
+      disclaimerVersion,
     ),
     sessionUseCase: new LoungeSessionUseCase(
       sessionRepository,
@@ -217,6 +235,7 @@ export function createSkeletonLoungeDependencies(
       emotionClassifier,
       chatPipeline,
       botImageSearchPort,
+      disclaimerVersion,
     ),
     galleryUseCase: new LoungeGalleryUseCase(galleryRepository, authRepository),
     allowedOrigins,

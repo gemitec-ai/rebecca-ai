@@ -10,6 +10,7 @@ import {
 import {
   parseAndValidateDeleteAccountRequest,
   parseAndValidatePreferencesRequest,
+  parseAndValidateReconsentRequest,
   type ILoungeAccountUseCase,
 } from '../usecases/loungeAccount.usecase';
 
@@ -41,6 +42,19 @@ export class LoungeAccountController {
       res.status(200).json(updatedUser);
     } catch (err) {
       handleLoungeControllerError(res, err, 'PATCH /account/preferences', traceHeader);
+    }
+  }
+
+  /** Handles `POST /api/v1/lounge/account/consent` (disclaimer re-consent). */
+  public async updateConsent(req: LoungeAuthenticatedRequest, res: Response): Promise<void> {
+    const traceHeader = extractTraceHeader(req);
+    try {
+      const { uid } = requireLoungeIdentity(req);
+      const payload = parseAndValidateReconsentRequest(req.body);
+      const updatedUser = await this.accountUseCase.updateDisclaimerConsent(uid, payload);
+      res.status(200).json(updatedUser);
+    } catch (err) {
+      handleLoungeControllerError(res, err, 'POST /account/consent', traceHeader);
     }
   }
 

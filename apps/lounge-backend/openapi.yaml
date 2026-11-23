@@ -144,7 +144,7 @@ paths:
 
   /account/preferences:
     patch:
-      summary: Update user UI/response language and IANA timezone preferences
+      summary: Update user UI/response language, IANA timezone preferences, or onboarding completion
       requestBody:
         required: true
         content:
@@ -154,6 +154,29 @@ paths:
       responses:
         '200':
           description: Updated user profile with validated preferences
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoungeUser'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /account/consent:
+    post:
+      summary: Record scroll-verified user acceptance of updated legal/privacy disclaimer version
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoungeUpdateDisclaimerConsentRequestDto'
+      responses:
+        '200':
+          description: Updated user profile carrying latest accepted disclaimerVersion
           content:
             application/json:
               schema:
@@ -285,7 +308,7 @@ components:
           schema:
             $ref: '#/components/schemas/ErrorResponse'
     Forbidden:
-      description: Account is suspended or subscription is inactive
+      description: Account is suspended, subscription is inactive, or updated disclaimer consent is required
       content:
         application/json:
           schema:
@@ -340,7 +363,8 @@ components:
         appVersion:
           type: string
         disclaimerVersion:
-          type: string
+          type: integer
+          minimum: 1
         persona:
           $ref: '#/components/schemas/LoungePersonaBranding'
     LoungeUserDisclaimerConsent:
@@ -354,7 +378,8 @@ components:
         - consentedAt
       properties:
         disclaimerVersion:
-          type: string
+          type: integer
+          minimum: 1
         agreedToGeminiTrainingUsage:
           type: boolean
         agreedToZeroPiiProhibition:
@@ -369,7 +394,7 @@ components:
           format: date-time
     LoungeUser:
       type: object
-      required: [uid, xUserId, xHandle, displayName, avatarUrl, status, language, timezone, disclaimerConsent, createdAt, updatedAt, lastLoginAt]
+      required: [uid, xUserId, xHandle, displayName, avatarUrl, status, language, timezone, onboardingCompleted, disclaimerConsent, createdAt, updatedAt, lastLoginAt]
       properties:
         uid:
           type: string
@@ -388,6 +413,8 @@ components:
           $ref: '#/components/schemas/LoungeLanguage'
         timezone:
           type: string
+        onboardingCompleted:
+          type: boolean
         disclaimerConsent:
           $ref: '#/components/schemas/LoungeUserDisclaimerConsent'
         createdAt:
@@ -414,6 +441,14 @@ components:
           $ref: '#/components/schemas/LoungeLanguage'
         timezone:
           type: string
+        completeOnboarding:
+          type: boolean
+    LoungeUpdateDisclaimerConsentRequestDto:
+      type: object
+      required: [disclaimerConsent]
+      properties:
+        disclaimerConsent:
+          $ref: '#/components/schemas/LoungeUserDisclaimerConsent'
     LoungeSubscription:
       type: object
       required: [uid, tier, status, dailyTurnQuota, remainingChatTurns, quotaResetAt, currentPeriodEnd, updatedAt]

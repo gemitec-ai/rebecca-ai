@@ -17,6 +17,7 @@ import {
   buildDefaultEmotionAvatarPaths,
   createLoungeApp,
   createSkeletonLoungeDependencies,
+  resolveDisclaimerVersion,
   resolveLoungeAppVersion,
   type LoungeAppDependencies,
 } from '../../src/app';
@@ -72,9 +73,9 @@ import {
 } from '../../src/utils/errors';
 import { loungeLogger, sanitizeLogInput } from '../../src/utils/logger';
 
-function createValidConsent() {
+function createValidConsent(version = 1) {
   return {
-    disclaimerVersion: '2026-11-22',
+    disclaimerVersion: version,
     agreedToGeminiTrainingUsage: true,
     agreedToZeroPiiProhibition: true,
     agreedToOneWayMemoryIsolation: true,
@@ -93,6 +94,7 @@ function buildFakeDeps(
     tokenXUserId?: string;
     failImageSearch?: boolean;
     failAppendMessage?: boolean;
+    requiredDisclaimerVersion?: number;
   } = {},
 ) {
   let currentUser: LoungeUserDoc | null =
@@ -106,8 +108,9 @@ function buildFakeDeps(
           status: 'ACTIVE',
           language: 'ja',
           timezone: 'Asia/Tokyo',
+          onboardingCompleted: true,
           coreProfile: { interests: ['Midnight Coffee', 'Retro Games'] },
-          disclaimerConsent: createValidConsent(),
+          disclaimerConsent: createValidConsent(1),
           createdAt: '2026-11-22T12:00:05.000Z',
           updatedAt: '2026-11-22T12:00:05.000Z',
           lastLoginAt: '2026-11-22T12:00:05.000Z',
@@ -216,6 +219,7 @@ function buildFakeDeps(
         status: 'ACTIVE',
         language: input.language ?? 'ja',
         timezone: input.timezone ?? 'Asia/Tokyo',
+        onboardingCompleted: input.onboardingCompleted,
         disclaimerConsent: input.disclaimerConsent,
         createdAt: '2026-11-22T12:00:05.000Z',
         updatedAt: '2026-11-22T12:00:05.000Z',
@@ -228,7 +232,12 @@ function buildFakeDeps(
         currentUser = { ...currentUser, lastLoginAt: timestampIso };
       }
     },
-    async updateUserPreferences(uid: string, language?: LoungeLanguage, timezone?: string) {
+    async updateUserPreferences(
+      uid: string,
+      language?: LoungeLanguage,
+      timezone?: string,
+      onboardingCompleted?: boolean,
+    ) {
       if (!currentUser || currentUser.uid !== uid) {
         throw new Error('User not found');
       }
@@ -236,7 +245,22 @@ function buildFakeDeps(
         ...currentUser,
         language: language ?? currentUser.language,
         timezone: timezone ?? currentUser.timezone,
+        onboardingCompleted:
+          onboardingCompleted !== undefined
+            ? onboardingCompleted
+            : currentUser.onboardingCompleted,
         updatedAt: '2026-11-22T12:15:00.000Z',
+      };
+      return currentUser;
+    },
+    async updateUserDisclaimerConsent(uid: string, disclaimerConsent) {
+      if (!currentUser || currentUser.uid !== uid) {
+        throw new Error('User not found');
+      }
+      currentUser = {
+        ...currentUser,
+        disclaimerConsent,
+        updatedAt: '2026-11-22T12:20:00.000Z',
       };
       return currentUser;
     },
@@ -459,9 +483,16 @@ function buildFakeDeps(
     },
   };
 
+  const requiredDisclaimerVersion = overrides.requiredDisclaimerVersion ?? 1;
+
   const deps: LoungeAppDependencies = {
     authVerifier,
-    authUseCase: new LoungeAuthUseCase(authRepository, authVerifier, 'v1.45.2'),
+    authUseCase: new LoungeAuthUseCase(
+      authRepository,
+      authVerifier,
+      'v1.45.2',
+      requiredDisclaimerVersion,
+    ),
     accountUseCase: new LoungeAccountUseCase(
       authRepository,
       accountRepository,
@@ -469,6 +500,7 @@ function buildFakeDeps(
       sessionRepository,
       'v1.45.2',
       personaBranding,
+      requiredDisclaimerVersion,
     ),
     sessionUseCase: new LoungeSessionUseCase(
       sessionRepository,
@@ -480,11 +512,12 @@ function buildFakeDeps(
       emotionClassifier,
       chatPipeline,
       botImageSearchPort,
+      requiredDisclaimerVersion,
     ),
     galleryUseCase: new LoungeGalleryUseCase(galleryRepository, authRepository),
     allowedOrigins: ['http://localhost:4300'],
     appVersion: 'v1.45.2',
-    disclaimerVersion: '2026-11-22',
+    disclaimerVersion: requiredDisclaimerVersion,
     personaBranding,
   };
 
@@ -594,6 +627,7 @@ describe('Gemitec Private Lounge BFF Architecture Skeleton', () => {
         status: 'ACTIVE',
         language: 'ja',
         timezone: 'Asia/Tokyo',
+        onboardingCompleted: true,
         disclaimerConsent: createValidConsent(),
         createdAt: '2026-11-22T12:00:00.000Z',
         updatedAt: '2026-11-22T12:00:00.000Z',
@@ -681,6 +715,8 @@ describe('Gemitec Private Lounge BFF Architecture Skeleton', () => {
     expect(signUpRes.status).toBe(201);
     expect(signUpRes.body.user.language).toBe('pt');
     expect(signUpRes.body.user.timezone).toBe('America/Sao_Paulo');
+    expect(signUpRes.body.user.onboardingCompleted).toBe(false);
+    expect(signUpRes.body.user.disclaimerConsent.disclaimerVersion).toBe(1);
 
     // Duplicate sign-up for an already registered X account returns 409 Conflict
     const dupRes = await request(app).post('/api/v1/lounge/auth/signup').send({
@@ -702,6 +738,7 @@ describe('Gemitec Private Lounge BFF Architecture Skeleton', () => {
           status: 'ACTIVE',
           language: 'ja',
           timezone: 'Asia/Tokyo',
+          onboardingCompleted: true,
           coreProfile: { secret: ['should not leak'] },
           disclaimerConsent: createValidConsent(),
           createdAt: '2026-11-22T12:00:05.000Z',
@@ -749,7 +786,16 @@ describe('Gemitec Private Lounge BFF Architecture Skeleton', () => {
         await request(app).post('/api/v1/lounge/auth/signup').send({
           idToken: 'valid-token',
           xOAuthCode: 'oauth-123',
-          disclaimerConsent: { ...createValidConsent(), disclaimerVersion: '' },
+          disclaimerConsent: { ...createValidConsent(), disclaimerVersion: 0 },
+        })
+      ).status,
+    ).toBe(400);
+    expect(
+      (
+        await request(app).post('/api/v1/lounge/auth/signup').send({
+          idToken: 'valid-token',
+          xOAuthCode: 'oauth-123',
+          disclaimerConsent: { ...createValidConsent(), disclaimerVersion: 99 },
         })
       ).status,
     ).toBe(400);
@@ -801,6 +847,7 @@ describe('Gemitec Private Lounge BFF Architecture Skeleton', () => {
           status: 'SUSPENDED',
           language: 'ja',
           timezone: 'Asia/Tokyo',
+          onboardingCompleted: true,
           disclaimerConsent: createValidConsent(),
           createdAt: '2026-11-22T12:00:05.000Z',
           updatedAt: '2026-11-22T12:00:05.000Z',
@@ -854,10 +901,66 @@ describe('Gemitec Private Lounge BFF Architecture Skeleton', () => {
     const updatedPrefRes = await request(app)
       .patch('/api/v1/lounge/account/preferences')
       .set('Authorization', 'Bearer valid-token')
-      .send({ language: 'zh-HK', timezone: 'Asia/Hong_Kong' });
+      .send({ language: 'zh-HK', timezone: 'Asia/Hong_Kong', completeOnboarding: true });
     expect(updatedPrefRes.status).toBe(200);
     expect(updatedPrefRes.body.language).toBe('zh-HK');
     expect(updatedPrefRes.body.timezone).toBe('Asia/Hong_Kong');
+    expect(updatedPrefRes.body.onboardingCompleted).toBe(true);
+    expect(
+      (
+        await request(app)
+          .patch('/api/v1/lounge/account/preferences')
+          .set('Authorization', 'Bearer valid-token')
+          .send({ completeOnboarding: 'yes' })
+      ).status,
+    ).toBe(400);
+
+    // Re-consent gate enforces latest integer disclaimerVersion before allowing new chat turns
+    const outdatedApp = createLoungeApp(
+      buildFakeDeps({
+        requiredDisclaimerVersion: 2,
+        matchedImage: {
+          assetId: 'bot_img_8649',
+          imageUrl: 'assets/IMG_8649.JPG',
+        },
+      }).deps,
+    );
+    expect(
+      (
+        await request(outdatedApp)
+          .get('/api/v1/lounge/account')
+          .set('Authorization', 'Bearer valid-token')
+      ).status,
+    ).toBe(200);
+    const blockedChatRes = await request(outdatedApp)
+      .post('/api/v1/lounge/session/messages')
+      .set('Authorization', 'Bearer valid-token')
+      .send({ content: '話したい' });
+    expect(blockedChatRes.status).toBe(403);
+    expect(blockedChatRes.body.error).toContain('Updated disclaimer consent is required');
+
+    expect(
+      (
+        await request(outdatedApp)
+          .post('/api/v1/lounge/account/consent')
+          .set('Authorization', 'Bearer valid-token')
+          .send({ disclaimerConsent: createValidConsent(1) })
+      ).status,
+    ).toBe(400);
+    const reconsentRes = await request(outdatedApp)
+      .post('/api/v1/lounge/account/consent')
+      .set('Authorization', 'Bearer valid-token')
+      .send({ disclaimerConsent: createValidConsent(2) });
+    expect(reconsentRes.status).toBe(200);
+    expect(reconsentRes.body.disclaimerConsent.disclaimerVersion).toBe(2);
+    expect(
+      (
+        await request(outdatedApp)
+          .post('/api/v1/lounge/session/messages')
+          .set('Authorization', 'Bearer valid-token')
+          .send({ content: '同意後の会話テスト' })
+      ).status,
+    ).toBe(201);
 
     // Singleton session retrieval & pagination clamping
     const sessionRes = await request(app)
@@ -1013,6 +1116,7 @@ describe('Gemitec Private Lounge BFF Architecture Skeleton', () => {
         status: 'SUSPENDED',
         language: 'ja',
         timezone: 'Asia/Tokyo',
+        onboardingCompleted: true,
         disclaimerConsent: createValidConsent(),
         createdAt: '2026-11-22T12:00:05.000Z',
         updatedAt: '2026-11-22T12:00:05.000Z',
@@ -1145,6 +1249,7 @@ describe('Gemitec Private Lounge BFF Architecture Skeleton', () => {
           status: 'SUSPENDED',
           language: 'ja',
           timezone: 'Asia/Tokyo',
+          onboardingCompleted: true,
           disclaimerConsent: createValidConsent(),
           createdAt: '2026-11-22T12:00:05.000Z',
           updatedAt: '2026-11-22T12:00:05.000Z',
@@ -1210,11 +1315,15 @@ describe('Gemitec Private Lounge BFF Architecture Skeleton', () => {
 
     // Skeleton dependency container & repositories throw 501 deterministically
     expect(resolveLoungeAppVersion({ APP_VERSION: '2.0.0' })).toBe('v2.0.0');
+    expect(resolveDisclaimerVersion({})).toBe(1);
+    expect(resolveDisclaimerVersion({ DISCLAIMER_VERSION: '3' })).toBe(3);
+    expect(resolveDisclaimerVersion({ DISCLAIMER_VERSION: 'invalid' })).toBe(1);
     const skeletonDeps = createSkeletonLoungeDependencies({
       NODE_ENV: 'production',
       CORS_ALLOWED_ORIGINS: 'https://a.example.com, https://b.example.com',
     });
     expect(skeletonDeps.allowedOrigins).toEqual(['https://a.example.com', 'https://b.example.com']);
+    expect(skeletonDeps.disclaimerVersion).toBe(1);
     await expect(skeletonDeps.authVerifier.verifyBearerToken('tok')).rejects.toThrow(
       LoungeNotImplementedError,
     );
@@ -1229,6 +1338,8 @@ describe('Gemitec Private Lounge BFF Architecture Skeleton', () => {
     const sessionRepo = new LoungeSessionRepository(collections);
     const galleryRepo = new LoungeGalleryRepository(collections);
 
+    await expect(authRepo.findUserByUid('')).rejects.toThrow(/must not be empty/);
+    await expect(authRepo.findUserByXUserId('  ')).rejects.toThrow(/must not be empty/);
     await expect(authRepo.findUserByUid('u1')).rejects.toThrow(LoungeNotImplementedError);
     await expect(authRepo.findUserByXUserId('x1')).rejects.toThrow(LoungeNotImplementedError);
     await expect(
@@ -1238,13 +1349,17 @@ describe('Gemitec Private Lounge BFF Architecture Skeleton', () => {
         xHandle: '@u1',
         displayName: 'U1',
         avatarUrl: '',
+        onboardingCompleted: false,
         disclaimerConsent: createValidConsent(),
       }),
     ).rejects.toThrow(LoungeNotImplementedError);
     await expect(authRepo.recordLoginTimestamp('u1', '2026-11-22T12:00:00.000Z')).rejects.toThrow(
       LoungeNotImplementedError,
     );
-    await expect(authRepo.updateUserPreferences('u1', 'en', 'UTC')).rejects.toThrow(
+    await expect(authRepo.updateUserPreferences('u1', 'en', 'UTC', true)).rejects.toThrow(
+      LoungeNotImplementedError,
+    );
+    await expect(authRepo.updateUserDisclaimerConsent('u1', createValidConsent())).rejects.toThrow(
       LoungeNotImplementedError,
     );
     await expect(authRepo.revokeSession('u1')).rejects.toThrow(LoungeNotImplementedError);

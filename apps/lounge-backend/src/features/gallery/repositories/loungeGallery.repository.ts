@@ -1,4 +1,4 @@
-import type { DbCollections } from '@rebecca/db';
+import { COLLECTIONS, assertLoungeRecordOwnedByUid, type DbCollections } from '@rebecca/db';
 import type { LoungeGalleryItem, LoungeGalleryListResponseDto } from '@rebecca/types';
 import { LoungeNotImplementedError, normalizePaginationLimit } from '../../../utils/errors';
 
@@ -21,7 +21,8 @@ export interface ILoungeGalleryRepository {
 }
 
 /**
- * Firestore repository skeleton reading and unlocking `collections.loungeGallery`.
+ * Firestore repository skeleton reading and unlocking `collections.loungeGallery`
+ * with strict per-user tenant ownership guards.
  */
 export class LoungeGalleryRepository implements ILoungeGalleryRepository {
   constructor(private readonly collections: Pick<DbCollections, 'loungeGallery'>) {}
@@ -32,9 +33,9 @@ export class LoungeGalleryRepository implements ILoungeGalleryRepository {
     limit?: number,
     startAfterId?: string,
   ): Promise<LoungeGalleryListResponseDto> {
+    assertLoungeRecordOwnedByUid({ uid }, uid, COLLECTIONS.LOUNGE_GALLERY);
     const safeLimit = normalizePaginationLimit(limit);
     void this.collections.loungeGallery;
-    void uid;
     void safeLimit;
     void startAfterId;
     throw new LoungeNotImplementedError('LoungeGalleryRepository.listGalleryByUid');
@@ -47,8 +48,8 @@ export class LoungeGalleryRepository implements ILoungeGalleryRepository {
     imageUrl: string,
     sessionId: string,
   ): Promise<LoungeGalleryItem> {
+    assertLoungeRecordOwnedByUid({ uid }, uid, COLLECTIONS.LOUNGE_GALLERY);
     void this.collections.loungeGallery;
-    void uid;
     void assetId;
     void imageUrl;
     void sessionId;
@@ -57,8 +58,8 @@ export class LoungeGalleryRepository implements ILoungeGalleryRepository {
 
   /** Permanently deletes all unlocked gallery items owned by `uid`. */
   public async deleteAllUserGalleryItems(uid: string): Promise<void> {
+    assertLoungeRecordOwnedByUid({ uid }, uid, COLLECTIONS.LOUNGE_GALLERY);
     void this.collections.loungeGallery;
-    void uid;
     throw new LoungeNotImplementedError('LoungeGalleryRepository.deleteAllUserGalleryItems');
   }
 }

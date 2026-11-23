@@ -1,4 +1,4 @@
-import type { DbCollections } from '@rebecca/db';
+import { COLLECTIONS, assertLoungeRecordOwnedByUid, type DbCollections } from '@rebecca/db';
 import type {
   LoungeEmotionState,
   LoungeMessage,
@@ -80,8 +80,8 @@ export class LoungeSessionRepository implements ILoungeSessionRepository {
     uid: string,
     publicXMemorySyncedAt: string,
   ): Promise<LoungeSession> {
+    assertLoungeRecordOwnedByUid({ uid }, uid, COLLECTIONS.LOUNGE_SESSIONS);
     void this.collections.loungeSessions;
-    void uid;
     void publicXMemorySyncedAt;
     throw new LoungeNotImplementedError('LoungeSessionRepository.getOrCreateSingletonSession');
   }
@@ -92,9 +92,9 @@ export class LoungeSessionRepository implements ILoungeSessionRepository {
     limit?: number,
     startAfterId?: string,
   ): Promise<LoungeMessageListResponseDto> {
+    assertLoungeRecordOwnedByUid({ uid }, uid, COLLECTIONS.LOUNGE_MESSAGES);
     const safeLimit = this.clampLimit(limit);
     void this.collections.loungeMessages;
-    void uid;
     void safeLimit;
     void startAfterId;
     throw new LoungeNotImplementedError('LoungeSessionRepository.listMessages');
@@ -102,9 +102,9 @@ export class LoungeSessionRepository implements ILoungeSessionRepository {
 
   /** Queries the latest `limit` messages (`createdAt DESC` index) returned oldest-to-newest for LLM context. */
   public async listRecentMessages(uid: string, limit?: number): Promise<LoungeMessage[]> {
+    assertLoungeRecordOwnedByUid({ uid }, uid, COLLECTIONS.LOUNGE_MESSAGES);
     const safeLimit = this.clampLimit(limit);
     void this.collections.loungeMessages;
-    void uid;
     void safeLimit;
     throw new LoungeNotImplementedError('LoungeSessionRepository.listRecentMessages');
   }
@@ -115,9 +115,9 @@ export class LoungeSessionRepository implements ILoungeSessionRepository {
     queryEmbedding: readonly number[],
     limit?: number,
   ): Promise<LoungeRagMemory[]> {
+    assertLoungeRecordOwnedByUid({ uid }, uid, COLLECTIONS.LOUNGE_RAG_MEMORIES);
     const safeLimit = this.clampLimit(limit);
     void this.collections.loungeRagMemories;
-    void uid;
     void queryEmbedding;
     void safeLimit;
     throw new LoungeNotImplementedError('LoungeSessionRepository.searchPrivateRagMemoriesByVector');
@@ -127,9 +127,9 @@ export class LoungeSessionRepository implements ILoungeSessionRepository {
   public async appendMessagePair(
     input: AppendLoungeMessagePairInput,
   ): Promise<AppendLoungeMessagePairResult> {
+    assertLoungeRecordOwnedByUid({ uid: input.uid }, input.uid, COLLECTIONS.LOUNGE_MESSAGES);
     void this.collections.loungeMessages;
     void this.collections.loungeSessions;
-    void input;
     throw new LoungeNotImplementedError('LoungeSessionRepository.appendMessagePair');
   }
 
@@ -138,10 +138,10 @@ export class LoungeSessionRepository implements ILoungeSessionRepository {
    * `lounge_messages`, and all episodic vectors in `lounge_rag_memories` on withdrawal.
    */
   public async deleteAllUserSessionData(uid: string): Promise<void> {
+    assertLoungeRecordOwnedByUid({ uid }, uid, COLLECTIONS.LOUNGE_SESSIONS);
     void this.collections.loungeSessions;
     void this.collections.loungeMessages;
     void this.collections.loungeRagMemories;
-    void uid;
     throw new LoungeNotImplementedError('LoungeSessionRepository.deleteAllUserSessionData');
   }
 }
