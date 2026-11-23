@@ -1,6 +1,8 @@
 import { provideZonelessChangeDetection } from '@angular/core';
 import { TestBed, type ComponentFixture } from '@angular/core/testing';
+import { By } from '@angular/platform-browser';
 import type {
+  LOUNGE_ERROR_CODE_DISCLAIMER_RECONSENT_REQUIRED,
   LoungeAccountSummaryDto,
   LoungeAuthSessionDto,
   LoungeDeleteAccountRequestDto,
@@ -14,7 +16,10 @@ import type {
 } from '@rebecca/types';
 import { AppComponent } from './app.component';
 import { appConfig } from './app.config';
-import { LoungeBffAdapter } from './core/adapters/lounge-bff.adapter';
+import {
+  LoungeBffAdapter,
+  LoungeReconsentRequiredClientError,
+} from './core/adapters/lounge-bff.adapter';
 import {
   detectInitialLoungeLanguage,
   detectInitialLoungeTimezone,
@@ -27,6 +32,7 @@ import { LoungeGalleryPort } from './core/ports/lounge-gallery.port';
 import { LoungeSessionPort } from './core/ports/lounge-session.port';
 import { LoungeFacadeService } from './core/services/lounge-facade.service';
 import { LoungeDropdownComponent } from './shared/components/lounge-dropdown/lounge-dropdown.component';
+import { ReconsentModalComponent } from './shared/components/reconsent-modal/reconsent-modal.component';
 
 const SYNTHETIC_BRANDING: LoungePersonaBranding = {
   displayName: 'レベッカ',
@@ -98,6 +104,7 @@ class InMemoryLoungeBffFake
   public shouldFailDelete = false;
   public shouldFailSend = false;
   public shouldFailLogout = false;
+  public simulatedMidSessionRequiredVersion?: number;
   public deleteRequests: LoungeDeleteAccountRequestDto[] = [];
   public lastRequestedLanguage?: LoungeLanguage;
   public lastRequestedTimezone?: string;
@@ -303,6 +310,18 @@ class InMemoryLoungeBffFake
   }
 
   public async sendMessage(req: { content: string }): Promise<LoungeSendMessageResponseDto> {
+    if (
+      this.simulatedMidSessionRequiredVersion !== undefined &&
+      this.user.disclaimerConsent.disclaimerVersion < this.simulatedMidSessionRequiredVersion
+    ) {
+      const code: typeof LOUNGE_ERROR_CODE_DISCLAIMER_RECONSENT_REQUIRED =
+        'DISCLAIMER_RECONSENT_REQUIRED';
+      throw {
+        code,
+        requiredDisclaimerVersion: this.simulatedMidSessionRequiredVersion,
+        acceptedDisclaimerVersion: this.user.disclaimerConsent.disclaimerVersion,
+      };
+    }
     if (this.shouldFailSend) {
       throw new Error('Upstream AI service temporary error');
     }
@@ -1005,7 +1024,7 @@ describe('Gemitec Private Lounge Root Shell (AppComponent)', () => {
     await expect(
       adapter.updateDisclaimerConsent({
         disclaimerConsent: {
-          disclaimerVersion: 2,
+          disclaimerVersion: 1,
           agreedToGeminiTrainingUsage: false,
           agreedToZeroPiiProhibition: true,
           agreedToOneWayMemoryIsolation: true,
@@ -1014,9 +1033,21 @@ describe('Gemitec Private Lounge Root Shell (AppComponent)', () => {
         },
       }),
     ).rejects.toThrow('Mandatory disclaimer clauses');
+    await expect(
+      adapter.updateDisclaimerConsent({
+        disclaimerConsent: {
+          disclaimerVersion: 2,
+          agreedToGeminiTrainingUsage: true,
+          agreedToZeroPiiProhibition: true,
+          agreedToOneWayMemoryIsolation: true,
+          scrolledToBottomAt: '2026-11-23T00:00:00.000Z',
+          consentedAt: '2026-11-23T00:00:00.000Z',
+        },
+      }),
+    ).rejects.toThrow('must match active version');
     const reconsentedUser = await adapter.updateDisclaimerConsent({
       disclaimerConsent: {
-        disclaimerVersion: 2,
+        disclaimerVersion: 1,
         agreedToGeminiTrainingUsage: true,
         agreedToZeroPiiProhibition: true,
         agreedToOneWayMemoryIsolation: true,
@@ -1024,7 +1055,7 @@ describe('Gemitec Private Lounge Root Shell (AppComponent)', () => {
         consentedAt: '2026-11-23T00:00:00.000Z',
       },
     });
-    expect(reconsentedUser.disclaimerConsent.disclaimerVersion).toBe(2);
+    expect(reconsentedUser.disclaimerConsent.disclaimerVersion).toBe(1);
 
     const singleton = await adapter.getSession();
     expect(singleton.id).toBe('uid_preview_001');
@@ -1070,6 +1101,16 @@ describe('Gemitec Private Lounge Root Shell (AppComponent)', () => {
       window.history.replaceState({}, '', '?previewScenario=reconsent');
       const reconsentPreview = new LoungeBffAdapter();
       expect((await reconsentPreview.getCurrentSession())?.user.disclaimerConsent.disclaimerVersion).toBe(0);
+      await expect(reconsentPreview.sendMessage({ content: 'blocked turn' })).rejects.toThrow(
+        LoungeReconsentRequiredClientError,
+      );
+
+      window.history.replaceState({}, '', '?previewScenario=mid-session-reconsent');
+      const midSessionPreview = new LoungeBffAdapter();
+      expect((await midSessionPreview.getCurrentSession())?.user.disclaimerConsent.disclaimerVersion).toBe(1);
+      await expect(midSessionPreview.sendMessage({ content: 'stale session turn' })).rejects.toThrow(
+        LoungeReconsentRequiredClientError,
+      );
 
       window.history.replaceState({}, '', '?previewScenario=session');
       const sessionPreview = new LoungeBffAdapter();
@@ -1113,15 +1154,16 @@ describe('Gemitec Private Lounge Root Shell (AppComponent)', () => {
     }
   });
 
-  it('silently restores active sessions via startup splash, resumes unfinished onboarding, and enforces integer disclaimer re-consent', async () => {
+  it('renders non-dismissible 3-choice Re-Consent popup over preserved Chat and enforces mid-session gate', async () => {
     // 0. Session check error degrades cleanly to AUTH screen without throwing
     fakeBff.shouldFailGetCurrentSession = true;
     await facade.initializeLounge();
     expect(facade.isBootstrapping()).toBe(false);
     expect(facade.activeView()).toBe('AUTH');
+    expect(facade.isReconsentRequired()).toBe(false);
     fakeBff.shouldFailGetCurrentSession = false;
 
-    // 1. Outdated consent version (< 1) routes directly into blocking RECONSENT gate without showing AUTH
+    // 1. Outdated consent version (< 1) mounts preserved CHAT behind non-dismissible #reconsent-modal
     const outdatedUser = createSyntheticUser('ja', 'Asia/Tokyo', true, 0);
     fakeBff.user = outdatedUser;
     fakeBff.currentSessionUser = outdatedUser;
@@ -1130,8 +1172,54 @@ describe('Gemitec Private Lounge Root Shell (AppComponent)', () => {
     fixture.detectChanges();
 
     expect(facade.isBootstrapping()).toBe(false);
-    expect(facade.activeView()).toBe('RECONSENT');
-    expect(query<HTMLElement>('#reconsent-card').textContent).toContain('v1');
+    expect(facade.activeView()).toBe('CHAT');
+    expect(facade.isReconsentRequired()).toBe(true);
+    expect(query<HTMLElement>('#chat-message-stream').textContent).toContain('おっ、来たじゃん！');
+
+    const modal = query<HTMLElement>('#reconsent-modal');
+    expect(modal.textContent).toContain('v1');
+    expect(modal.textContent).toContain('保持されています');
+
+    // Escape key & backdrop click MUST NOT close #reconsent-modal; Tab wraps focus inside modal
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    modal.click();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(facade.isReconsentRequired()).toBe(true);
+
+    // Exercise resize zero-overflow auto-unlock and non-element event guards on ReconsentModalComponent
+    const reconsentComp = fixture.debugElement.query(
+      By.directive(ReconsentModalComponent),
+    ).componentInstance as ReconsentModalComponent;
+    reconsentComp.onDisclaimerScroll(new Event('scroll'));
+    reconsentComp.onConsentChange(new Event('change'));
+    const box = query<HTMLElement>('#reconsent-scroll-box');
+    Object.defineProperty(box, 'clientHeight', { value: 200, configurable: true });
+    Object.defineProperty(box, 'scrollHeight', { value: 200, configurable: true });
+    reconsentComp.onWindowResize();
+    expect(facade.disclaimerScrolledToBottom()).toBe(true);
+    facade.disclaimerScrolledToBottom.set(false);
+    facade.disclaimerScrollProgress.set(0);
+
+    // Shift+Tab even from the non-focusable .reconsent-modal-card container wraps backward inside #reconsent-modal
+    expect(query<HTMLElement>('.lounge-shell').hasAttribute('inert')).toBe(true);
+    const modalCard = query<HTMLElement>('.reconsent-modal-card');
+    modalCard.focus();
+    expect(document.activeElement).toBe(modalCard);
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', shiftKey: true, bubbles: true }));
+    expect(document.activeElement).toBe(query<HTMLElement>('#btn-reconsent-delete'));
+
+    const modalFocusables = modal.querySelectorAll<HTMLElement>(
+      'button:not([disabled]), input:not([disabled]), [tabindex]:not([tabindex="-1"])',
+    );
+    const firstModalEl = modalFocusables[0];
+    const lastModalEl = modalFocusables[modalFocusables.length - 1];
+    lastModalEl.focus();
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true }));
+    expect(document.activeElement).toBe(firstModalEl);
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', shiftKey: true, bubbles: true }));
+    expect(document.activeElement).toBe(lastModalEl);
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'a', bubbles: true }));
 
     const submitReconsentBtn = query<HTMLButtonElement>('#btn-submit-reconsent');
     expect(submitReconsentBtn.disabled).toBe(true);
@@ -1140,16 +1228,15 @@ describe('Gemitec Private Lounge Root Shell (AppComponent)', () => {
     await facade.submitDisclaimerReconsent();
     expect(facade.errorMessage()).toBe(LOUNGE_TRANSLATIONS.ja.scrollRequiredError);
 
-    // Scroll to bottom, tick checkbox, surface BFF error cleanly, then succeed into CHAT
-    const box = query<HTMLElement>('#disclaimer-scroll-box');
+    // Scroll to bottom, tick checkbox, surface BFF error cleanly, then Choice 1 agrees and unlocks Chat
     Object.defineProperty(box, 'scrollTop', { value: 420, configurable: true });
-    Object.defineProperty(box, 'clientHeight', { value: 180, configurable: true });
-    Object.defineProperty(box, 'scrollHeight', { value: 600, configurable: true });
+    Object.defineProperty(box, 'clientHeight', { value: 140, configurable: true });
+    Object.defineProperty(box, 'scrollHeight', { value: 560, configurable: true });
     box.dispatchEvent(new Event('scroll'));
     await fixture.whenStable();
     fixture.detectChanges();
 
-    const checkbox = query<HTMLInputElement>('#checkbox-disclaimer-consent');
+    const checkbox = query<HTMLInputElement>('#checkbox-reconsent');
     checkbox.checked = true;
     checkbox.dispatchEvent(new Event('change'));
     await fixture.whenStable();
@@ -1160,7 +1247,7 @@ describe('Gemitec Private Lounge Root Shell (AppComponent)', () => {
     submitReconsentBtn.click();
     await flushMicrotasks();
     expect(facade.errorMessage()).toBe('Consent update temporarily unavailable');
-    expect(facade.activeView()).toBe('RECONSENT');
+    expect(facade.isReconsentRequired()).toBe(true);
     fakeBff.shouldFailReconsent = false;
 
     submitReconsentBtn.click();
@@ -1168,29 +1255,128 @@ describe('Gemitec Private Lounge Root Shell (AppComponent)', () => {
     await fixture.whenStable();
     fixture.detectChanges();
     expect(facade.activeView()).toBe('CHAT');
+    expect(facade.isReconsentRequired()).toBe(false);
+    expect(fixture.nativeElement.querySelector('#reconsent-modal')).toBeNull();
 
-    // 2. Escape hatch button in RECONSENT logs user out cleanly
+    // 2. Choice 2 (Logout) exits cleanly to AUTH
     const outdatedAgain = createSyntheticUser('ja', 'Asia/Tokyo', true, 0);
     fakeBff.user = outdatedAgain;
     fakeBff.currentSessionUser = outdatedAgain;
     await facade.initializeLounge();
     await fixture.whenStable();
     fixture.detectChanges();
-    expect(facade.activeView()).toBe('RECONSENT');
+    expect(facade.isReconsentRequired()).toBe(true);
     query<HTMLButtonElement>('#btn-reconsent-logout').click();
     await flushMicrotasks();
     await fixture.whenStable();
     fixture.detectChanges();
     expect(facade.activeView()).toBe('AUTH');
+    expect(facade.isReconsentRequired()).toBe(false);
 
-    // 3. Unfinished onboarding resumes straight into ONBOARDING
-    const unfinishedUser = createSyntheticUser('en', 'UTC', false, 1);
+    // 3. Choice 3 (Decline & Delete Account) opens Step 1/Step 2 deletion modal over #reconsent-modal
+    fakeBff.user = outdatedAgain;
+    fakeBff.currentSessionUser = outdatedAgain;
+    await facade.initializeLounge();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const reconsentDeleteBtn = query<HTMLButtonElement>('#btn-reconsent-delete');
+    reconsentDeleteBtn.click();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(facade.deleteAccountStep()).toBe(1);
+    expect(query<HTMLElement>('#delete-account-modal')).toBeTruthy();
+
+    // Canceling deletion keeps #reconsent-modal active and restores focus cleanly to #btn-reconsent-delete
+    query<HTMLButtonElement>('#btn-delete-cancel').click();
+    await flushMicrotasks();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(facade.deleteAccountStep()).toBe(0);
+    expect(facade.isReconsentRequired()).toBe(true);
+    expect(document.activeElement).toBe(reconsentDeleteBtn);
+
+    // Confirming Step 2 executes DELETE /account and resets cleanly to SIGNUP
+    reconsentDeleteBtn.click();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    query<HTMLButtonElement>('#btn-delete-step1-next').click();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    const checkIrrev = query<HTMLInputElement>('#checkbox-delete-irreversible');
+    checkIrrev.checked = true;
+    checkIrrev.dispatchEvent(new Event('change'));
+    const checkNoRef = query<HTMLInputElement>('#checkbox-delete-no-refund');
+    checkNoRef.checked = true;
+    checkNoRef.dispatchEvent(new Event('change'));
+    await fixture.whenStable();
+    fixture.detectChanges();
+    query<HTMLButtonElement>('#btn-confirm-delete-account').click();
+    await flushMicrotasks();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(facade.activeView()).toBe('AUTH');
+    expect(facade.authMode()).toBe('SIGNUP');
+    expect(facade.isReconsentRequired()).toBe(false);
+
+    // 4. Mid-session loophole closure: server 403 DISCLAIMER_RECONSENT_REQUIRED on POST /session/messages
+    // pops #reconsent-modal (v1 -> v2) while preserving the user's unsent composer draft!
+    const activeV1User = createSyntheticUser('ja', 'Asia/Tokyo', true, 1);
+    fakeBff.user = activeV1User;
+    fakeBff.currentSessionUser = activeV1User;
+    fakeBff.simulatedMidSessionRequiredVersion = undefined;
+    await facade.initializeLounge();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(facade.activeView()).toBe('CHAT');
+    expect(facade.isReconsentRequired()).toBe(false);
+
+    facade.composerDraft.set('送信前に規約が上がったケース');
+    fakeBff.simulatedMidSessionRequiredVersion = 2;
+    await facade.sendMessage(facade.composerDraft());
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(facade.isReconsentRequired()).toBe(true);
+    expect(facade.disclaimerVersion()).toBe(2);
+    expect(facade.errorMessage()).toBeNull();
+    expect(facade.composerDraft()).toBe('送信前に規約が上がったケース');
+    expect(query<HTMLElement>('#reconsent-modal').textContent).toContain('v1 → v2');
+    fakeBff.simulatedMidSessionRequiredVersion = undefined;
+
+    // Agree to v2 inside #reconsent-modal and immediately resend preserved composerDraft cleanly!
+    const midBox = query<HTMLElement>('#reconsent-scroll-box');
+    Object.defineProperty(midBox, 'scrollTop', { value: 420, configurable: true });
+    Object.defineProperty(midBox, 'clientHeight', { value: 140, configurable: true });
+    Object.defineProperty(midBox, 'scrollHeight', { value: 560, configurable: true });
+    midBox.dispatchEvent(new Event('scroll'));
+    await fixture.whenStable();
+    fixture.detectChanges();
+    const midCheck = query<HTMLInputElement>('#checkbox-reconsent');
+    midCheck.checked = true;
+    midCheck.dispatchEvent(new Event('change'));
+    await fixture.whenStable();
+    fixture.detectChanges();
+    query<HTMLButtonElement>('#btn-submit-reconsent').click();
+    await flushMicrotasks();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(facade.isReconsentRequired()).toBe(false);
+    expect(facade.composerDraft()).toBe('送信前に規約が上がったケース');
+    await facade.sendMessage(facade.composerDraft());
+    expect(facade.composerDraft()).toBe('');
+
+    // 5. Unfinished onboarding resumes straight into ONBOARDING
+    const unfinishedUser = createSyntheticUser('en', 'UTC', false, 2);
     fakeBff.user = unfinishedUser;
     fakeBff.currentSessionUser = unfinishedUser;
+    facade.disclaimerVersion.set(2);
     await facade.initializeLounge();
     await fixture.whenStable();
     fixture.detectChanges();
     expect(facade.activeView()).toBe('ONBOARDING');
+    expect(facade.isReconsentRequired()).toBe(false);
     expect(facade.lang()).toBe('en');
   });
 });

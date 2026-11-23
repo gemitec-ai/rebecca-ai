@@ -1,5 +1,6 @@
 import { Injectable, computed, inject, signal } from '@angular/core';
 import type {
+  LOUNGE_ERROR_CODE_DISCLAIMER_RECONSENT_REQUIRED,
   LoungeAccountSummaryDto,
   LoungeGalleryItem,
   LoungeLanguage,
@@ -23,10 +24,24 @@ import { LoungeGalleryPort } from '../ports/lounge-gallery.port';
 import { LoungeSessionPort } from '../ports/lounge-session.port';
 
 /** Top-level UI views in the Gemitec Private Lounge application. */
-export type LoungeActiveView = 'AUTH' | 'RECONSENT' | 'ONBOARDING' | 'CHAT' | 'GALLERY' | 'OPTIONS';
+export type LoungeActiveView = 'AUTH' | 'ONBOARDING' | 'CHAT' | 'GALLERY' | 'OPTIONS';
 
 /** Authentication tab modes on the X-linked entrance view. */
 export type LoungeAuthMode = 'LOGIN' | 'SIGNUP';
+
+const DISCLAIMER_RECONSENT_REQUIRED_CODE: typeof LOUNGE_ERROR_CODE_DISCLAIMER_RECONSENT_REQUIRED =
+  'DISCLAIMER_RECONSENT_REQUIRED';
+
+function isReconsentRequiredError(
+  err: unknown,
+): err is { readonly code: string; readonly requiredDisclaimerVersion?: number } {
+  return (
+    typeof err === 'object' &&
+    err !== null &&
+    'code' in err &&
+    (err as { code?: unknown }).code === DISCLAIMER_RECONSENT_REQUIRED_CODE
+  );
+}
 
 function resolveFallbackPersonaBranding(): LoungePersonaBranding {
   return {
@@ -51,12 +66,16 @@ export class LoungeFacadeService {
   public readonly isBootstrapping = signal<boolean>(true);
   public readonly activeView = signal<LoungeActiveView>('AUTH');
   public readonly authMode = signal<LoungeAuthMode>('LOGIN');
+  public readonly isReconsentRequired = signal<boolean>(false);
   public readonly isSidebarOpen = signal<boolean>(false);
   public readonly lang = signal<LoungeLanguage>(detectInitialLoungeLanguage());
   public readonly timezone = signal<string>(detectInitialLoungeTimezone());
   public readonly optionsSavedNotice = signal<string | null>(null);
   public readonly appVersion = signal<string>(environment.appVersion);
   public readonly disclaimerVersion = signal<number>(environment.disclaimerVersion);
+  public readonly agreedDisclaimerVersion = computed(
+    () => this.accountSummary()?.user.disclaimerConsent.disclaimerVersion ?? 0,
+  );
 
   public readonly disclaimerScrollProgress = signal<number>(0);
   public readonly disclaimerScrolledToBottom = signal<boolean>(false);
@@ -432,6 +451,21 @@ export class LoungeFacadeService {
       );
       this.composerDraft.set('');
     } catch (err) {
+      if (isReconsentRequiredError(err)) {
+        const serverVersion = err.requiredDisclaimerVersion;
+        if (
+          typeof serverVersion === 'number' &&
+          Number.isInteger(serverVersion) &&
+          serverVersion >= 1
+        ) {
+          this.disclaimerVersion.set(serverVersion);
+        }
+        this.resetDisclaimerScrollState();
+        this.isSidebarOpen.set(false);
+        this.isReconsentRequired.set(true);
+        this.errorMessage.set(null);
+        return;
+      }
       this.errorMessage.set(err instanceof Error ? err.message : 'Failed to send message');
     } finally {
       this.isLoading.set(false);
@@ -517,6 +551,7 @@ export class LoungeFacadeService {
     this.composerDraft.set('');
     this.optionsSavedNotice.set(null);
     this.resetDisclaimerScrollState();
+    this.isReconsentRequired.set(false);
     this.closeDeleteAccountModal();
     this.isSidebarOpen.set(false);
     this.activeView.set('AUTH');
@@ -531,16 +566,16 @@ export class LoungeFacadeService {
   }
 
   private resolvePostAuthView(user: LoungeUser): void {
+    const nextView: LoungeActiveView = user.onboardingCompleted ? 'CHAT' : 'ONBOARDING';
+    this.activeView.set(nextView);
+
     if (user.disclaimerConsent.disclaimerVersion < this.disclaimerVersion()) {
       this.resetDisclaimerScrollState();
-      this.activeView.set('RECONSENT');
+      this.isSidebarOpen.set(false);
+      this.isReconsentRequired.set(true);
       return;
     }
-    if (!user.onboardingCompleted) {
-      this.activeView.set('ONBOARDING');
-      return;
-    }
-    this.activeView.set('CHAT');
+    this.isReconsentRequired.set(false);
   }
 
   private markDisclaimerScrolledToBottom(): void {

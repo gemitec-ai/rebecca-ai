@@ -15,14 +15,15 @@ import {
 } from './core/i18n/lounge-translations';
 import { LoungeFacadeService } from './core/services/lounge-facade.service';
 import { LoungeDropdownComponent } from './shared/components/lounge-dropdown/lounge-dropdown.component';
+import { ReconsentModalComponent } from './shared/components/reconsent-modal/reconsent-modal.component';
 
 /**
  * Root presentation shell orchestrating Entrance (`AUTH` + `ONBOARDING` locale step) and
- * Authenticated Single-Session Lounge (`CHAT`, `GALLERY`, `OPTIONS` + 2-step Account Withdrawal).
+ * Authenticated Single-Session Lounge (`CHAT`, `GALLERY`, `OPTIONS` + Re-Consent & Withdrawal Modals).
  */
 @Component({
   selector: 'app-root',
-  imports: [LoungeDropdownComponent],
+  imports: [LoungeDropdownComponent, ReconsentModalComponent],
   templateUrl: './app.component.html',
   styleUrl: './app.component.css',
 })
@@ -72,6 +73,7 @@ export class AppComponent {
     viewChild<ElementRef<HTMLButtonElement>>('deleteCancelButton');
   private readonly deleteIrreversibleCheckRef =
     viewChild<ElementRef<HTMLInputElement>>('deleteIrreversibleCheck');
+  private readonly reconsentModalRef = viewChild<ReconsentModalComponent>('reconsentModal');
 
   private lastLightboxTriggerEl: HTMLElement | null = null;
   private wasSidebarOpen = false;
@@ -83,7 +85,7 @@ export class AppComponent {
       const authMode = this.facade.authMode();
       this.facade.lang();
       const boxEl = this.disclaimerBoxRef()?.nativeElement;
-      if (((view === 'AUTH' && authMode === 'SIGNUP') || view === 'RECONSENT') && boxEl) {
+      if (view === 'AUTH' && authMode === 'SIGNUP' && boxEl) {
         queueMicrotask(() => {
           this.checkZeroOverflowDisclaimer(boxEl);
         });
@@ -126,7 +128,11 @@ export class AppComponent {
         });
       } else if (deleteStep === 0 && this.prevDeleteStep > 0) {
         queueMicrotask(() => {
-          this.openDeleteButtonRef()?.nativeElement.focus();
+          if (this.facade.isReconsentRequired()) {
+            this.reconsentModalRef()?.focusDeleteButton();
+          } else {
+            this.openDeleteButtonRef()?.nativeElement.focus();
+          }
         });
       }
       this.prevDeleteStep = deleteStep;
@@ -157,6 +163,10 @@ export class AppComponent {
       if (event.key === 'Tab') {
         this.trapFocusWithinContainer(event, deleteEl);
       }
+      return;
+    }
+
+    if (this.facade.isReconsentRequired()) {
       return;
     }
 
@@ -358,16 +368,17 @@ export class AppComponent {
     const first = focusables[0];
     const last = focusables[focusables.length - 1];
     const active = document.activeElement;
+    const activeIndex = active instanceof HTMLElement ? focusables.indexOf(active) : -1;
 
     if (event.shiftKey) {
-      if (active === first || !container.contains(active)) {
+      if (activeIndex <= 0) {
         event.preventDefault();
         last.focus();
       }
       return;
     }
 
-    if (active === last || !container.contains(active)) {
+    if (activeIndex === -1 || activeIndex === focusables.length - 1) {
       event.preventDefault();
       first.focus();
     }

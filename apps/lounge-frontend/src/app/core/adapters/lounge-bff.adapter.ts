@@ -1,5 +1,6 @@
 import { Injectable } from '@angular/core';
 import type {
+  LOUNGE_ERROR_CODE_DISCLAIMER_RECONSENT_REQUIRED,
   LoungeAccountSummaryDto,
   LoungeAuthSessionDto,
   LoungeDeleteAccountRequestDto,
@@ -31,6 +32,25 @@ import { LoungeAuthPort } from '../ports/lounge-auth.port';
 import { LoungeConfigPort } from '../ports/lounge-config.port';
 import { LoungeGalleryPort } from '../ports/lounge-gallery.port';
 import { LoungeSessionPort } from '../ports/lounge-session.port';
+
+const DISCLAIMER_RECONSENT_REQUIRED_CODE: typeof LOUNGE_ERROR_CODE_DISCLAIMER_RECONSENT_REQUIRED =
+  'DISCLAIMER_RECONSENT_REQUIRED';
+
+/**
+ * Structured client error raised when the active chat turn requires updated disclaimer re-consent.
+ */
+export class LoungeReconsentRequiredClientError extends Error {
+  public readonly code = DISCLAIMER_RECONSENT_REQUIRED_CODE;
+  public readonly requiredDisclaimerVersion: number;
+  public readonly acceptedDisclaimerVersion: number;
+
+  constructor(requiredDisclaimerVersion: number, acceptedDisclaimerVersion: number) {
+    super('Updated disclaimer consent is required before continuing conversation');
+    this.name = 'LoungeReconsentRequiredClientError';
+    this.requiredDisclaimerVersion = requiredDisclaimerVersion;
+    this.acceptedDisclaimerVersion = acceptedDisclaimerVersion;
+  }
+}
 
 function isValidEmotionAvatarMap(raw: unknown): raw is Record<LoungeEmotionState, string> {
   if (!raw || typeof raw !== 'object') {
@@ -168,6 +188,7 @@ export class LoungeBffAdapter
 {
   private resolvedRuntimeConfig: LoungeRuntimeConfigDto | null = null;
   private user: LoungeUser | null = null;
+  private midSessionBumpPending = false;
   private preferredLanguage: LoungeLanguage = detectInitialLoungeLanguage();
   private preferredTimezone = detectInitialLoungeTimezone();
 
@@ -305,6 +326,7 @@ export class LoungeBffAdapter
   /** @inheritdoc */
   public async logout(): Promise<void> {
     this.user = null;
+    this.midSessionBumpPending = false;
   }
 
   /** @inheritdoc */
@@ -358,6 +380,10 @@ export class LoungeBffAdapter
     ) {
       throw new Error('Mandatory disclaimer clauses must be accepted');
     }
+    const requiredVersion = this.getActiveRequiredDisclaimerVersion();
+    if (request.disclaimerConsent.disclaimerVersion !== requiredVersion) {
+      throw new Error(`Disclaimer consent must match active version ${requiredVersion}`);
+    }
     const now = new Date().toISOString();
     const baseUser = this.user ?? this.createPreviewUser(now, true);
     this.user = {
@@ -374,6 +400,7 @@ export class LoungeBffAdapter
       throw new Error('Both irreversible deletion and no-refund confirmations are required');
     }
     this.user = null;
+    this.midSessionBumpPending = false;
     this.messages = createInitialMessages();
     this.galleryItems = createInitialGallery();
     this.session = {
@@ -411,6 +438,26 @@ export class LoungeBffAdapter
     const trimmed = request.content.trim();
     if (!trimmed) {
       throw new Error('Message content cannot be empty');
+    }
+    if (this.midSessionBumpPending) {
+      this.midSessionBumpPending = false;
+      const baseConfig: LoungeRuntimeConfigDto = this.resolvedRuntimeConfig ?? {
+        appVersion: environment.appVersion,
+        disclaimerVersion: environment.disclaimerVersion,
+        persona: {
+          ...environment.persona,
+          emotionAvatarPaths: { ...environment.persona.emotionAvatarPaths },
+        },
+      };
+      this.resolvedRuntimeConfig = {
+        ...baseConfig,
+        disclaimerVersion: baseConfig.disclaimerVersion + 1,
+      };
+    }
+    const requiredVersion = this.getActiveRequiredDisclaimerVersion();
+    const acceptedVersion = this.user?.disclaimerConsent.disclaimerVersion ?? requiredVersion;
+    if (this.user && acceptedVersion < requiredVersion) {
+      throw new LoungeReconsentRequiredClientError(requiredVersion, acceptedVersion);
     }
     if (this.subscription.remainingChatTurns <= 0) {
       throw new Error('Daily chat turn quota exhausted');
@@ -509,13 +556,22 @@ export class LoungeBffAdapter
     };
   }
 
+  private getActiveRequiredDisclaimerVersion(): number {
+    return this.resolvedRuntimeConfig?.disclaimerVersion ?? environment.disclaimerVersion;
+  }
+
   private resolvePreviewScenarioUser(): LoungeUser | null {
     if (typeof window === 'undefined' || !window.location?.search) {
       return null;
     }
     const params = new URLSearchParams(window.location.search);
     const scenario = params.get('previewScenario');
-    if (scenario !== 'session' && scenario !== 'onboarding' && scenario !== 'reconsent') {
+    if (
+      scenario !== 'session' &&
+      scenario !== 'onboarding' &&
+      scenario !== 'reconsent' &&
+      scenario !== 'mid-session-reconsent'
+    ) {
       return null;
     }
     const now = new Date().toISOString();
@@ -528,6 +584,9 @@ export class LoungeBffAdapter
           disclaimerVersion: 0,
         },
       };
+    }
+    if (scenario === 'mid-session-reconsent') {
+      this.midSessionBumpPending = true;
     }
     return baseUser;
   }
