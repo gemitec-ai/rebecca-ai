@@ -1,6 +1,8 @@
 import { Timestamp } from '@google-cloud/firestore';
 import {
   COLLECTIONS,
+  assertLoungeRecordOwnedByUid,
+  createUserScopedLoungeDb,
   getCollections,
   userConverter,
   conversationLogConverter,
@@ -19,6 +21,7 @@ import {
   loungeMessageConverter,
   loungeRagMemoryConverter,
   loungeGalleryConverter,
+  loungeProcessedEventConverter,
 } from '../../src/index';
 import {
   UserStatus,
@@ -33,6 +36,7 @@ import {
   LoungeSubscriptionDoc,
   LoungeSessionDoc,
   LoungeMessageDoc,
+  LoungeProcessedEventDoc,
   LoungeRagMemoryDoc,
   LoungeGalleryItemDoc,
 } from '@rebecca/types';
@@ -603,6 +607,7 @@ describe('@rebecca/db Unit Tests', () => {
       expect(mockCollection).toHaveBeenCalledWith(COLLECTIONS.LOUNGE_MESSAGES);
       expect(mockCollection).toHaveBeenCalledWith(COLLECTIONS.LOUNGE_RAG_MEMORIES);
       expect(mockCollection).toHaveBeenCalledWith(COLLECTIONS.LOUNGE_GALLERY);
+      expect(mockCollection).toHaveBeenCalledWith(COLLECTIONS.LOUNGE_PROCESSED_EVENTS);
 
       expect(collections.users).toEqual({ converter: userConverter });
       expect(collections.loungeUsers).toEqual({ converter: loungeUserConverter });
@@ -611,22 +616,25 @@ describe('@rebecca/db Unit Tests', () => {
       expect(collections.loungeMessages).toEqual({ converter: loungeMessageConverter });
       expect(collections.loungeRagMemories).toEqual({ converter: loungeRagMemoryConverter });
       expect(collections.loungeGallery).toEqual({ converter: loungeGalleryConverter });
+      expect(collections.loungeProcessedEvents).toEqual({ converter: loungeProcessedEventConverter });
     });
   });
 
   describe('Isolated Private Lounge COLLECTIONS & Converters', () => {
-    it('defines six isolated lounge_* collection names distinct from public bot collections', () => {
+    it('defines seven isolated lounge_* collection names distinct from public bot collections', () => {
       expect(COLLECTIONS.LOUNGE_USERS).toBe('lounge_users');
       expect(COLLECTIONS.LOUNGE_SUBSCRIPTIONS).toBe('lounge_subscriptions');
       expect(COLLECTIONS.LOUNGE_SESSIONS).toBe('lounge_sessions');
       expect(COLLECTIONS.LOUNGE_MESSAGES).toBe('lounge_messages');
       expect(COLLECTIONS.LOUNGE_RAG_MEMORIES).toBe('lounge_rag_memories');
       expect(COLLECTIONS.LOUNGE_GALLERY).toBe('lounge_gallery');
+      expect(COLLECTIONS.LOUNGE_PROCESSED_EVENTS).toBe('lounge_processed_events');
       expect(COLLECTIONS.LOUNGE_USERS).not.toBe(COLLECTIONS.USERS);
       expect(COLLECTIONS.LOUNGE_RAG_MEMORIES).not.toBe(COLLECTIONS.RAG_MEMORIES);
+      expect(COLLECTIONS.LOUNGE_PROCESSED_EVENTS).not.toBe(COLLECTIONS.PROCESSED_MENTIONS);
     });
 
-    it('serializes and deserializes loungeUserConverter with scroll-verified consent, language, and timezone', () => {
+    it('serializes and deserializes loungeUserConverter with integer disclaimerVersion and onboardingCompleted', () => {
       const user: LoungeUserDoc = {
         uid: 'uid_lounge_001',
         xUserId: '100020003000',
@@ -636,8 +644,9 @@ describe('@rebecca/db Unit Tests', () => {
         status: 'ACTIVE',
         language: 'zh-HK',
         timezone: 'Asia/Hong_Kong',
+        onboardingCompleted: false,
         disclaimerConsent: {
-          disclaimerVersion: '2026-11-22',
+          disclaimerVersion: 1,
           agreedToGeminiTrainingUsage: true,
           agreedToZeroPiiProhibition: true,
           agreedToOneWayMemoryIsolation: true,
@@ -764,12 +773,24 @@ describe('@rebecca/db Unit Tests', () => {
       const legacyRaw = { ...raw };
       delete legacyRaw['language'];
       delete legacyRaw['timezone'];
+      delete legacyRaw['onboardingCompleted'];
       const legacyRoundTrip = loungeUserConverter.fromFirestore({
         id: 'uid_legacy',
         data: () => legacyRaw,
       } as any);
       expect(legacyRoundTrip.language).toBe('ja');
       expect(legacyRoundTrip.timezone).toBe('Asia/Tokyo');
+      expect(legacyRoundTrip.onboardingCompleted).toBe(true);
+
+      expect(() =>
+        loungeUserConverter.fromFirestore({
+          id: 'uid_bad_disclaimer_ver',
+          data: () => ({
+            ...raw,
+            disclaimerConsent: { ...raw['disclaimerConsent'], disclaimerVersion: '1' },
+          }),
+        } as any),
+      ).toThrow(/Invalid positive integer field "disclaimerConsent.disclaimerVersion"/);
 
       expect(() =>
         loungeUserConverter.fromFirestore({
@@ -981,6 +1002,127 @@ describe('@rebecca/db Unit Tests', () => {
           data: () => ({ ...rawMinimalMsg, content: 99, tokenUsage: null }),
         } as any),
       ).toThrow(/Invalid non-string field "content"/);
+
+      // Strict optional field type rejection prevents silently ignoring corrupted data
+      expect(() =>
+        loungeSubscriptionConverter.fromFirestore({
+          id: 'sub_bad_stripe',
+          data: () => ({
+            ...loungeSubscriptionConverter.toFirestore({
+              uid: 'uid_lounge_001',
+              tier: 'FREE',
+              status: 'ACTIVE',
+              dailyTurnQuota: 5,
+              remainingChatTurns: 5,
+              quotaResetAt: '2026-11-23T00:00:00.000Z',
+              currentPeriodEnd: '2026-12-22T12:00:00.000Z',
+              updatedAt: '2026-11-22T12:05:00.000Z',
+            }),
+            stripeCustomerId: 12345,
+          }),
+        } as any),
+      ).toThrow(/Invalid non-string optional field "stripeCustomerId"/);
+
+      expect(() =>
+        loungeMessageConverter.fromFirestore({
+          id: 'msg_bad_usage',
+          data: () => ({ ...rawMinimalMsg, tokenUsage: ['corrupt'] }),
+        } as any),
+      ).toThrow(/Invalid non-object field "tokenUsage"/);
+
+      expect(() =>
+        loungeMessageConverter.fromFirestore({
+          id: 'msg_bad_asset',
+          data: () => ({ ...rawMinimalMsg, imageAssetId: 777 }),
+        } as any),
+      ).toThrow(/Invalid non-string optional field "imageAssetId"/);
+
+      expect(() =>
+        loungeGalleryConverter.fromFirestore({
+          id: 'gal_bad_source',
+          data: () => ({ ...rawLocked, sourceSessionId: { nested: true } }),
+        } as any),
+      ).toThrow(/Invalid non-string optional field "sourceSessionId"/);
+
+      // Isolated lounge_processed_events idempotency serialization
+      const processedEvent: LoungeProcessedEventDoc = {
+        eventId: 'evt_test_001',
+        eventType: 'checkout.session.completed',
+        uid: 'uid_lounge_001',
+        processedAt: '2026-11-23T01:00:00.000Z',
+      };
+      const rawEvt = loungeProcessedEventConverter.toFirestore(processedEvent);
+      expect(rawEvt['processedAt']).toBeInstanceOf(Timestamp);
+      expect(
+        loungeProcessedEventConverter.fromFirestore({
+          id: 'evt_test_001',
+          data: () => rawEvt,
+        } as any),
+      ).toEqual(processedEvent);
+      const minimalEvt: LoungeProcessedEventDoc = {
+        eventId: 'evt_test_002',
+        eventType: 'quota.daily_reset',
+        processedAt: '2026-11-23T01:00:00.000Z',
+      };
+      const rawMinEvt = loungeProcessedEventConverter.toFirestore(minimalEvt);
+      expect('uid' in rawMinEvt).toBe(false);
+      expect(
+        loungeProcessedEventConverter.fromFirestore({
+          id: 'evt_test_002',
+          data: () => rawMinEvt,
+        } as any),
+      ).toEqual(minimalEvt);
+
+      expect(COLLECTIONS.LOUNGE_PROCESSED_EVENTS).not.toBe(COLLECTIONS.PROCESSED_EVENTS);
+      expect(() =>
+        loungeProcessedEventConverter.fromFirestore({
+          id: 'evt_bad_uid',
+          data: () => ({ ...rawMinEvt, uid: 12345 }),
+        } as any),
+      ).toThrow(/Invalid non-string optional field "uid"/);
+      expect(() =>
+        loungeProcessedEventConverter.fromFirestore({
+          id: 'evt_bad_ts',
+          data: () => ({ ...rawMinEvt, processedAt: 12345 }),
+        } as any),
+      ).toThrow(/Invalid or missing datetime field "processedAt"/);
+    });
+
+    it('enforces multi-tenant uid isolation via createUserScopedLoungeDb and assertLoungeRecordOwnedByUid', () => {
+      const mockWhere = jest.fn().mockReturnValue({ scoped: true });
+      const mockDoc = jest.fn((id: string) => ({ docId: id }));
+      const scopedCollections = {
+        loungeUsers: { doc: mockDoc } as any,
+        loungeSubscriptions: { doc: mockDoc } as any,
+        loungeSessions: { doc: mockDoc } as any,
+        loungeMessages: { where: mockWhere } as any,
+        loungeRagMemories: { where: mockWhere } as any,
+        loungeGallery: { doc: mockDoc, where: mockWhere } as any,
+      };
+
+      expect(() => createUserScopedLoungeDb(scopedCollections, '   ')).toThrow(
+        /empty uid/,
+      );
+      const scoped = createUserScopedLoungeDb(scopedCollections, 'uid_owner_01');
+      expect(scoped.userDoc()).toEqual({ docId: 'uid_owner_01' });
+      expect(scoped.subscriptionDoc()).toEqual({ docId: 'uid_owner_01' });
+      expect(scoped.sessionDoc()).toEqual({ docId: 'uid_owner_01' });
+      expect(scoped.galleryDoc('img_01')).toEqual({ docId: 'uid_owner_01_img_01' });
+      expect(scoped.messagesQuery()).toEqual({ scoped: true });
+      expect(scoped.ragMemoriesQuery()).toEqual({ scoped: true });
+      expect(scoped.galleryQuery()).toEqual({ scoped: true });
+      expect(mockWhere).toHaveBeenNthCalledWith(1, 'uid', '==', 'uid_owner_01');
+      expect(mockWhere).toHaveBeenNthCalledWith(2, 'uid', '==', 'uid_owner_01');
+      expect(mockWhere).toHaveBeenNthCalledWith(3, 'uid', '==', 'uid_owner_01');
+
+      const ownedRecord = { uid: 'uid_owner_01', content: 'hi' };
+      expect(scoped.assertOwned(ownedRecord, COLLECTIONS.LOUNGE_MESSAGES)).toBe(ownedRecord);
+      expect(() =>
+        scoped.assertOwned({ uid: 'uid_other_02' }, COLLECTIONS.LOUNGE_MESSAGES),
+      ).toThrow(/Cross-tenant access blocked/);
+      expect(() =>
+        assertLoungeRecordOwnedByUid({ uid: 'uid_owner_01' }, '', COLLECTIONS.LOUNGE_USERS),
+      ).toThrow(/must not be empty/);
     });
   });
 });

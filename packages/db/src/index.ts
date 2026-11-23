@@ -50,6 +50,7 @@ import {
   type LoungeLanguage,
   type LoungeMemoryCategory,
   type LoungeMessageDoc,
+  type LoungeProcessedEventDoc,
   type LoungeRagMemoryDoc,
   type LoungeSenderRole,
   type LoungeSessionDoc,
@@ -508,7 +509,7 @@ function toRequiredLoungeIso(
   fieldName: string,
 ): string {
   const iso = toIsoString(value);
-  if (!iso || Number.isNaN(Date.parse(iso))) {
+  if (typeof iso !== 'string' || !iso || Number.isNaN(Date.parse(iso))) {
     throw new Error(
       `Invalid or missing datetime field "${fieldName}" in ${collectionName} doc "${docId}"`,
     );
@@ -601,6 +602,37 @@ function toRequiredNumber(
   return value;
 }
 
+function toPositiveInteger(
+  value: unknown,
+  collectionName: string,
+  docId: string,
+  fieldName: string,
+): number {
+  if (typeof value !== 'number' || !Number.isInteger(value) || value < 1) {
+    throw new Error(
+      `Invalid positive integer field "${fieldName}" in ${collectionName} doc "${docId}"`,
+    );
+  }
+  return value;
+}
+
+function toOptionalString(
+  value: unknown,
+  collectionName: string,
+  docId: string,
+  fieldName: string,
+): string | undefined {
+  if (value === undefined || value === null) {
+    return undefined;
+  }
+  if (typeof value !== 'string') {
+    throw new Error(
+      `Invalid non-string optional field "${fieldName}" in ${collectionName} doc "${docId}"`,
+    );
+  }
+  return value;
+}
+
 function parseDisclaimerConsent(
   raw: unknown,
   docId: string,
@@ -610,7 +642,12 @@ function parseDisclaimerConsent(
   }
   const consent = raw as Record<string, unknown>;
   return {
-    disclaimerVersion: toRequiredString(consent['disclaimerVersion'], COLLECTIONS.LOUNGE_USERS, docId, 'disclaimerConsent.disclaimerVersion'),
+    disclaimerVersion: toPositiveInteger(
+      consent['disclaimerVersion'],
+      COLLECTIONS.LOUNGE_USERS,
+      docId,
+      'disclaimerConsent.disclaimerVersion',
+    ),
     agreedToGeminiTrainingUsage: toRequiredBoolean(consent['agreedToGeminiTrainingUsage'], COLLECTIONS.LOUNGE_USERS, docId, 'disclaimerConsent.agreedToGeminiTrainingUsage'),
     agreedToZeroPiiProhibition: toRequiredBoolean(consent['agreedToZeroPiiProhibition'], COLLECTIONS.LOUNGE_USERS, docId, 'disclaimerConsent.agreedToZeroPiiProhibition'),
     agreedToOneWayMemoryIsolation: toRequiredBoolean(consent['agreedToOneWayMemoryIsolation'], COLLECTIONS.LOUNGE_USERS, docId, 'disclaimerConsent.agreedToOneWayMemoryIsolation'),
@@ -716,6 +753,7 @@ const loungeUserConverter: FirestoreDataConverter<LoungeUserDoc> = {
       status: user.status,
       language: user.language,
       timezone: user.timezone,
+      onboardingCompleted: user.onboardingCompleted,
       disclaimerConsent: {
         disclaimerVersion: user.disclaimerConsent.disclaimerVersion,
         agreedToGeminiTrainingUsage: user.disclaimerConsent.agreedToGeminiTrainingUsage,
@@ -771,6 +809,10 @@ const loungeUserConverter: FirestoreDataConverter<LoungeUserDoc> = {
         data['timezone'] === undefined
           ? 'Asia/Tokyo'
           : toRequiredString(data['timezone'], COLLECTIONS.LOUNGE_USERS, id, 'timezone'),
+      onboardingCompleted:
+        data['onboardingCompleted'] === undefined
+          ? true
+          : toRequiredBoolean(data['onboardingCompleted'], COLLECTIONS.LOUNGE_USERS, id, 'onboardingCompleted'),
       disclaimerConsent: parseDisclaimerConsent(data['disclaimerConsent'], id),
       ...(coreProfile !== undefined ? { coreProfile } : {}),
       ...(episodicBuffer !== undefined ? { episodicBuffer } : {}),
@@ -811,7 +853,12 @@ const loungeSubscriptionConverter: FirestoreDataConverter<LoungeSubscriptionDoc>
       dailyTurnQuota: toRequiredNumber(data['dailyTurnQuota'], COLLECTIONS.LOUNGE_SUBSCRIPTIONS, id, 'dailyTurnQuota'),
       remainingChatTurns: toRequiredNumber(data['remainingChatTurns'], COLLECTIONS.LOUNGE_SUBSCRIPTIONS, id, 'remainingChatTurns'),
       quotaResetAt: toRequiredLoungeIso(data['quotaResetAt'], COLLECTIONS.LOUNGE_SUBSCRIPTIONS, id, 'quotaResetAt'),
-      stripeCustomerId: typeof data['stripeCustomerId'] === 'string' ? data['stripeCustomerId'] : undefined,
+      stripeCustomerId: toOptionalString(
+        data['stripeCustomerId'],
+        COLLECTIONS.LOUNGE_SUBSCRIPTIONS,
+        id,
+        'stripeCustomerId',
+      ),
       currentPeriodEnd: toRequiredLoungeIso(data['currentPeriodEnd'], COLLECTIONS.LOUNGE_SUBSCRIPTIONS, id, 'currentPeriodEnd'),
       updatedAt: toRequiredLoungeIso(data['updatedAt'], COLLECTIONS.LOUNGE_SUBSCRIPTIONS, id, 'updatedAt'),
     };
@@ -893,7 +940,12 @@ const loungeMessageConverter: FirestoreDataConverter<LoungeMessageDoc> = {
     const id = snapshot.id;
     const rawUsage = data['tokenUsage'];
     let tokenUsage: LoungeTokenUsage | undefined;
-    if (typeof rawUsage === 'object' && rawUsage !== null) {
+    if (rawUsage !== undefined && rawUsage !== null) {
+      if (typeof rawUsage !== 'object' || Array.isArray(rawUsage)) {
+        throw new Error(
+          `Invalid non-object field "tokenUsage" in ${COLLECTIONS.LOUNGE_MESSAGES} doc "${id}"`,
+        );
+      }
       const u = rawUsage as Record<string, unknown>;
       tokenUsage = {
         promptTokens: toRequiredNumber(u['promptTokens'], COLLECTIONS.LOUNGE_MESSAGES, id, 'tokenUsage.promptTokens'),
@@ -908,8 +960,8 @@ const loungeMessageConverter: FirestoreDataConverter<LoungeMessageDoc> = {
       role: toRequiredEnum(data['role'], LOUNGE_SENDER_ROLES, COLLECTIONS.LOUNGE_MESSAGES, id, 'role'),
       content: toValidatedString(data['content'], COLLECTIONS.LOUNGE_MESSAGES, id, 'content'),
       emotion: toRequiredEnum(data['emotion'], LOUNGE_EMOTION_STATES, COLLECTIONS.LOUNGE_MESSAGES, id, 'emotion'),
-      imageAssetId: typeof data['imageAssetId'] === 'string' ? data['imageAssetId'] : undefined,
-      imageUrl: typeof data['imageUrl'] === 'string' ? data['imageUrl'] : undefined,
+      imageAssetId: toOptionalString(data['imageAssetId'], COLLECTIONS.LOUNGE_MESSAGES, id, 'imageAssetId'),
+      imageUrl: toOptionalString(data['imageUrl'], COLLECTIONS.LOUNGE_MESSAGES, id, 'imageUrl'),
       tokenUsage,
       createdAt: toRequiredLoungeIso(data['createdAt'], COLLECTIONS.LOUNGE_MESSAGES, id, 'createdAt'),
     };
@@ -978,7 +1030,34 @@ const loungeGalleryConverter: FirestoreDataConverter<LoungeGalleryItemDoc> = {
       imageUrl: toValidatedString(data['imageUrl'], COLLECTIONS.LOUNGE_GALLERY, id, 'imageUrl'),
       unlocked: toRequiredBoolean(data['unlocked'], COLLECTIONS.LOUNGE_GALLERY, id, 'unlocked'),
       unlockedAt: toOptionalLoungeIso(data['unlockedAt'], COLLECTIONS.LOUNGE_GALLERY, id, 'unlockedAt'),
-      sourceSessionId: typeof data['sourceSessionId'] === 'string' ? data['sourceSessionId'] : undefined,
+      sourceSessionId: toOptionalString(data['sourceSessionId'], COLLECTIONS.LOUNGE_GALLERY, id, 'sourceSessionId'),
+    };
+  },
+};
+
+/**
+ * Converter for isolated `lounge_processed_events` Stripe/webhook idempotency records.
+ */
+const loungeProcessedEventConverter: FirestoreDataConverter<LoungeProcessedEventDoc> = {
+  toFirestore(event: LoungeProcessedEventDoc): DocumentData {
+    const data: DocumentData = {
+      eventType: event.eventType,
+      processedAt: toRequiredFirestoreTimestamp(event.processedAt, 'processedAt'),
+    };
+    if (event.uid !== undefined) {
+      data['uid'] = event.uid;
+    }
+    return data;
+  },
+  fromFirestore(snapshot: QueryDocumentSnapshot): LoungeProcessedEventDoc {
+    const data = snapshot.data();
+    const id = snapshot.id;
+    const uid = toOptionalString(data['uid'], COLLECTIONS.LOUNGE_PROCESSED_EVENTS, id, 'uid');
+    return {
+      eventId: id,
+      eventType: toRequiredString(data['eventType'], COLLECTIONS.LOUNGE_PROCESSED_EVENTS, id, 'eventType'),
+      ...(uid !== undefined ? { uid } : {}),
+      processedAt: toRequiredLoungeIso(data['processedAt'], COLLECTIONS.LOUNGE_PROCESSED_EVENTS, id, 'processedAt'),
     };
   },
 };
@@ -1146,11 +1225,70 @@ export function getCollections(db: Firestore) {
     loungeGallery: db
       .collection(COLLECTIONS.LOUNGE_GALLERY)
       .withConverter(loungeGalleryConverter),
+
+    /** Typed isolated Private Lounge event idempotency documents (`lounge_processed_events`). */
+    loungeProcessedEvents: db
+      .collection(COLLECTIONS.LOUNGE_PROCESSED_EVENTS)
+      .withConverter(loungeProcessedEventConverter),
   } as const;
 }
 
 /** Type alias for the return value of `getCollections`. */
 export type DbCollections = ReturnType<typeof getCollections>;
+
+/**
+ * Verifies at runtime that a fetched Private Lounge record belongs exclusively to `expectedUid`
+ * to prevent cross-tenant data leakage even if a downstream query filter were misconfigured.
+ *
+ * @throws Error When `expectedUid` is blank or `record.uid !== expectedUid`.
+ */
+export function assertLoungeRecordOwnedByUid<T extends { uid: string }>(
+  record: T,
+  expectedUid: string,
+  collectionName: string,
+): T {
+  const normalizedUid = expectedUid.trim();
+  if (!normalizedUid) {
+    throw new Error(`Tenant UID must not be empty when accessing ${collectionName}`);
+  }
+  if (record.uid !== normalizedUid) {
+    throw new Error(
+      `Cross-tenant access blocked on ${collectionName}: expected uid "${normalizedUid}" but got "${record.uid}"`,
+    );
+  }
+  return record;
+}
+
+/**
+ * Creates a strictly tenant-scoped accessor over isolated `lounge_*` collections so repositories
+ * cannot execute unscoped queries or access another user's records accidentally.
+ *
+ * @throws Error When `uid` is empty or whitespace.
+ */
+export function createUserScopedLoungeDb(
+  collections: Pick<
+    DbCollections,
+    'loungeUsers' | 'loungeSubscriptions' | 'loungeSessions' | 'loungeMessages' | 'loungeRagMemories' | 'loungeGallery'
+  >,
+  uid: string,
+) {
+  const scopedUid = uid.trim();
+  if (!scopedUid) {
+    throw new Error('Cannot construct user-scoped Lounge DB accessor with empty uid');
+  }
+  return {
+    uid: scopedUid,
+    userDoc: () => collections.loungeUsers.doc(scopedUid),
+    subscriptionDoc: () => collections.loungeSubscriptions.doc(scopedUid),
+    sessionDoc: () => collections.loungeSessions.doc(scopedUid),
+    galleryDoc: (assetId: string) => collections.loungeGallery.doc(`${scopedUid}_${assetId}`),
+    messagesQuery: () => collections.loungeMessages.where('uid', '==', scopedUid),
+    ragMemoriesQuery: () => collections.loungeRagMemories.where('uid', '==', scopedUid),
+    galleryQuery: () => collections.loungeGallery.where('uid', '==', scopedUid),
+    assertOwned: <T extends { uid: string }>(record: T, collectionName: string): T =>
+      assertLoungeRecordOwnedByUid(record, scopedUid, collectionName),
+  };
+}
 
 // Re-export converters for consumers that need direct access (e.g., unit tests).
 export {
@@ -1168,6 +1306,7 @@ export {
   loungeMessageConverter,
   loungeRagMemoryConverter,
   loungeGalleryConverter,
+  loungeProcessedEventConverter,
 };
 
 // Re-export all schema models and collection constants.

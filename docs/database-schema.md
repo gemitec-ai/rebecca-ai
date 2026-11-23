@@ -218,7 +218,7 @@ erDiagram
 
 ## 3. Collections Reference
 
-All collections are mapped to constants in `COLLECTIONS` (`packages/db/src/index.ts`).
+All collections are mapped to constants in `COLLECTIONS` (`packages/db/src/schema.ts`).
 
 | Collection Name Constant | Collection Path | Primary Role | TTL Policy |
 | :--- | :--- | :--- | :--- |
@@ -241,6 +241,7 @@ All collections are mapped to constants in `COLLECTIONS` (`packages/db/src/index
 | `COLLECTIONS.LOUNGE_MESSAGES` | `/lounge_messages` | Isolated Private Lounge turn logs & token metering | None |
 | `COLLECTIONS.LOUNGE_RAG_MEMORIES` | `/lounge_rag_memories` | Isolated Private Lounge episodic memories (no X write-back) | None |
 | `COLLECTIONS.LOUNGE_GALLERY` | `/lounge_gallery` | Isolated Private Lounge unlocked Bot illustration gallery | None |
+| `COLLECTIONS.LOUNGE_PROCESSED_EVENTS` | `/lounge_processed_events` | Isolated Private Lounge webhook & async task idempotency | None |
 
 ---
 
@@ -610,7 +611,7 @@ Synthesized by `@rebecca/memory` (`DreamingConsolidationEngine`) and orchestrate
 
 ### 4.18 Isolated Private Lounge Collections (`lounge_*`)
 
-The **Gemitec Private Lounge** enforces a strict **1 X account = 1 Private Lounge account = 1 continuous conversation session** architecture inside six dedicated collections completely isolated from the Public X Bot (`users`, `conversation_logs`, `rag_memories`, `system/persona`, `timeline_history`) and Admin Dashboard (`admin_users`):
+The **Gemitec Private Lounge** enforces a strict **1 X account = 1 Private Lounge account = 1 continuous conversation session** architecture inside seven dedicated collections completely isolated from the Public X Bot (`users`, `conversation_logs`, `rag_memories`, `processed_events`, `system/persona`, `timeline_history`) and Admin Dashboard (`admin_users`), guarded in application repositories via `createUserScopedLoungeDb(collections, uid)` and `assertLoungeRecordOwnedByUid`:
 
 - **Two-Layer Cognitive Memory Architecture**:
   - *Independent Private Lounge Memory (`lounge_*`)*: Stores per-user Dreaming structured profiles (`lounge_users.coreProfile`), sliding episodic turns (`lounge_users.episodicBuffer`), vectorized episodic semantic memories (`lounge_rag_memories.embedding`), and raw turns (`lounge_messages`) completely separate from Public X.
@@ -630,10 +631,11 @@ Document ID = Firebase Auth `uid`. Unique index invariant: `xUserId` is 1:1 (dup
 | `status` | `'ACTIVE' \| 'SUSPENDED'` | Lounge account status. |
 | `language` | `LoungeLanguage` | Selected UI & AI reply language (`ja \| en \| de \| pt \| es \| zh-HK \| vi \| th`). |
 | `timezone` | `string` | User's IANA timezone identifier (e.g. `Asia/Tokyo`) for day/night time-of-day awareness. |
-| `disclaimerConsent` | `LoungeUserDisclaimerConsent` | Scroll-verified sign-up consent (`disclaimerVersion`, `agreedToGeminiTrainingUsage`, `agreedToZeroPiiProhibition`, `agreedToOneWayMemoryIsolation`, `scrolledToBottomAt`, `consentedAt`). |
-| `coreProfile` | `UserCoreProfile \| undefined` | Structured user profile consolidated independently via Private Lounge Dreaming. |
-| `episodicBuffer` | `ConversationLogEntry[] \| undefined` | Recent private raw turn sliding buffer for Dreaming consolidation. |
-| `lastDreamedAt` | `Timestamp \| undefined` | Last completed Private Lounge Dreaming consolidation timestamp. |
+| `onboardingCompleted` | `boolean` | `false` on X sign-up until the user confirms Language & Timezone on `ONBOARDING` (`true`). Resumes onboarding automatically on re-entry if incomplete. |
+| `disclaimerConsent` | `LoungeUserDisclaimerConsent` | Scroll-verified sign-up/re-consent record (`disclaimerVersion` positive integer `>= 1`, `agreedToGeminiTrainingUsage`, `agreedToZeroPiiProhibition`, `agreedToOneWayMemoryIsolation`, `scrolledToBottomAt`, `consentedAt`). |
+| `coreProfile` | `UserCoreProfile \| undefined` | Structured user profile consolidated independently via Private Lounge Dreaming (server-only). |
+| `episodicBuffer` | `ConversationLogEntry[] \| undefined` | Recent private raw turn sliding buffer for Dreaming consolidation (server-only). |
+| `lastDreamedAt` | `Timestamp \| undefined` | Last completed Private Lounge Dreaming consolidation timestamp (server-only). |
 | `createdAt` | `Timestamp` (ISO 8601) | Account registration timestamp. |
 | `updatedAt` | `Timestamp` (ISO 8601) | Last profile update timestamp. |
 | `lastLoginAt` | `Timestamp` (ISO 8601) | Most recent authenticated login timestamp. |
@@ -712,6 +714,16 @@ Document ID = `<uid>_<assetId>`. Composite index: `uid ASC, unlocked DESC`.
 | `unlocked` | `boolean` | Whether unlocked by appearing at least once in a chat reply for this user. |
 | `unlockedAt` | `Timestamp \| undefined` | Unlock timestamp when `unlocked === true`. |
 | `sourceSessionId` | `string \| undefined` | Session ID in which this illustration was first displayed. |
+
+#### `lounge_processed_events` (`COLLECTIONS.LOUNGE_PROCESSED_EVENTS`)
+Document ID = External Event ID / Stripe Webhook Event ID. Isolated idempotency registry preventing duplicate webhook/billing processing without sharing Public Bot `processed_events`.
+
+| Field Name | Type | Description |
+| :--- | :--- | :--- |
+| `eventId` | `string` (Doc ID) | Unique idempotency key from Stripe or internal background event source. |
+| `eventType` | `string` | Event type discriminator (e.g., `checkout.session.completed`). |
+| `uid` | `string \| undefined` | Optional target Private Lounge user UID. |
+| `processedAt` | `Timestamp` (ISO 8601) | Timestamp when event processing completed. |
 
 ---
 

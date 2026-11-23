@@ -128,6 +128,12 @@ export const COLLECTIONS = {
    * Doc ID = `<uid>_<assetId>`.
    */
   LOUNGE_GALLERY: 'lounge_gallery',
+
+  /**
+   * Isolated Private Lounge Stripe/webhook idempotency guard records.
+   * Doc ID = Event UUID / Stripe Event ID.
+   */
+  LOUNGE_PROCESSED_EVENTS: 'lounge_processed_events',
 } as const;
 
 /** Union type of all canonical Firestore collection names managed by `@rebecca/db`. */
@@ -262,6 +268,7 @@ export type {
   LoungeMemoryCategory,
   LoungeMessageDoc,
   LoungePrivateMemorySnapshot,
+  LoungeProcessedEventDoc,
   LoungePublicXMemorySnapshot,
   LoungeRagMemoryDoc,
   LoungeSenderRole,

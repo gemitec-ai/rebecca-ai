@@ -1079,11 +1079,17 @@ export type LoungeSenderRole = 'USER' | 'ASSISTANT' | 'SYSTEM';
 export type LoungeMemoryCategory = 'EPISODE' | 'PREFERENCE' | 'PROMISE' | 'NICKNAME';
 
 /**
- * Scroll-verified consent audit record captured during Private Lounge Sign-Up.
+ * Current canonical positive integer version of the Private Lounge legal/privacy disclaimer.
+ * Increment whenever material clauses change to trigger mandatory user re-consent on login/resume.
+ */
+export const CURRENT_LOUNGE_DISCLAIMER_VERSION = 1;
+
+/**
+ * Scroll-verified consent audit record captured during Private Lounge Sign-Up or Re-Consent.
  */
 export interface LoungeUserDisclaimerConsent {
-  /** SemVer or date identifier of the accepted legal/privacy disclaimer. */
-  disclaimerVersion: string;
+  /** Positive integer version (`>= 1`) of the accepted legal/privacy disclaimer. */
+  disclaimerVersion: number;
   /** Confirms user read and accepted Gemini API learning/improvement terms. */
   agreedToGeminiTrainingUsage: boolean;
   /** Confirms user agreed not to transmit PII, credentials, or sensitive data. */
@@ -1092,7 +1098,7 @@ export interface LoungeUserDisclaimerConsent {
   agreedToOneWayMemoryIsolation: boolean;
   /** ISO 8601 timestamp recorded when disclaimer box reached 100% scroll depth. */
   scrolledToBottomAt: string;
-  /** ISO 8601 timestamp recorded when the sign-up consent checkbox was submitted. */
+  /** ISO 8601 timestamp recorded when the sign-up or re-consent checkbox was submitted. */
   consentedAt: string;
 }
 
@@ -1109,6 +1115,8 @@ export interface LoungeUser {
   status: LoungeAccountStatus;
   language: LoungeLanguage;
   timezone: string;
+  /** Indicates whether post-X-link Language & Timezone onboarding confirmation has completed. */
+  onboardingCompleted: boolean;
   disclaimerConsent: LoungeUserDisclaimerConsent;
   createdAt: string;
   updatedAt: string;
@@ -1124,12 +1132,35 @@ export interface LoungeDeleteAccountRequestDto {
 }
 
 /**
- * Request DTO updating Private Lounge language and timezone preferences.
+ * Request DTO updating Private Lounge language, timezone preferences, and onboarding completion status.
  */
 export interface LoungeUpdatePreferencesRequestDto {
   language?: LoungeLanguage;
   timezone?: string;
+  completeOnboarding?: boolean;
 }
+
+/**
+ * Request DTO submitting scroll-verified user acceptance of an updated disclaimer version.
+ */
+export interface LoungeUpdateDisclaimerConsentRequestDto {
+  disclaimerConsent: LoungeUserDisclaimerConsent;
+}
+
+/**
+ * Isolated webhook / background event idempotency record (`lounge_processed_events`).
+ */
+export interface LoungeProcessedEvent {
+  eventId: string;
+  eventType: string;
+  uid?: string;
+  processedAt: string;
+}
+
+/**
+ * Persisted Firestore schema shape for `lounge_processed_events` documents.
+ */
+export type LoungeProcessedEventDoc = LoungeProcessedEvent;
 
 /**
  * Persisted Firestore schema shape for `lounge_users` documents including internal Dreaming memory fields.
@@ -1322,7 +1353,7 @@ export interface LoungePersonaBranding {
  */
 export interface LoungeRuntimeConfigDto {
   appVersion: string;
-  disclaimerVersion: string;
+  disclaimerVersion: number;
   persona: LoungePersonaBranding;
 }
 
