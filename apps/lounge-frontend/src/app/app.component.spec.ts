@@ -1321,7 +1321,10 @@ describe('Gemitec Private Lounge Root Shell (AppComponent)', () => {
 
     const modal = query<HTMLElement>('#reconsent-modal');
     expect(modal.textContent).toContain('v1');
-    expect(modal.textContent).toContain('保持されています');
+    expect(modal.textContent).toContain('同意してチャットに戻る');
+    expect(modal.querySelector('.reconsent-summary-card')).toBeNull();
+    expect(modal.querySelector('.reconsent-preserved-callout')).toBeNull();
+    expect(modal.querySelector('.reconsent-footer')).toBeNull();
 
     // Escape key & backdrop click MUST NOT close #reconsent-modal; Tab wraps focus inside modal
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));

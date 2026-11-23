@@ -5,11 +5,11 @@
   role="dialog"
   aria-modal="true"
   aria-labelledby="reconsent-modal-title"
+  aria-describedby="reconsent-modal-subtitle"
 >
   <section #modalCard class="reconsent-modal-card" tabindex="-1">
     <header class="reconsent-header-row">
       <div class="reconsent-version-pill">
-        <span class="material-icons" aria-hidden="true">gavel</span>
         <span class="pill-label">{{ facade.t('reconsentBadge') }}</span>
         <span class="pill-version">· {{ versionSuffixLabel() }}</span>
       </div>
@@ -30,71 +30,68 @@
 
     <div class="reconsent-heading-group">
       <h2 id="reconsent-modal-title" class="reconsent-title">{{ facade.t('reconsentTitle') }}</h2>
-      <p class="reconsent-subtitle">{{ facade.t('reconsentSubtitle') }}</p>
-    </div>
-
-    <div class="reconsent-preserved-callout">
-      <span class="material-icons preserved-icon" aria-hidden="true">verified_user</span>
-      <span>{{ facade.t('reconsentPreservedNotice') }}</span>
-    </div>
-
-    <div class="reconsent-summary-card">
-      <div class="summary-card-title">{{ facade.t('reconsentSummaryTitle') }}</div>
-      <ul class="summary-card-list">
-        <li>{{ facade.t('reconsentSummaryPoint1') }}</li>
-        <li>{{ facade.t('reconsentSummaryPoint2') }}</li>
-        <li>{{ facade.t('reconsentSummaryPoint3') }}</li>
-      </ul>
+      <p id="reconsent-modal-subtitle" class="reconsent-subtitle">
+        {{ facade.t('reconsentSubtitle') }}
+      </p>
     </div>
 
     <div
       class="reconsent-scroll-wrap"
       [class.at-bottom]="facade.disclaimerScrolledToBottom()"
     >
+      <div class="reconsent-scroll-body">
+        <div
+          #disclaimerBox
+          id="reconsent-scroll-box"
+          class="reconsent-scroll-box"
+          tabindex="0"
+          role="region"
+          [attr.aria-label]="facade.t('reconsentTitle')"
+          (scroll)="onDisclaimerScroll($event)"
+        >
+          <div class="disclaimer-clause">
+            <h3>{{ facade.t('clause1Title') }}</h3>
+            <p>{{ facade.t('clause1Body') }}</p>
+          </div>
+
+          <div class="disclaimer-clause">
+            <h3>{{ facade.t('clause2Title') }}</h3>
+            <p>{{ facade.t('clause2Body') }}</p>
+          </div>
+
+          <div class="disclaimer-clause">
+            <h3>{{ facade.t('clause3Title') }}</h3>
+            <p>{{ facade.t('clause3Body') }}</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="scroll-progress-track" aria-hidden="true">
+        <div
+          class="scroll-progress-fill"
+          [style.width.%]="facade.disclaimerScrollProgress()"
+        ></div>
+      </div>
+
       <div
-        #disclaimerBox
-        id="reconsent-scroll-box"
-        class="reconsent-scroll-box"
-        tabindex="0"
-        role="region"
-        [attr.aria-label]="facade.t('reconsentTitle')"
-        (scroll)="onDisclaimerScroll($event)"
+        class="reconsent-scroll-strip"
+        [class.unlocked]="facade.disclaimerScrolledToBottom()"
+        aria-live="polite"
       >
-        <div class="disclaimer-clause">
-          <h3>{{ facade.t('clause1Title') }}</h3>
-          <p>{{ facade.t('clause1Body') }}</p>
+        <div class="scroll-status-text">
+          <span class="material-icons scroll-status-icon" aria-hidden="true">
+            {{ facade.disclaimerScrolledToBottom() ? 'check_circle' : 'arrow_downward' }}
+          </span>
+          <span>
+            {{
+              facade.disclaimerScrolledToBottom()
+                ? facade.t('scrollUnlocked')
+                : facade.t('scrollLocked')
+            }}
+          </span>
         </div>
-
-        <div class="disclaimer-clause">
-          <h3>{{ facade.t('clause2Title') }}</h3>
-          <p>{{ facade.t('clause2Body') }}</p>
-        </div>
-
-        <div class="disclaimer-clause">
-          <h3>{{ facade.t('clause3Title') }}</h3>
-          <p>{{ facade.t('clause3Body') }}</p>
-        </div>
+        <span class="scroll-progress-pct">{{ facade.disclaimerScrollProgress() }}%</span>
       </div>
-    </div>
-
-    <div
-      class="reconsent-scroll-status"
-      [class.unlocked]="facade.disclaimerScrolledToBottom()"
-      aria-live="polite"
-    >
-      <div class="scroll-status-text">
-        <span class="material-icons scroll-status-icon" aria-hidden="true">
-          {{ facade.disclaimerScrolledToBottom() ? 'check_circle' : 'arrow_downward' }}
-        </span>
-        <span>
-          {{
-            facade.disclaimerScrolledToBottom()
-              ? facade.t('scrollUnlocked')
-              : facade.t('scrollLocked')
-          }}
-        </span>
-      </div>
-      <span class="scroll-progress-pct">{{ facade.disclaimerScrollProgress() }}%</span>
     </div>
 
     <label
@@ -109,56 +106,45 @@
         [checked]="facade.disclaimerChecked()"
         (change)="onConsentChange($event)"
       />
-      <span>{{ facade.t('consentLabel') }}</span>
+      <span>{{ facade.t('reconsentConsentLabel') }}</span>
     </label>
 
-    <div class="reconsent-actions">
+    <button
+      id="btn-submit-reconsent"
+      type="button"
+      class="reconsent-agree-btn"
+      [disabled]="!facade.canSubmitSignUp()"
+      (click)="facade.submitDisclaimerReconsent()"
+    >
+      @if (facade.isLoading()) {
+        <span class="material-icons spin-icon" aria-hidden="true">autorenew</span>
+      }
+      <span>{{ facade.t('reconsentCta') }}</span>
+    </button>
+
+    <div class="reconsent-exit-row">
       <button
-        id="btn-submit-reconsent"
+        id="btn-reconsent-logout"
         type="button"
-        class="reconsent-agree-btn"
-        [disabled]="!facade.canSubmitSignUp()"
-        (click)="facade.submitDisclaimerReconsent()"
+        class="reconsent-link-btn reconsent-logout-link"
+        [disabled]="facade.isLoading()"
+        (click)="facade.logout()"
       >
-        @if (facade.isLoading()) {
-          <span class="material-icons spin-icon" aria-hidden="true">autorenew</span>
-        } @else {
-          <span class="material-icons" aria-hidden="true">verified</span>
-        }
-        <span>{{ facade.t('reconsentCta') }}</span>
+        {{ facade.t('reconsentLogoutBtn') }}
       </button>
 
-      <div class="reconsent-exit-row">
-        <button
-          id="btn-reconsent-logout"
-          type="button"
-          class="reconsent-logout-btn"
-          [disabled]="facade.isLoading()"
-          (click)="facade.logout()"
-        >
-          <span class="material-icons" aria-hidden="true">logout</span>
-          <span>{{ facade.t('reconsentLogoutBtn') }}</span>
-        </button>
+      <span class="reconsent-exit-sep" aria-hidden="true">·</span>
 
-        <button
-          #reconsentDeleteButton
-          id="btn-reconsent-delete"
-          type="button"
-          class="reconsent-delete-btn"
-          [disabled]="facade.isLoading()"
-          (click)="requestDeleteAccount.emit()"
-        >
-          <span class="material-icons" aria-hidden="true">delete_outline</span>
-          <span>{{ facade.t('reconsentDeleteBtn') }}</span>
-        </button>
-      </div>
+      <button
+        #reconsentDeleteButton
+        id="btn-reconsent-delete"
+        type="button"
+        class="reconsent-link-btn reconsent-delete-link"
+        [disabled]="facade.isLoading()"
+        (click)="requestDeleteAccount.emit()"
+      >
+        {{ facade.t('reconsentDeleteBtn') }}
+      </button>
     </div>
-
-    <footer class="reconsent-footer">
-      <span>{{ facade.t('disclaimerVersionLabel') }}</span>
-      @if (formattedVersion()) {
-        <span class="version-chip">{{ formattedVersion() }}</span>
-      }
-    </footer>
   </section>
 </div>

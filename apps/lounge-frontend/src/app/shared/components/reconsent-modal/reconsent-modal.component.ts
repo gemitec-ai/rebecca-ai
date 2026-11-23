@@ -28,7 +28,6 @@ export class ReconsentModalComponent {
   public readonly facade = inject(LoungeFacadeService);
 
   public readonly languageOptions = input.required<readonly LoungeSelectOption[]>();
-  public readonly formattedVersion = input.required<string>();
 
   public readonly languageChange = output<string>();
   public readonly requestDeleteAccount = output();
