@@ -1085,6 +1085,22 @@ export type LoungeMemoryCategory = 'EPISODE' | 'PREFERENCE' | 'PROMISE' | 'NICKN
 export const CURRENT_LOUNGE_DISCLAIMER_VERSION = 1;
 
 /**
+ * Machine-readable API error code emitted when a user must accept an updated disclaimer before chatting.
+ */
+export const LOUNGE_ERROR_CODE_DISCLAIMER_RECONSENT_REQUIRED =
+  'DISCLAIMER_RECONSENT_REQUIRED' as const;
+
+/**
+ * Structured error payload returned by Private Lounge BFF endpoints.
+ */
+export interface LoungeApiErrorDto {
+  error: string;
+  code?: string;
+  requiredDisclaimerVersion?: number;
+  acceptedDisclaimerVersion?: number;
+}
+
+/**
  * Scroll-verified consent audit record captured during Private Lounge Sign-Up or Re-Consent.
  */
 export interface LoungeUserDisclaimerConsent {

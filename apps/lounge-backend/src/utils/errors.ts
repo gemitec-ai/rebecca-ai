@@ -1,3 +1,4 @@
+import { LOUNGE_ERROR_CODE_DISCLAIMER_RECONSENT_REQUIRED } from '@rebecca/types';
 import type { Request, Response } from 'express';
 import { loungeLogger, sanitizeLogInput } from './logger';
 
@@ -25,15 +26,27 @@ export function parseStartAfterId(rawCursor: unknown): string | undefined {
 }
 
 /**
+ * Optional metadata attached to structured Private Lounge BFF HTTP errors.
+ */
+export interface LoungeHttpErrorOptions extends ErrorOptions {
+  readonly code?: string;
+  readonly meta?: Readonly<Record<string, unknown>>;
+}
+
+/**
  * Base typed HTTP error for Private Lounge BFF boundary failures.
  */
 export class LoungeHttpError extends Error {
   public readonly statusCode: number;
+  public readonly code?: string;
+  public readonly meta?: Readonly<Record<string, unknown>>;
 
-  constructor(statusCode: number, message: string, options?: ErrorOptions) {
+  constructor(statusCode: number, message: string, options?: LoungeHttpErrorOptions) {
     super(message, options);
     this.name = new.target.name;
     this.statusCode = statusCode;
+    this.code = options?.code;
+    this.meta = options?.meta;
   }
 }
 
@@ -41,7 +54,7 @@ export class LoungeHttpError extends Error {
  * Raised when request parameters or sign-up disclaimer consent fail validation (HTTP 400).
  */
 export class LoungeValidationError extends LoungeHttpError {
-  constructor(message: string, options?: ErrorOptions) {
+  constructor(message: string, options?: LoungeHttpErrorOptions) {
     super(400, message, options);
   }
 }
@@ -52,9 +65,26 @@ export class LoungeValidationError extends LoungeHttpError {
 export class LoungeAuthError extends LoungeHttpError {
   public override readonly statusCode: 401 | 403;
 
-  constructor(statusCode: 401 | 403, message: string, options?: ErrorOptions) {
+  constructor(statusCode: 401 | 403, message: string, options?: LoungeHttpErrorOptions) {
     super(statusCode, message, options);
     this.statusCode = statusCode;
+  }
+}
+
+/**
+ * Raised when a user's accepted legal disclaimer version is older than the required BFF version (`HTTP 403`).
+ */
+export class LoungeDisclaimerReconsentRequiredError extends LoungeAuthError {
+  public readonly requiredDisclaimerVersion: number;
+  public readonly acceptedDisclaimerVersion: number;
+
+  constructor(requiredDisclaimerVersion: number, acceptedDisclaimerVersion: number) {
+    super(403, 'Updated disclaimer consent is required before continuing conversation', {
+      code: LOUNGE_ERROR_CODE_DISCLAIMER_RECONSENT_REQUIRED,
+      meta: { requiredDisclaimerVersion, acceptedDisclaimerVersion },
+    });
+    this.requiredDisclaimerVersion = requiredDisclaimerVersion;
+    this.acceptedDisclaimerVersion = acceptedDisclaimerVersion;
   }
 }
 
@@ -126,10 +156,18 @@ export function handleLoungeControllerError(
   if (err instanceof LoungeHttpError && err.statusCode < 500) {
     loungeLogger.warn(
       `Client or business rejection in ${sanitizeLogInput(operation)}`,
-      { statusCode: err.statusCode, reason: sanitizeLogInput(err.message) },
+      {
+        statusCode: err.statusCode,
+        ...(err.code ? { code: err.code } : {}),
+        reason: sanitizeLogInput(err.message),
+      },
       traceHeader,
     );
-    res.status(err.statusCode).json({ error: err.message });
+    res.status(err.statusCode).json({
+      error: err.message,
+      ...(err.code ? { code: err.code } : {}),
+      ...(err.meta ?? {}),
+    });
     return;
   }
 

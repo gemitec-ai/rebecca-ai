@@ -270,6 +270,11 @@ export function createLoungeApp(deps: LoungeAppDependencies): Express {
       credentials: true,
     }),
   );
+  // Prevent browser or proxy caching on all /api/v1/lounge/* responses including early parser/rate-limit rejections.
+  app.use('/api/v1/lounge', (_req: Request, res: Response, next: NextFunction) => {
+    res.setHeader('Cache-Control', 'no-store');
+    next();
+  });
   app.use(express.json({ limit: '256kb' }));
   app.use(
     rateLimit({

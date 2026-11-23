@@ -174,6 +174,10 @@ function buildFakeDeps(
   let lastLocaleDirective: string | undefined;
   let lastMemoryDirective: string | undefined;
   let cascadeDeletedCount = 0;
+  let subscriptionLookupCount = 0;
+  let embedCallCount = 0;
+  let pipelineCallCount = 0;
+  let decrementCallCount = 0;
 
   const personaBranding: LoungePersonaBranding = {
     displayName: 'レベッカ',
@@ -277,9 +281,11 @@ function buildFakeDeps(
 
   const accountRepository: ILoungeAccountRepository = {
     async getSubscriptionByUid(uid: string) {
+      subscriptionLookupCount += 1;
       return currentSub && currentSub.uid === uid ? currentSub : null;
     },
     async decrementRemainingTurns(uid: string) {
+      decrementCallCount += 1;
       if (!currentSub || currentSub.uid !== uid) {
         throw new Error('Missing subscription');
       }
@@ -431,6 +437,7 @@ function buildFakeDeps(
 
   const embeddingPort: ILoungeEmbeddingPort = {
     async embedQuery() {
+      embedCallCount += 1;
       return [0.25, 0.5, 0.75];
     },
   };
@@ -464,6 +471,7 @@ function buildFakeDeps(
 
   const chatPipeline: ILoungeChatPipelinePort = {
     async generateReply(input) {
+      pipelineCallCount += 1;
       lastLocaleDirective = input.localePromptDirective;
       lastMemoryDirective = input.memoryPromptDirective;
       return {
@@ -529,6 +537,12 @@ function buildFakeDeps(
     getLastLimit: () => lastRequestedLimit,
     getLastLocaleDirective: () => lastLocaleDirective,
     getLastMemoryDirective: () => lastMemoryDirective,
+    getDownstreamCallCounts: () => ({
+      subscriptionLookupCount,
+      embedCallCount,
+      pipelineCallCount,
+      decrementCallCount,
+    }),
   };
 }
 
@@ -915,16 +929,31 @@ describe('Gemitec Private Lounge BFF Architecture Skeleton', () => {
       ).status,
     ).toBe(400);
 
-    // Re-consent gate enforces latest integer disclaimerVersion before allowing new chat turns
-    const outdatedApp = createLoungeApp(
-      buildFakeDeps({
-        requiredDisclaimerVersion: 2,
-        matchedImage: {
-          assetId: 'bot_img_8649',
-          imageUrl: 'assets/IMG_8649.JPG',
-        },
-      }).deps,
-    );
+    // Re-consent gate enforces latest integer disclaimerVersion strictly on POST /session/messages
+    // with zero-cache headers and structured 403 recovery metadata, while keeping session read,
+    // account, consent, logout, and withdrawal endpoints unblocked.
+    const outdatedFake = buildFakeDeps({
+      requiredDisclaimerVersion: 2,
+      matchedImage: {
+        assetId: 'bot_img_8649',
+        imageUrl: 'assets/IMG_8649.JPG',
+      },
+    });
+    const outdatedApp = createLoungeApp(outdatedFake.deps);
+    const outdatedConfigRes = await request(outdatedApp).get('/api/v1/lounge/config');
+    expect(outdatedConfigRes.status).toBe(200);
+    expect(outdatedConfigRes.headers['cache-control']).toBe('no-store');
+    expect(outdatedConfigRes.body.disclaimerVersion).toBe(2);
+
+    // Even early express.json() 400 parse rejections receive Cache-Control: no-store
+    const malformedEarlyRes = await request(outdatedApp)
+      .post('/api/v1/lounge/session/messages')
+      .set('Authorization', 'Bearer valid-token')
+      .set('Content-Type', 'application/json')
+      .send('{"brokenJson":');
+    expect(malformedEarlyRes.status).toBe(400);
+    expect(malformedEarlyRes.headers['cache-control']).toBe('no-store');
+
     expect(
       (
         await request(outdatedApp)
@@ -932,12 +961,41 @@ describe('Gemitec Private Lounge BFF Architecture Skeleton', () => {
           .set('Authorization', 'Bearer valid-token')
       ).status,
     ).toBe(200);
+    expect(
+      (
+        await request(outdatedApp)
+          .get('/api/v1/lounge/session')
+          .set('Authorization', 'Bearer valid-token')
+      ).status,
+    ).toBe(200);
+    expect(
+      (
+        await request(outdatedApp)
+          .get('/api/v1/lounge/session/messages')
+          .set('Authorization', 'Bearer valid-token')
+      ).status,
+    ).toBe(200);
+
+    const initialTurnsBeforeBlock = outdatedFake.getSubscription()?.remainingChatTurns;
     const blockedChatRes = await request(outdatedApp)
       .post('/api/v1/lounge/session/messages')
       .set('Authorization', 'Bearer valid-token')
       .send({ content: '話したい' });
     expect(blockedChatRes.status).toBe(403);
-    expect(blockedChatRes.body.error).toContain('Updated disclaimer consent is required');
+    expect(blockedChatRes.headers['cache-control']).toBe('no-store');
+    expect(blockedChatRes.body).toEqual({
+      error: 'Updated disclaimer consent is required before continuing conversation',
+      code: 'DISCLAIMER_RECONSENT_REQUIRED',
+      requiredDisclaimerVersion: 2,
+      acceptedDisclaimerVersion: 1,
+    });
+    expect(outdatedFake.getSubscription()?.remainingChatTurns).toBe(initialTurnsBeforeBlock);
+    expect(outdatedFake.getDownstreamCallCounts()).toEqual({
+      subscriptionLookupCount: 1, // only GET /account earlier invoked getSubscriptionByUid; sendMessage stopped before subscription check
+      embedCallCount: 0,
+      pipelineCallCount: 0,
+      decrementCallCount: 0,
+    });
 
     expect(
       (
@@ -961,6 +1019,31 @@ describe('Gemitec Private Lounge BFF Architecture Skeleton', () => {
           .send({ content: '同意後の会話テスト' })
       ).status,
     ).toBe(201);
+
+    // Outdated users can always log out or permanently delete their account even before re-consenting
+    const outdatedWithdrawApp = createLoungeApp(
+      buildFakeDeps({
+        requiredDisclaimerVersion: 2,
+      }).deps,
+    );
+    expect(
+      (
+        await request(outdatedWithdrawApp)
+          .post('/api/v1/lounge/auth/logout')
+          .set('Authorization', 'Bearer valid-token')
+      ).status,
+    ).toBe(204);
+    expect(
+      (
+        await request(outdatedWithdrawApp)
+          .delete('/api/v1/lounge/account')
+          .set('Authorization', 'Bearer valid-token')
+          .send({
+            confirmedIrreversibleDeletion: true,
+            confirmedNoRefundForRemainingTurns: true,
+          })
+      ).status,
+    ).toBe(204);
 
     // Singleton session retrieval & pagination clamping
     const sessionRes = await request(app)

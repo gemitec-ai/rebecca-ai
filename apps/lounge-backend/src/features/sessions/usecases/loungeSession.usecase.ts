@@ -10,6 +10,7 @@ import {
 } from '@rebecca/types';
 import {
   LoungeAuthError,
+  LoungeDisclaimerReconsentRequiredError,
   LoungeNotFoundError,
   LoungeQuotaExhaustedError,
   LoungeValidationError,
@@ -290,13 +291,14 @@ export class LoungeSessionUseCase implements ILoungeSessionUseCase {
 
   /**
    * Executes one interactive conversation turn inside the user's single persistent session:
-   * - Validates active user, subscription, and daily quota
+   * - Validates active user status, latest integer disclaimer version consent, subscription, and daily quota
    * - Computes prompt embedding and retrieves both independent Private Lounge memory and read-only Public X context
    * - Generates Gemini reply with locale/timezone awareness and two-layer memory directive
    * - Searches Bot artwork catalog and persists turn pair before deducting remaining quota
    *
    * @throws LoungeValidationError When prompt is empty or exceeds `MAX_LOUNGE_MESSAGE_LENGTH`.
    * @throws LoungeAuthError When user account or subscription status is not `ACTIVE`.
+   * @throws LoungeDisclaimerReconsentRequiredError When accepted disclaimer version is below required version (`403`).
    * @throws LoungeNotFoundError When subscription does not exist.
    * @throws LoungeQuotaExhaustedError When daily `remainingChatTurns` is 0 or less.
    */
@@ -309,9 +311,9 @@ export class LoungeSessionUseCase implements ILoungeSessionUseCase {
 
     const user = await this.requireActiveUser(uid);
     if (user.disclaimerConsent.disclaimerVersion < this.requiredDisclaimerVersion) {
-      throw new LoungeAuthError(
-        403,
-        'Updated disclaimer consent is required before continuing conversation',
+      throw new LoungeDisclaimerReconsentRequiredError(
+        this.requiredDisclaimerVersion,
+        user.disclaimerConsent.disclaimerVersion,
       );
     }
     const subscription = await this.accountRepository.getSubscriptionByUid(uid);

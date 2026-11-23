@@ -308,7 +308,7 @@ components:
           schema:
             $ref: '#/components/schemas/ErrorResponse'
     Forbidden:
-      description: Account is suspended, subscription is inactive, or updated disclaimer consent is required
+      description: Account is suspended, subscription is inactive, or updated disclaimer consent is required (`DISCLAIMER_RECONSENT_REQUIRED`)
       content:
         application/json:
           schema:
@@ -332,6 +332,15 @@ components:
       properties:
         error:
           type: string
+        code:
+          type: string
+          description: Optional machine-readable rejection code (e.g., DISCLAIMER_RECONSENT_REQUIRED)
+        requiredDisclaimerVersion:
+          type: integer
+          minimum: 1
+        acceptedDisclaimerVersion:
+          type: integer
+          minimum: 0
     LoungeLanguage:
       type: string
       enum: [ja, en, de, pt, es, zh-HK, vi, th]
