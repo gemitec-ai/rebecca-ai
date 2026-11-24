@@ -1,6 +1,7 @@
 import {
   CURRENT_LOUNGE_DISCLAIMER_VERSION,
   type LoungeLanguage,
+  type LoungeMessage,
   type LoungeMessageListResponseDto,
   type LoungePaginationQueryDto,
   type LoungePrivateMemorySnapshot,
@@ -9,6 +10,9 @@ import {
   type LoungeSendMessageResponseDto,
   type LoungeSession,
 } from '@rebecca/types';
+import {
+  LOUNGE_DAILY_SEARCH_LIMITS,
+} from '../../../config/loungeConfig';
 import {
   LoungeAuthError,
   LoungeDisclaimerReconsentRequiredError,
@@ -30,8 +34,11 @@ import type {
 } from '../ports/loungeAi.port';
 import type { ILoungeSessionRepository } from '../repositories/loungeSession.repository';
 
-/** Maximum allowed length of a single user prompt in characters. */
-export const MAX_LOUNGE_MESSAGE_LENGTH = 4000;
+/** Maximum allowed length of a single user prompt in characters (cost & token guardrail). */
+export const MAX_LOUNGE_MESSAGE_LENGTH = 1500;
+
+/** Maximum total character budget of raw conversation history injected into Gemini Flash-Lite. */
+export const MAX_LOUNGE_HISTORY_WINDOW_CHARS = 3000;
 
 /**
  * Strips control/newline/delimiter characters from untrusted memory strings before prompt injection
@@ -248,7 +255,28 @@ export interface ILoungeSessionUseCase {
  * (independent Lounge Dreaming/RAG/raw memory + read-only Public X Bot context including Layer 1/2/3 posts),
  * Bot illustration matching with auto Gallery save, and safe post-persistence quota decrement.
  */
+export function sliceRecentMessagesByCharBudget(
+  messages: ReadonlyArray<LoungeMessage>,
+  maxChars: number = MAX_LOUNGE_HISTORY_WINDOW_CHARS,
+): LoungeMessage[] {
+  const selected: LoungeMessage[] = [];
+  let accumulated = 0;
+  for (let i = messages.length - 1; i >= 0; i -= 1) {
+    const msg = messages[i];
+    if (selected.length > 0 && accumulated + msg.content.length > maxChars) {
+      break;
+    }
+    selected.unshift(msg);
+    accumulated += msg.content.length;
+  }
+  return selected;
+}
+
 export class LoungeSessionUseCase implements ILoungeSessionUseCase {
+  private readonly inFlightUids = new Set<string>();
+  private dailyTurnUtcDate = new Date().toISOString().slice(0, 10);
+  private dailyTurnCount = 0;
+
   constructor(
     private readonly sessionRepository: ILoungeSessionRepository,
     private readonly authRepository: ILoungeAuthRepository,
@@ -260,6 +288,7 @@ export class LoungeSessionUseCase implements ILoungeSessionUseCase {
     private readonly chatPipeline: ILoungeChatPipelinePort,
     private readonly botImageSearchPort: IBotImageAssetSearchPort,
     private readonly requiredDisclaimerVersion: number = CURRENT_LOUNGE_DISCLAIMER_VERSION,
+    private readonly globalDailyTurnCap: number = 50000,
   ) {}
 
   /**
@@ -309,6 +338,18 @@ export class LoungeSessionUseCase implements ILoungeSessionUseCase {
   ): Promise<LoungeSendMessageResponseDto> {
     const { content } = parseAndValidateSendMessageRequest(request);
 
+    const todayUtc = new Date().toISOString().slice(0, 10);
+    if (todayUtc !== this.dailyTurnUtcDate) {
+      this.dailyTurnUtcDate = todayUtc;
+      this.dailyTurnCount = 0;
+    }
+    if (this.dailyTurnCount >= this.globalDailyTurnCap) {
+      throw new LoungeQuotaExhaustedError('Service daily turn capacity reached; please retry later');
+    }
+    if (this.inFlightUids.has(uid)) {
+      throw new LoungeQuotaExhaustedError('A response is currently being generated; please wait a moment');
+    }
+
     const user = await this.requireActiveUser(uid);
     if (user.disclaimerConsent.disclaimerVersion < this.requiredDisclaimerVersion) {
       throw new LoungeDisclaimerReconsentRequiredError(
@@ -316,89 +357,172 @@ export class LoungeSessionUseCase implements ILoungeSessionUseCase {
         user.disclaimerConsent.disclaimerVersion,
       );
     }
-    const subscription = await this.accountRepository.getSubscriptionByUid(uid);
-    if (!subscription) {
+
+    const currentSub = await this.accountRepository.getSubscriptionByUid(uid);
+    if (!currentSub) {
       throw new LoungeNotFoundError(`Lounge subscription for user "${uid}" was not found`);
     }
-    if (subscription.status !== 'ACTIVE') {
-      throw new LoungeAuthError(403, 'Lounge subscription is not active');
+    if (currentSub.remainingChatTurns <= 0) {
+      throw new LoungeQuotaExhaustedError('Chat turn quota has been exhausted', {
+        code: 'QUOTA_EXHAUSTED',
+        meta: { nextDailyResetAt: currentSub.nextDailyResetAt },
+      });
     }
-    if (subscription.remainingChatTurns <= 0) {
-      throw new LoungeQuotaExhaustedError('Daily chat turn quota has been exhausted');
-    }
 
-    const [queryEmbedding, userEmotion, recentMessages, session] = await Promise.all([
-      this.embeddingPort.embedQuery(content),
-      this.emotionClassifier.classifyEmotion(content),
-      this.sessionRepository.listRecentMessages(uid, 20),
-      this.sessionRepository.getOrCreateSingletonSession(uid, new Date().toISOString()),
-    ]);
+    this.inFlightUids.add(uid);
+    let reservationReceipt: Awaited<ReturnType<NonNullable<ILoungeAccountRepository['reserveTurnForSession']>>> | null = null;
+    try {
+      const turnReferenceId = `turn_${Date.now()}_${uid.slice(0, 8)}`;
+      if (this.accountRepository.reserveTurnForSession) {
+        reservationReceipt = await this.accountRepository.reserveTurnForSession(uid, turnReferenceId);
+      }
 
-    const [privateRagMemories, publicXMemory] = await Promise.all([
-      this.sessionRepository.searchPrivateRagMemoriesByVector(uid, queryEmbedding, 8),
-      this.publicXMemoryPort.readPublicXMemorySnapshot(xUserId, queryEmbedding),
-    ]);
+      const activeSub = reservationReceipt?.subscription ?? currentSub;
+      const isPaidSearchEligible =
+        (activeSub.tier === 'STANDARD' &&
+          (activeSub.status === 'ACTIVE' || activeSub.status === 'CANCELING')) ||
+        reservationReceipt?.source === 'LOT' ||
+        activeSub.purchasedRemainingTurns > 0;
+      const maxSearchPerDay = isPaidSearchEligible
+        ? LOUNGE_DAILY_SEARCH_LIMITS.PAID_OR_STANDARD
+        : LOUNGE_DAILY_SEARCH_LIMITS.FREE;
 
-    const privateMemory: LoungePrivateMemorySnapshot = {
-      coreProfile: user.coreProfile ?? {},
-      recentRawMessages: recentMessages,
-      vectorMemories: privateRagMemories,
-      lastDreamedAt: user.lastDreamedAt,
-    };
+      const fullSubDoc = await this.accountRepository.getSubscriptionDocByUid?.(uid);
+      const searchUsedToday = fullSubDoc?.todaysSearchCount ?? user.dailySearchCount ?? 0;
+      const allowWebSearch = searchUsedToday < maxSearchPerDay;
 
-    const localePromptDirective = buildLoungeLocalePromptDirective(user.language, user.timezone);
-    const memoryPromptDirective = buildLoungeMemoryPromptDirective(privateMemory, publicXMemory);
+      const [queryEmbedding, userEmotion, recentMessagesRaw, session] = await Promise.all([
+        this.embeddingPort.embedQuery(content),
+        this.emotionClassifier.classifyEmotion(content),
+        this.sessionRepository.listRecentMessages(uid, 20),
+        this.sessionRepository.getOrCreateSingletonSession(uid, new Date().toISOString()),
+      ]);
+      const recentMessages = sliceRecentMessagesByCharBudget(
+        recentMessagesRaw,
+        MAX_LOUNGE_HISTORY_WINDOW_CHARS,
+      );
 
-    const pipelineResult = await this.chatPipeline.generateReply({
-      uid,
-      session,
-      userPrompt: content,
-      privateMemory,
-      publicXMemory,
-      memoryPromptDirective,
-      responseLanguage: user.language,
-      userTimezone: user.timezone,
-      localePromptDirective,
-    });
+      const [privateRagMemories, publicXMemory] = await Promise.all([
+        this.sessionRepository.searchPrivateRagMemoriesByVector(uid, queryEmbedding, 4),
+        this.publicXMemoryPort.readPublicXMemorySnapshot(xUserId, queryEmbedding),
+      ]);
 
-    const matchedImage = await this.botImageSearchPort.findBestMatchingImage(
-      pipelineResult.replyText,
-      pipelineResult.emotion,
-    );
+      const privateMemory: LoungePrivateMemorySnapshot = {
+        coreProfile: user.coreProfile ?? {},
+        recentRawMessages: recentMessages,
+        vectorMemories: privateRagMemories,
+        lastDreamedAt: user.lastDreamedAt,
+      };
 
-    const persisted = await this.sessionRepository.appendMessagePair({
-      uid,
-      sessionId: session.id,
-      userContent: content,
-      userEmotion,
-      assistantContent: pipelineResult.replyText,
-      assistantEmotion: pipelineResult.emotion,
-      assistantTokenUsage: pipelineResult.tokenUsage,
-      imageAssetId: matchedImage?.assetId,
-      imageUrl: matchedImage?.imageUrl,
-    });
+      const localePromptDirective = buildLoungeLocalePromptDirective(user.language, user.timezone);
+      const memoryPromptDirective = buildLoungeMemoryPromptDirective(privateMemory, publicXMemory);
 
-    // Deduct quota only after message persistence succeeds; production wiring should
-    // enforce `remainingChatTurns > 0` atomically inside a Firestore transaction.
-    const [updatedSub, unlockedGalleryItem] = await Promise.all([
-      this.accountRepository.decrementRemainingTurns(uid),
-      matchedImage
-        ? this.galleryRepository.unlockGalleryItem(
+      const pipelineResult = await this.chatPipeline.generateReply({
+        uid,
+        session,
+        userPrompt: content,
+        privateMemory,
+        publicXMemory,
+        memoryPromptDirective,
+        responseLanguage: user.language,
+        userTimezone: user.timezone,
+        localePromptDirective,
+        allowWebSearch,
+      });
+
+      const matchedImage = await this.botImageSearchPort.findBestMatchingImage(
+        pipelineResult.replyText,
+        pipelineResult.emotion,
+      );
+
+      const persisted = await this.sessionRepository.appendMessagePair({
+        uid,
+        sessionId: session.id,
+        userContent: content,
+        userEmotion,
+        assistantContent: pipelineResult.replyText,
+        assistantEmotion: pipelineResult.emotion,
+        assistantTokenUsage: pipelineResult.tokenUsage,
+        imageAssetId: matchedImage?.assetId,
+        imageUrl: matchedImage?.imageUrl,
+      });
+
+      const finalSub = reservationReceipt
+        ? reservationReceipt.subscription
+        : await this.accountRepository.decrementRemainingTurns(uid);
+
+      const unlockedGalleryItem = matchedImage
+        ? await this.galleryRepository.unlockGalleryItem(
             uid,
             matchedImage.assetId,
             matchedImage.imageUrl,
             session.id,
           )
-        : Promise.resolve(undefined),
-    ]);
+        : undefined;
 
-    return {
-      session: persisted.session,
-      userMessage: persisted.userMessage,
-      assistantMessage: persisted.assistantMessage,
-      remainingChatTurns: updatedSub.remainingChatTurns,
-      ...(unlockedGalleryItem ? { unlockedGalleryItem } : {}),
-    };
+      this.dailyTurnCount += 1;
+
+      if (pipelineResult.usedWebSearch && this.accountRepository.incrementDailySearchCount) {
+        void this.accountRepository.incrementDailySearchCount(uid).catch((searchErr) => {
+          loungeLogger.warn('Failed to increment daily search counter cleanly', {
+            reason: sanitizeLogInput(
+              searchErr instanceof Error ? searchErr.message : String(searchErr),
+            ),
+          });
+        });
+      }
+
+      if (this.sessionRepository.indexPrivateTurnMemory) {
+        const turnSummary = `User: ${content.slice(0, 180)} | Reply: ${pipelineResult.replyText.slice(0, 180)}`;
+        const turnTimestamp = persisted.assistantMessage.createdAt;
+        void this.sessionRepository
+          .indexPrivateTurnMemory({
+            uid,
+            sessionId: session.id,
+            category: 'EPISODE',
+            summary: turnSummary,
+            embedding: queryEmbedding,
+            salienceScore: matchedImage ? 0.85 : 0.65,
+            episodicEntries: [
+              { role: 'user', content, timestamp: persisted.userMessage.createdAt },
+              {
+                role: 'model',
+                content: pipelineResult.replyText,
+                timestamp: turnTimestamp,
+              },
+            ],
+          })
+          .catch((indexErr) => {
+            loungeLogger.warn('Async private RAG indexing failed cleanly', {
+              reason: sanitizeLogInput(
+                indexErr instanceof Error ? indexErr.message : String(indexErr),
+              ),
+            });
+          });
+      }
+
+      return {
+        session: persisted.session,
+        userMessage: persisted.userMessage,
+        assistantMessage: persisted.assistantMessage,
+        remainingChatTurns: finalSub.remainingChatTurns,
+        subscription: finalSub,
+        ...(unlockedGalleryItem ? { unlockedGalleryItem } : {}),
+      };
+    } catch (err) {
+      if (reservationReceipt && this.accountRepository.compensateTurnForSession) {
+        await this.accountRepository.compensateTurnForSession(reservationReceipt).catch((compErr) => {
+          loungeLogger.error(
+            'Failed to compensate reserved chat turn after pipeline failure',
+            compErr instanceof Error ? compErr : new Error(String(compErr)),
+            { uid },
+          );
+        });
+      }
+      throw err;
+    } finally {
+      this.inFlightUids.delete(uid);
+    }
   }
 
   private async requireActiveUser(uid: string) {

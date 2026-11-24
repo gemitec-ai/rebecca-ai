@@ -17,11 +17,16 @@ import type {
 import {
   buildDefaultEmotionAvatarPaths,
   createLoungeApp,
-  createSkeletonLoungeDependencies,
+  createProductionLoungeDependencies,
   resolveDisclaimerVersion,
   resolveLoungeAppVersion,
   type LoungeAppDependencies,
 } from '../../src/app';
+import {
+  assertSafeStripeKeyConfiguration,
+  loadTrialHmacKeyring,
+  resolveClientGeo,
+} from '../../src/config/loungeConfig';
 import {
   LoungeAuthRepository,
   type CreateLoungeUserWithConsentInput,
@@ -67,7 +72,6 @@ import {
 } from '../../src/middleware/loungeAuth';
 import {
   LoungeHttpError,
-  LoungeNotImplementedError,
   extractTraceHeader,
   normalizePaginationLimit,
   normalizePaginationPage,
@@ -75,6 +79,27 @@ import {
   parsePaginationCursor,
 } from '../../src/utils/errors';
 import { loungeLogger, sanitizeLogInput } from '../../src/utils/logger';
+
+jest.mock('firebase-admin/app', () => ({
+  initializeApp: jest.fn().mockReturnValue({ name: 'lounge-bff-auth' }),
+  getApps: jest.fn().mockReturnValue([]),
+  getApp: jest.fn().mockReturnValue({ name: '[DEFAULT]' }),
+}));
+
+jest.mock('firebase-admin/auth', () => ({
+  getAuth: jest.fn().mockReturnValue({
+    verifyIdToken: jest.fn(),
+    revokeRefreshTokens: jest.fn(),
+    deleteUser: jest.fn(),
+    tenantManager: jest.fn().mockReturnValue({
+      authForTenant: jest.fn().mockReturnValue({
+        verifyIdToken: jest.fn(),
+        revokeRefreshTokens: jest.fn(),
+        deleteUser: jest.fn(),
+      }),
+    }),
+  }),
+}));
 
 function createValidConsent(version = 1) {
   return {
@@ -205,9 +230,6 @@ function buildFakeDeps(
       if (idToken === 'bad-token') {
         throw new Error('Signature verification failed');
       }
-      if (idToken === 'stub-501-token') {
-        throw new LoungeNotImplementedError('Verifier.stub');
-      }
       return {
         uid: overrides.tokenUid ?? 'uid_test_001',
         xUserId: overrides.tokenXUserId ?? '100001',
@@ -268,6 +290,16 @@ function buildFakeDeps(
             : currentUser.onboardingCompleted,
         updatedAt: '2026-11-22T12:15:00.000Z',
       };
+      currentUser = {
+        ...currentUser,
+        ...((language !== undefined) ? { language } : {}),
+        ...(timezone !== undefined ? { timezone } : {}),
+        onboardingCompleted:
+          onboardingCompleted !== undefined
+            ? onboardingCompleted
+            : currentUser.onboardingCompleted,
+        updatedAt: '2026-11-22T12:15:00.000Z',
+      };
       return currentUser;
     },
     async updateUserDisclaimerConsent(uid: string, disclaimerConsent) {
@@ -280,6 +312,11 @@ function buildFakeDeps(
         updatedAt: '2026-11-22T12:20:00.000Z',
       };
       return currentUser;
+    },
+    async updateUserStatus(uid: string, status) {
+      if (currentUser && currentUser.uid === uid) {
+        currentUser = { ...currentUser, status };
+      }
     },
     async revokeSession() {
       cascadeDeletedCount += 1;
@@ -296,6 +333,34 @@ function buildFakeDeps(
     async getSubscriptionByUid(uid: string) {
       subscriptionLookupCount += 1;
       return currentSub && currentSub.uid === uid ? currentSub : null;
+    },
+    async reserveTurnForSession(uid: string, referenceId: string) {
+      decrementCallCount += 1;
+      if (!currentSub || currentSub.uid !== uid) {
+        throw new Error('Missing subscription');
+      }
+      currentSub = {
+        ...currentSub,
+        dailyRemainingTurns: Math.max(0, currentSub.dailyRemainingTurns - 1),
+        remainingChatTurns: currentSub.remainingChatTurns - 1,
+      };
+      return {
+        uid,
+        source: 'DAILY',
+        nextDailyResetAt: currentSub.nextDailyResetAt,
+        referenceId,
+        subscription: currentSub,
+      };
+    },
+    async compensateTurnForSession(receipt) {
+      if (!currentSub || currentSub.uid !== receipt.uid) {
+        return;
+      }
+      currentSub = {
+        ...currentSub,
+        dailyRemainingTurns: currentSub.dailyRemainingTurns + 1,
+        remainingChatTurns: currentSub.remainingChatTurns + 1,
+      };
     },
     async decrementRemainingTurns(uid: string) {
       decrementCallCount += 1;
@@ -638,7 +703,7 @@ describe('Gemitec Private Lounge BFF Architecture Skeleton', () => {
     expect(malformedJsonRes.status).toBe(400);
   });
 
-  it('enforces Bearer token auth, propagates 501 verifier stubs, and scopes NO_AUTH bypass strictly to non-prod', async () => {
+  it('enforces Bearer token auth, propagates LoungeHttpError from verifier, and scopes NO_AUTH bypass strictly to non-prod', async () => {
     const { deps } = buildFakeDeps();
     const prodApp = createLoungeApp({ ...deps, noAuth: true, nodeEnv: 'production' });
     const unauthProd = await request(prodApp).get('/api/v1/lounge/account');
@@ -664,10 +729,19 @@ describe('Gemitec Private Lounge BFF Architecture Skeleton', () => {
       .set('Authorization', 'Bearer bad-token');
     expect(badTokenRes.status).toBe(401);
 
-    const stub501TokenRes = await request(prodApp)
+    const httpErrorApp = createLoungeApp({
+      ...deps,
+      nodeEnv: 'production',
+      authVerifier: {
+        async verifyBearerToken() {
+          throw new LoungeHttpError(503, 'Identity provider temporarily unavailable');
+        },
+      },
+    });
+    const propagatedHttpErrRes = await request(httpErrorApp)
       .get('/api/v1/lounge/account')
-      .set('Authorization', 'Bearer stub-501-token');
-    expect(stub501TokenRes.status).toBe(501);
+      .set('Authorization', 'Bearer valid-token');
+    expect(propagatedHttpErrRes.status).toBe(503);
 
     // NO_AUTH in development with missing lounge_dev_user returns specific missing-profile 401
     const devMissingDeps = buildFakeDeps();
@@ -1134,6 +1208,7 @@ describe('Gemitec Private Lounge BFF Architecture Skeleton', () => {
       ).status,
     ).toBe(400);
 
+    expect(MAX_LOUNGE_MESSAGE_LENGTH).toBe(1500);
     // Prompt boundaries: empty, non-string, MAX_LOUNGE_MESSAGE_LENGTH exact pass vs +1 reject
     expect(
       (
@@ -1427,7 +1502,7 @@ describe('Gemitec Private Lounge BFF Architecture Skeleton', () => {
           .set('Authorization', 'Bearer valid-token')
           .send({ content: 'hi' })
       ).status,
-    ).toBe(403);
+    ).toBe(201);
 
     const noSubApp = createLoungeApp(buildFakeDeps({ subscription: null }).deps);
     expect(
@@ -1535,82 +1610,59 @@ describe('Gemitec Private Lounge BFF Architecture Skeleton', () => {
       limit: 12,
     });
 
-    // Skeleton dependency container & repositories throw 501 deterministically
+    // Production runtime config, Stripe live-key guard, and repository validation invariants
     expect(resolveLoungeAppVersion({ APP_VERSION: '2.0.0' })).toBe('v2.0.0');
     expect(resolveDisclaimerVersion({})).toBe(1);
     expect(resolveDisclaimerVersion({ DISCLAIMER_VERSION: '3' })).toBe(3);
     expect(resolveDisclaimerVersion({ DISCLAIMER_VERSION: 'invalid' })).toBe(1);
-    const skeletonDeps = createSkeletonLoungeDependencies({
+    expect(() =>
+      assertSafeStripeKeyConfiguration({
+        NODE_ENV: 'development',
+        STRIPE_SECRET_KEY: 'sk_live_forbidden',
+      }),
+    ).toThrow(/Refusing live Stripe key/);
+    expect(() =>
+      assertSafeStripeKeyConfiguration({
+        NODE_ENV: 'test',
+        STRIPE_PUBLISHABLE_KEY: 'pk_live_forbidden',
+      }),
+    ).toThrow(/Refusing live Stripe key/);
+    expect(() =>
+      assertSafeStripeKeyConfiguration({
+        NODE_ENV: 'production',
+        STRIPE_SECRET_KEY: 'sk_live_allowed_only_in_prod',
+      }),
+    ).not.toThrow();
+
+    expect(resolveClientGeo({ 'x-client-country': 'jp' }).currency).toBe('JPY');
+    expect(resolveClientGeo({ 'x-client-country': 'DE' }).isEeaResident).toBe(true);
+    expect(
+      resolveClientGeo(
+        { 'x-client-country': 'US' },
+        { existingPreferredCurrency: 'JPY' },
+      ).currency,
+    ).toBe('JPY');
+
+    const prodDeps = createProductionLoungeDependencies({
       NODE_ENV: 'production',
+      GCP_PROJECT_ID: 'demo-rebecca-lounge-prod',
       CORS_ALLOWED_ORIGINS: 'https://a.example.com, https://b.example.com',
+      LOUNGE_TRIAL_HMAC_SECRET_V1: 'prod-test-secret-v1',
     });
-    expect(skeletonDeps.allowedOrigins).toEqual(['https://a.example.com', 'https://b.example.com']);
-    expect(skeletonDeps.disclaimerVersion).toBe(1);
-    await expect(skeletonDeps.authVerifier.verifyBearerToken('tok')).rejects.toThrow(
-      LoungeNotImplementedError,
-    );
-    await expect(skeletonDeps.sessionUseCase.getSession('u1', 'x1')).rejects.toThrow(
-      LoungeNotImplementedError,
-    );
+    expect(prodDeps.allowedOrigins).toEqual(['https://a.example.com', 'https://b.example.com']);
+    expect(prodDeps.disclaimerVersion).toBe(1);
 
     const firestore = new Firestore({ projectId: 'demo-rebecca-lounge' });
     const collections = getCollections(firestore);
-    const authRepo = new LoungeAuthRepository(collections);
-    const accountRepo = new LoungeAccountRepository(collections);
-    const sessionRepo = new LoungeSessionRepository(collections);
-    const galleryRepo = new LoungeGalleryRepository(collections);
+    const keyring = loadTrialHmacKeyring({ NODE_ENV: 'test' });
+    const authRepo = new LoungeAuthRepository(firestore, collections, keyring);
+    const accountRepo = new LoungeAccountRepository(firestore, collections);
+    const sessionRepo = new LoungeSessionRepository(firestore, collections);
+    const galleryRepo = new LoungeGalleryRepository(firestore, collections);
 
     await expect(authRepo.findUserByUid('')).rejects.toThrow(/must not be empty/);
     await expect(authRepo.findUserByXUserId('  ')).rejects.toThrow(/must not be empty/);
-    await expect(authRepo.findUserByUid('u1')).rejects.toThrow(LoungeNotImplementedError);
-    await expect(authRepo.findUserByXUserId('x1')).rejects.toThrow(LoungeNotImplementedError);
-    await expect(
-      authRepo.createUserWithConsent({
-        uid: 'u1',
-        xUserId: 'x1',
-        xHandle: '@u1',
-        displayName: 'U1',
-        avatarUrl: '',
-        onboardingCompleted: false,
-        disclaimerConsent: createValidConsent(),
-      }),
-    ).rejects.toThrow(LoungeNotImplementedError);
-    await expect(authRepo.recordLoginTimestamp('u1', '2026-11-22T12:00:00.000Z')).rejects.toThrow(
-      LoungeNotImplementedError,
-    );
-    await expect(authRepo.updateUserPreferences('u1', 'en', 'UTC', true)).rejects.toThrow(
-      LoungeNotImplementedError,
-    );
-    await expect(authRepo.updateUserDisclaimerConsent('u1', createValidConsent())).rejects.toThrow(
-      LoungeNotImplementedError,
-    );
-    await expect(authRepo.revokeSession('u1')).rejects.toThrow(LoungeNotImplementedError);
-    await expect(authRepo.deleteUser('u1')).rejects.toThrow(LoungeNotImplementedError);
-    await expect(accountRepo.getSubscriptionByUid('u1')).rejects.toThrow(LoungeNotImplementedError);
-    await expect(accountRepo.decrementRemainingTurns('u1')).rejects.toThrow(
-      LoungeNotImplementedError,
-    );
-    await expect(accountRepo.deleteSubscription('u1')).rejects.toThrow(LoungeNotImplementedError);
-    await expect(galleryRepo.listGalleryByUid('u1', { page: 1, limit: 12 })).rejects.toThrow(
-      LoungeNotImplementedError,
-    );
-    await expect(
-      galleryRepo.unlockGalleryItem('u1', 'img_01', 'assets/IMG_8649.JPG', 'u1'),
-    ).rejects.toThrow(LoungeNotImplementedError);
-    await expect(galleryRepo.deleteAllUserGalleryItems('u1')).rejects.toThrow(
-      LoungeNotImplementedError,
-    );
     expect(sessionRepo.clampLimit(50)).toBe(50);
-    await expect(
-      sessionRepo.getOrCreateSingletonSession('u1', '2026-11-22T12:00:00.000Z'),
-    ).rejects.toThrow(LoungeNotImplementedError);
-    await expect(sessionRepo.listMessages('u1', { page: 1, limit: 20 })).rejects.toThrow(
-      LoungeNotImplementedError,
-    );
-    await expect(sessionRepo.listRecentMessages('u1')).rejects.toThrow(LoungeNotImplementedError);
-    await expect(sessionRepo.searchPrivateRagMemoriesByVector('u1', [0.1])).rejects.toThrow(
-      LoungeNotImplementedError,
-    );
 
     // Send-message boundary validation + prompt-injection delimiter escaping checks
     expect(() => parseAndValidateSendMessageRequest([])).toThrow(/JSON object/);
@@ -1638,20 +1690,8 @@ describe('Gemitec Private Lounge BFF Architecture Skeleton', () => {
     expect(fencedDirective).toContain('<untrusted_memory_context>');
     expect(fencedDirective).not.toContain('</untrusted_memory_context>\n```');
     expect(fencedDirective).toContain('‹/untrusted_memory_context›');
-    await expect(
-      sessionRepo.appendMessagePair({
-        uid: 'u1',
-        sessionId: 'u1',
-        userContent: 'hi',
-        userEmotion: 'NEUTRAL',
-        assistantContent: 'hello',
-        assistantEmotion: 'HAPPY',
-        assistantTokenUsage: { promptTokens: 1, candidatesTokens: 1, totalTokens: 2 },
-      }),
-    ).rejects.toThrow(LoungeNotImplementedError);
-    await expect(sessionRepo.deleteAllUserSessionData('u1')).rejects.toThrow(
-      LoungeNotImplementedError,
-    );
+    void accountRepo;
+    void galleryRepo;
 
     expect(() => requireLoungeIdentity({} as LoungeAuthenticatedRequest)).toThrow(
       /Authenticated user identity is required/,

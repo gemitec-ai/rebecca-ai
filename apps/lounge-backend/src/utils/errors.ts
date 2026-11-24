@@ -95,7 +95,7 @@ export class LoungeDisclaimerReconsentRequiredError extends LoungeAuthError {
  * Raised when an X account already owns a registered Private Lounge account (HTTP 409).
  */
 export class LoungeConflictError extends LoungeHttpError {
-  constructor(message: string, options?: ErrorOptions) {
+  constructor(message: string, options?: LoungeHttpErrorOptions) {
     super(409, message, options);
   }
 }
@@ -104,7 +104,7 @@ export class LoungeConflictError extends LoungeHttpError {
  * Raised when a requested Lounge resource does not exist or is not owned by the caller (HTTP 404).
  */
 export class LoungeNotFoundError extends LoungeHttpError {
-  constructor(message: string, options?: ErrorOptions) {
+  constructor(message: string, options?: LoungeHttpErrorOptions) {
     super(404, message, options);
   }
 }
@@ -113,7 +113,7 @@ export class LoungeNotFoundError extends LoungeHttpError {
  * Raised when a Lounge user has exhausted daily interactive chat turns (HTTP 429).
  */
 export class LoungeQuotaExhaustedError extends LoungeHttpError {
-  constructor(message: string, options?: ErrorOptions) {
+  constructor(message: string, options?: LoungeHttpErrorOptions) {
     super(429, message, options);
   }
 }
@@ -122,7 +122,7 @@ export class LoungeQuotaExhaustedError extends LoungeHttpError {
  * Raised by architecture skeleton stub methods awaiting concrete Firestore/AI wiring (HTTP 501).
  */
 export class LoungeNotImplementedError extends LoungeHttpError {
-  constructor(methodName: string, options?: ErrorOptions) {
+  constructor(methodName: string, options?: LoungeHttpErrorOptions) {
     super(501, `${methodName} is an architecture skeleton stub awaiting implementation`, options);
   }
 }
@@ -230,7 +230,10 @@ export function handleLoungeControllerError(
       { statusCode: err.statusCode, operation: sanitizeLogInput(operation) },
       traceHeader,
     );
-    res.status(err.statusCode).json({ error: 'Internal server error' });
+    res.status(err.statusCode).json({
+      error: 'Internal server error',
+      ...(err.code ? { code: err.code } : {}),
+    });
     return;
   }
 

@@ -71,6 +71,7 @@ export interface LoungeChatPipelineInput {
   readonly responseLanguage: LoungeLanguage;
   readonly userTimezone: string;
   readonly localePromptDirective: string;
+  readonly allowWebSearch?: boolean;
 }
 
 /**
@@ -80,6 +81,7 @@ export interface LoungeChatPipelineOutput {
   readonly replyText: string;
   readonly emotion: LoungeEmotionState;
   readonly tokenUsage: LoungeTokenUsage;
+  readonly usedWebSearch?: boolean;
 }
 
 /**

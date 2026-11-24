@@ -274,6 +274,208 @@ paths:
         '403':
           $ref: '#/components/responses/Forbidden'
 
+  /billing/catalog:
+    get:
+      summary: Retrieve Geo-IP locked product catalog and trial/subscription eligibility
+      responses:
+        '200':
+          description: Billing catalog and eligibility
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoungeBillingCatalogDto'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /billing/checkout:
+    post:
+      summary: Create a Stripe Checkout Session for a pre-created Customer after statutory disclosure acceptance
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoungeCreateCheckoutRequestDto'
+      responses:
+        '200':
+          description: Hosted Stripe Checkout session URL
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoungeCreateCheckoutResponseDto'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /billing/checkout/verify:
+    post:
+      summary: Perform single-shot synchronous Checkout Session verification on redirect
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoungeVerifyCheckoutRequestDto'
+      responses:
+        '200':
+          description: Synchronized subscription and hybrid quota projection
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoungeVerifyCheckoutResponseDto'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /billing/portal:
+    post:
+      summary: Generate a single-use Stripe Customer Portal URL with flow_data deep-linking
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoungeCreatePortalRequestDto'
+      responses:
+        '200':
+          description: Stripe Customer Portal session URL
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoungeCreatePortalResponseDto'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /billing/subscription:
+    get:
+      summary: Retrieve sanitized subscription state, FIFO lot breakdown, and expiring lot reminder
+      parameters:
+        - name: portalReturn
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: ['0', '1', 'true', 'false']
+      responses:
+        '200':
+          description: Subscription detail and hybrid quota breakdown
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoungeSubscriptionDetailResponseDto'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /billing/eu-withdrawal:
+    post:
+      summary: Execute Phase 2 EEA statutory 14-day electronic contract withdrawal
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoungeEuWithdrawalRequestDto'
+      responses:
+        '200':
+          description: Withdrawal processed and transactional receipt notice dispatched
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoungeEuWithdrawalResponseDto'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /billing/orders:
+    get:
+      summary: List cursor-paginated purchase history directly from Stripe Charges joined with active lot balances
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 30
+            default: 20
+        - name: startingAfter
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Cursor-paginated purchase history
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoungeBillingOrdersResponseDto'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /billing/orders/{chargeId}/receipt:
+    get:
+      summary: Resolve an ownership-verified Stripe hosted receipt URL for a succeeded charge
+      parameters:
+        - name: chargeId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Verified Stripe hosted receipt URL
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoungeBillingReceiptResponseDto'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /webhooks/stripe:
+    post:
+      summary: Receive raw Stripe webhook events verified via stripe-signature
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '200':
+          description: Webhook acknowledged
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [received]
+                properties:
+                  received:
+                    type: boolean
+
+  /batch/dreaming:
+    post:
+      summary: Execute Nightly Batch Dreaming consolidation across active Private Lounge users (Cloud Scheduler OIDC)
+      responses:
+        '200':
+          description: Consolidation batch completed
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
 components:
   securitySchemes:
     BearerAuth:
@@ -386,6 +588,26 @@ components:
           minimum: 1
         persona:
           $ref: '#/components/schemas/LoungePersonaBranding'
+        firebase:
+          type: object
+          required: [apiKey, authDomain, projectId, appId]
+          properties:
+            apiKey:
+              type: string
+            authDomain:
+              type: string
+            projectId:
+              type: string
+            appId:
+              type: string
+            tenantId:
+              type: string
+        useEmulators:
+          type: boolean
+        production:
+          type: boolean
+        phase2EeaEnabled:
+          type: boolean
     LoungeUserDisclaimerConsent:
       type: object
       required:
@@ -413,7 +635,7 @@ components:
           format: date-time
     LoungeUser:
       type: object
-      required: [uid, xUserId, xHandle, displayName, avatarUrl, status, language, timezone, onboardingCompleted, disclaimerConsent, createdAt, updatedAt, lastLoginAt]
+      required: [uid, xUserId, xHandle, displayName, avatarUrl, status, language, timezone, onboardingCompleted, allowServiceImprovementAnalytics, disclaimerConsent, createdAt, updatedAt, lastLoginAt]
       properties:
         uid:
           type: string
@@ -427,13 +649,22 @@ components:
           type: string
         status:
           type: string
-          enum: [ACTIVE, SUSPENDED]
+          enum: [ACTIVE, SUSPENDED, DELETING]
         language:
           $ref: '#/components/schemas/LoungeLanguage'
         timezone:
           type: string
         onboardingCompleted:
           type: boolean
+        allowServiceImprovementAnalytics:
+          type: boolean
+        countryCode:
+          type: string
+        isEeaResident:
+          type: boolean
+        preferredCurrency:
+          type: string
+          enum: [JPY, USD]
         disclaimerConsent:
           $ref: '#/components/schemas/LoungeUserDisclaimerConsent'
         createdAt:
@@ -462,6 +693,8 @@ components:
           type: string
         completeOnboarding:
           type: boolean
+        allowServiceImprovementAnalytics:
+          type: boolean
     LoungeUpdateDisclaimerConsentRequestDto:
       type: object
       required: [disclaimerConsent]
@@ -470,28 +703,61 @@ components:
           $ref: '#/components/schemas/LoungeUserDisclaimerConsent'
     LoungeSubscription:
       type: object
-      required: [uid, tier, status, dailyTurnQuota, remainingChatTurns, quotaResetAt, currentPeriodEnd, updatedAt]
+      required:
+        - uid
+        - tier
+        - status
+        - dailyTurnQuota
+        - dailyRemainingTurns
+        - purchasedRemainingTurns
+        - remainingChatTurns
+        - earliestLotExpiresAt
+        - lastDailyResetAt
+        - lastQuotaResetTimezone
+        - nextDailyResetAt
+        - currentPeriodEnd
+        - trialTicketUsed
+        - cancelAtPeriodEnd
+        - updatedAt
       properties:
         uid:
           type: string
         tier:
           type: string
-          enum: [FREE, SUPPORTER, VIP]
+          enum: [FREE, STANDARD]
         status:
           type: string
-          enum: [ACTIVE, PAST_DUE, CANCELED]
+          enum: [NONE, ACTIVE, CANCELING, PAST_DUE, CANCELED]
+        billingCurrency:
+          type: string
+          enum: [JPY, USD]
         dailyTurnQuota:
+          type: integer
+        dailyRemainingTurns:
+          type: integer
+        purchasedRemainingTurns:
           type: integer
         remainingChatTurns:
           type: integer
-        quotaResetAt:
+        earliestLotExpiresAt:
           type: string
           format: date-time
-        stripeCustomerId:
+          nullable: true
+        lastDailyResetAt:
           type: string
+          format: date-time
+        lastQuotaResetTimezone:
+          type: string
+        nextDailyResetAt:
+          type: string
+          format: date-time
         currentPeriodEnd:
           type: string
           format: date-time
+        trialTicketUsed:
+          type: boolean
+        cancelAtPeriodEnd:
+          type: boolean
         updatedAt:
           type: string
           format: date-time
@@ -645,6 +911,8 @@ components:
           $ref: '#/components/schemas/LoungeMessage'
         remainingChatTurns:
           type: integer
+        subscription:
+          $ref: '#/components/schemas/LoungeSubscription'
         unlockedGalleryItem:
           $ref: '#/components/schemas/LoungeGalleryItem'
     LoungePaginationMeta:
@@ -701,3 +969,268 @@ components:
           $ref: '#/components/schemas/LoungePaginationMeta'
         summary:
           $ref: '#/components/schemas/LoungeGallerySummaryDto'
+
+    LoungeBillingProductDto:
+      type: object
+      required: [productId, mode, currency, unitAmountMinor, formattedPrice, grantedTurns, validityDays, taxInclusive, promotionCodesAllowed, eligible]
+      properties:
+        productId:
+          type: string
+          enum: [TRIAL_TICKET_100, CHARGE_TICKET_100, STANDARD_MONTHLY]
+        mode:
+          type: string
+          enum: [payment, subscription]
+        currency:
+          type: string
+          enum: [JPY, USD]
+        unitAmountMinor:
+          type: integer
+        formattedPrice:
+          type: string
+        grantedTurns:
+          type: integer
+        validityDays:
+          type: integer
+          nullable: true
+        taxInclusive:
+          type: boolean
+        promotionCodesAllowed:
+          type: boolean
+        eligible:
+          type: boolean
+        ineligibleReason:
+          type: string
+          enum: [TRIAL_ALREADY_USED, SUBSCRIPTION_ALREADY_ACTIVE, GEO_BLOCKED]
+    LoungeBillingCatalogDto:
+      type: object
+      required: [currency, currencyLocked, countryCode, isEeaResident, phase2EeaEnabled, trialEligible, subscriptionStatus, products]
+      properties:
+        currency:
+          type: string
+          enum: [JPY, USD]
+        currencyLocked:
+          type: boolean
+        countryCode:
+          type: string
+        isEeaResident:
+          type: boolean
+        phase2EeaEnabled:
+          type: boolean
+        trialEligible:
+          type: boolean
+        subscriptionStatus:
+          type: string
+          enum: [NONE, ACTIVE, CANCELING, PAST_DUE, CANCELED]
+        products:
+          type: array
+          items:
+            $ref: '#/components/schemas/LoungeBillingProductDto'
+    LoungeCreateCheckoutRequestDto:
+      type: object
+      required: [productId, acceptedPurchaseDisclosure, acceptedAutoRenewalOptIn, confirmedAdultOrParentalConsent]
+      properties:
+        productId:
+          type: string
+          enum: [TRIAL_TICKET_100, CHARGE_TICKET_100, STANDARD_MONTHLY]
+        acceptedPurchaseDisclosure:
+          type: boolean
+        acceptedAutoRenewalOptIn:
+          type: boolean
+        confirmedAdultOrParentalConsent:
+          type: boolean
+        euDigitalWaiverAccepted:
+          type: boolean
+    LoungeCreateCheckoutResponseDto:
+      type: object
+      required: [checkoutUrl, sessionIdMasked]
+      properties:
+        checkoutUrl:
+          type: string
+        sessionIdMasked:
+          type: string
+    LoungeVerifyCheckoutRequestDto:
+      type: object
+      required: [sessionId]
+      properties:
+        sessionId:
+          type: string
+    LoungeVerifyCheckoutResponseDto:
+      type: object
+      required: [subscription, verified]
+      properties:
+        subscription:
+          $ref: '#/components/schemas/LoungeSubscription'
+        verified:
+          type: boolean
+        autoRefundedConflict:
+          type: boolean
+    LoungeCreatePortalRequestDto:
+      type: object
+      required: [flow]
+      properties:
+        flow:
+          type: string
+          enum: [default, payment_method_update, subscription_cancel]
+    LoungeCreatePortalResponseDto:
+      type: object
+      required: [portalUrl]
+      properties:
+        portalUrl:
+          type: string
+    LoungeCreditLot:
+      type: object
+      required: [id, uid, productId, isPaid, initialTurns, remainingTurns, currency, unitAmount, status, purchasedAt, expiresAt]
+      properties:
+        id:
+          type: string
+        uid:
+          type: string
+        productId:
+          type: string
+          enum: [WELCOME_BONUS_20, TRIAL_TICKET_100, CHARGE_TICKET_100]
+        isPaid:
+          type: boolean
+        initialTurns:
+          type: integer
+        remainingTurns:
+          type: integer
+        currency:
+          type: string
+          enum: [NONE, JPY, USD]
+        unitAmount:
+          type: integer
+        status:
+          type: string
+          enum: [ACTIVE, EXHAUSTED, EXPIRED, REVOKED]
+        purchasedAt:
+          type: string
+          format: date-time
+        expiresAt:
+          type: string
+          format: date-time
+    LoungeQuotaBreakdownDto:
+      type: object
+      required: [dailyTurnQuota, dailyRemainingTurns, purchasedRemainingTurns, remainingChatTurns, activeLots, nextDailyResetAt, consumptionOrder]
+      properties:
+        dailyTurnQuota:
+          type: integer
+        dailyRemainingTurns:
+          type: integer
+        purchasedRemainingTurns:
+          type: integer
+        remainingChatTurns:
+          type: integer
+        activeLots:
+          type: array
+          items:
+            $ref: '#/components/schemas/LoungeCreditLot'
+        nextDailyResetAt:
+          type: string
+          format: date-time
+        consumptionOrder:
+          type: array
+          items:
+            type: string
+        phase2EuWithdrawalEligible:
+          type: boolean
+    LoungeSubscriptionDetailResponseDto:
+      type: object
+      required: [subscription, quotaBreakdown]
+      properties:
+        subscription:
+          $ref: '#/components/schemas/LoungeSubscription'
+        quotaBreakdown:
+          $ref: '#/components/schemas/LoungeQuotaBreakdownDto'
+        expiringSoonWarning:
+          type: object
+          required: [hoursRemaining, expiringTurns, expiresAt]
+          properties:
+            hoursRemaining:
+              type: integer
+            expiringTurns:
+              type: integer
+            expiresAt:
+              type: string
+              format: date-time
+    LoungeEuWithdrawalRequestDto:
+      type: object
+      required: [targetType, targetId, confirmedWithdrawal]
+      properties:
+        targetType:
+          type: string
+          enum: [SUBSCRIPTION, CREDIT_LOT]
+        targetId:
+          type: string
+        confirmedWithdrawal:
+          type: boolean
+    LoungeEuWithdrawalResponseDto:
+      type: object
+      required: [withdrawnAt, refundedAmountMinor, currency, revokedTurns, receiptEmailDispatched, subscription]
+      properties:
+        withdrawnAt:
+          type: string
+          format: date-time
+        refundedAmountMinor:
+          type: integer
+        currency:
+          type: string
+          enum: [JPY, USD]
+        revokedTurns:
+          type: integer
+        receiptEmailDispatched:
+          type: boolean
+        subscription:
+          $ref: '#/components/schemas/LoungeSubscription'
+    LoungeBillingOrderItemDto:
+      type: object
+      required: [chargeId, productId, status, amountMinor, refundedAmountMinor, currency, createdAt, receiptAvailable]
+      properties:
+        chargeId:
+          type: string
+        productId:
+          type: string
+          enum: [TRIAL_TICKET_100, CHARGE_TICKET_100, STANDARD_MONTHLY, UNKNOWN]
+        status:
+          type: string
+          enum: [COMPLETED, PARTIAL_REFUNDED, REFUNDED, DISPUTED, FAILED, PENDING]
+        amountMinor:
+          type: integer
+        refundedAmountMinor:
+          type: integer
+        currency:
+          type: string
+          enum: [JPY, USD]
+        createdAt:
+          type: string
+          format: date-time
+        receiptAvailable:
+          type: boolean
+        remainingTurns:
+          type: integer
+        initialTurns:
+          type: integer
+        lotStatus:
+          type: string
+          enum: [ACTIVE, EXHAUSTED, EXPIRED, REVOKED]
+        expiresAt:
+          type: string
+          format: date-time
+    LoungeBillingOrdersResponseDto:
+      type: object
+      required: [orders, nextCursor, hasMore]
+      properties:
+        orders:
+          type: array
+          items:
+            $ref: '#/components/schemas/LoungeBillingOrderItemDto'
+        nextCursor:
+          type: string
+          nullable: true
+        hasMore:
+          type: boolean
+    LoungeBillingReceiptResponseDto:
+      type: object
+      required: [receiptUrl]
+      properties:
+        receiptUrl:
+          type: string

@@ -9,6 +9,7 @@ import {
 } from '@rebecca/types';
 import {
   LoungeAuthError,
+  LoungeHttpError,
   LoungeNotFoundError,
   LoungeValidationError,
 } from '../../../utils/errors';
@@ -54,13 +55,23 @@ export function parseAndValidatePreferencesRequest(
     result.completeOnboarding = candidate['completeOnboarding'];
   }
 
+  if (candidate['allowServiceImprovementAnalytics'] !== undefined) {
+    if (typeof candidate['allowServiceImprovementAnalytics'] !== 'boolean') {
+      throw new LoungeValidationError(
+        'Field "allowServiceImprovementAnalytics" must be a boolean',
+      );
+    }
+    result.allowServiceImprovementAnalytics = candidate['allowServiceImprovementAnalytics'];
+  }
+
   if (
     result.language === undefined &&
     result.timezone === undefined &&
-    result.completeOnboarding === undefined
+    result.completeOnboarding === undefined &&
+    result.allowServiceImprovementAnalytics === undefined
   ) {
     throw new LoungeValidationError(
-      'At least one of "language", "timezone", or "completeOnboarding" must be provided',
+      'At least one preference field ("language", "timezone", "completeOnboarding", or "allowServiceImprovementAnalytics") must be provided',
     );
   }
 
@@ -116,6 +127,11 @@ export function parseAndValidateDeleteAccountRequest(
   };
 }
 
+/** External Stripe cleanup boundary executed fail-closed prior to irreversible database deletion. */
+export interface IStripeCustomerWithdrawalCleanupPort {
+  cancelAndDeleteCustomer(stripeCustomerId: string): Promise<void>;
+}
+
 /**
  * Use case contract for assembling account summary, updating preferences, and irreversible withdrawal.
  */
@@ -142,6 +158,7 @@ export class LoungeAccountUseCase implements ILoungeAccountUseCase {
     private readonly appVersion: string,
     private readonly personaBranding?: LoungePersonaBranding,
     private readonly disclaimerVersion: number = CURRENT_LOUNGE_DISCLAIMER_VERSION,
+    private readonly stripeWithdrawalCleanup?: IStripeCustomerWithdrawalCleanupPort,
   ) {}
 
   /**
@@ -199,6 +216,7 @@ export class LoungeAccountUseCase implements ILoungeAccountUseCase {
       sanitized.language,
       sanitized.timezone,
       sanitized.completeOnboarding,
+      sanitized.allowServiceImprovementAnalytics,
     );
     return toPublicLoungeUser(updated);
   }
@@ -236,6 +254,16 @@ export class LoungeAccountUseCase implements ILoungeAccountUseCase {
    * @throws LoungeValidationError When confirmation flags are incomplete.
    * @throws LoungeAuthError When user profile does not exist (`401`).
    */
+  /**
+   * Fail-closed irreversible withdrawal:
+   * 1. Marks `lounge_users/{uid}.status = 'DELETING'` so interrupted retries remain authorized.
+   * 2. Sequentially cancels/releases/deletes Stripe customer & subs (`502` fail-closed before wiping DB).
+   * 3. Deletes all `lounge_*` user data (preserving non-PII `lounge_trial_grants`) and revokes/deletes Auth.
+   *
+   * @throws LoungeValidationError When confirmation flags are incomplete.
+   * @throws LoungeAuthError When user profile does not exist (`401`).
+   * @throws LoungeHttpError With `statusCode: 502` and `code: 'STRIPE_CANCELLATION_FAILED'` on Stripe outage.
+   */
   public async deleteAccount(uid: string, request: LoungeDeleteAccountRequestDto): Promise<void> {
     parseAndValidateDeleteAccountRequest(request);
     const user = await this.authRepository.findUserByUid(uid);
@@ -243,12 +271,27 @@ export class LoungeAccountUseCase implements ILoungeAccountUseCase {
       throw new LoungeAuthError(401, 'Private Lounge user profile not found');
     }
 
+    await this.authRepository.updateUserStatus?.(uid, 'DELETING');
+
+    const fullSub =
+      (await this.accountRepository.getSubscriptionDocByUid?.(uid)) ?? null;
+    if (fullSub?.stripeCustomerId && this.stripeWithdrawalCleanup) {
+      try {
+        await this.stripeWithdrawalCleanup.cancelAndDeleteCustomer(fullSub.stripeCustomerId);
+      } catch (err) {
+        throw new LoungeHttpError(502, 'Failed to cancel active Stripe customer subscriptions', {
+          code: 'STRIPE_CANCELLATION_FAILED',
+          cause: err,
+        });
+      }
+    }
+
     await Promise.all([
       this.sessionRepository.deleteAllUserSessionData(uid),
       this.galleryRepository.deleteAllUserGalleryItems(uid),
       this.accountRepository.deleteSubscription(uid),
-      this.authRepository.revokeSession(uid),
     ]);
+    await this.authRepository.revokeSession(uid);
     await this.authRepository.deleteUser(uid);
   }
 }

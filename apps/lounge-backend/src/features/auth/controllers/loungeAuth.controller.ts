@@ -1,4 +1,5 @@
 import type { Request, Response } from 'express';
+import { resolveClientGeo } from '../../../config/loungeConfig';
 import {
   requireLoungeIdentity,
   type LoungeAuthenticatedRequest,
@@ -14,14 +15,20 @@ import {
  * HTTP controller handling `/api/v1/lounge/auth/*` endpoints.
  */
 export class LoungeAuthController {
-  constructor(private readonly authUseCase: ILoungeAuthUseCase) {}
+  constructor(
+    private readonly authUseCase: ILoungeAuthUseCase,
+    private readonly defaultGeoCountryCode: string = 'JP',
+  ) {}
 
   /** Handles `POST /api/v1/lounge/auth/signup`. */
   public async signUp(req: Request, res: Response): Promise<void> {
     const traceHeader = extractTraceHeader(req);
     try {
       const payload = parseAndValidateSignUpRequest(req.body);
-      const session = await this.authUseCase.signUpWithX(payload);
+      const clientGeo = resolveClientGeo(req.headers as Readonly<Record<string, unknown>>, {
+        defaultCountryCode: this.defaultGeoCountryCode,
+      });
+      const session = await this.authUseCase.signUpWithX(payload, clientGeo);
       res.status(201).json(session);
     } catch (err) {
       handleLoungeControllerError(res, err, 'POST /auth/signup', traceHeader);

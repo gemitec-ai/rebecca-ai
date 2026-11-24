@@ -6,11 +6,13 @@ import {
   type LoungeSignUpRequestDto,
   type LoungeUserDisclaimerConsent,
 } from '@rebecca/types';
+import type { ResolvedClientGeo } from '../../../config/loungeConfig';
 import type { ILoungeAuthVerifierPort, LoungeVerifiedIdentity } from '../../../middleware/loungeAuth';
 import {
   LoungeAuthError,
   LoungeConflictError,
   LoungeHttpError,
+  LoungeQuotaExhaustedError,
   LoungeValidationError,
 } from '../../../utils/errors';
 import {
@@ -24,7 +26,10 @@ import { toPublicLoungeUser, type ILoungeAuthRepository } from '../repositories/
  * Use case contract for X-linked Private Lounge sign-up, login, and logout.
  */
 export interface ILoungeAuthUseCase {
-  signUpWithX(request: LoungeSignUpRequestDto): Promise<LoungeAuthSessionDto>;
+  signUpWithX(
+    request: LoungeSignUpRequestDto,
+    clientGeo?: ResolvedClientGeo,
+  ): Promise<LoungeAuthSessionDto>;
   loginWithX(request: LoungeLoginRequestDto): Promise<LoungeAuthSessionDto>;
   logout(uid: string): Promise<void>;
 }
@@ -164,11 +169,15 @@ export function parseAndValidateSignUpRequest(
  * Orchestrates X-linked authentication and mandatory scroll-gated disclaimer validation.
  */
 export class LoungeAuthUseCase implements ILoungeAuthUseCase {
+  private dailySignupUtcDate = new Date().toISOString().slice(0, 10);
+  private dailySignupCount = 0;
+
   constructor(
     private readonly authRepository: ILoungeAuthRepository,
     private readonly authVerifier: ILoungeAuthVerifierPort,
     private readonly appVersion: string,
     private readonly disclaimerVersion: number = CURRENT_LOUNGE_DISCLAIMER_VERSION,
+    private readonly globalDailySignupCap: number = 2000,
   ) {}
 
   /**
@@ -177,8 +186,23 @@ export class LoungeAuthUseCase implements ILoungeAuthUseCase {
    *
    * @throws LoungeValidationError When disclaimer version is invalid/outdated or timestamps are invalid.
    * @throws LoungeConflictError When UID or X user ID already owns a registered `lounge_users` account (`409`).
+   * @throws LoungeQuotaExhaustedError When the global daily sign-up circuit breaker is reached (`429`).
    */
-  public async signUpWithX(request: LoungeSignUpRequestDto): Promise<LoungeAuthSessionDto> {
+  public async signUpWithX(
+    request: LoungeSignUpRequestDto,
+    clientGeo?: ResolvedClientGeo,
+  ): Promise<LoungeAuthSessionDto> {
+    const todayUtc = new Date().toISOString().slice(0, 10);
+    if (todayUtc !== this.dailySignupUtcDate) {
+      this.dailySignupUtcDate = todayUtc;
+      this.dailySignupCount = 0;
+    }
+    if (this.dailySignupCount >= this.globalDailySignupCap) {
+      throw new LoungeQuotaExhaustedError(
+        'Daily registration capacity reached; please try again later',
+      );
+    }
+
     const sanitized = parseAndValidateSignUpRequest(request, this.disclaimerVersion);
     const identity = await this.verifyIdentityToken(sanitized.idToken);
     const [existingByUid, existingByX] = await Promise.all([
@@ -199,7 +223,17 @@ export class LoungeAuthUseCase implements ILoungeAuthUseCase {
       onboardingCompleted: false,
       language: sanitized.language,
       timezone: sanitized.timezone,
+      allowServiceImprovementAnalytics: true,
+      ...(clientGeo
+        ? {
+            countryCode: clientGeo.countryCode,
+            isEeaResident: clientGeo.isEeaResident,
+            preferredCurrency: clientGeo.currency,
+          }
+        : {}),
     });
+
+    this.dailySignupCount += 1;
 
     return {
       user: toPublicLoungeUser(user),

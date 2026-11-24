@@ -1,10 +1,17 @@
 import 'dotenv/config';
-import { createLoungeApp, createSkeletonLoungeDependencies } from './app';
+import { createLoungeApp, createProductionLoungeDependencies } from './app';
+import { loadLoungeRuntimeConfig } from './config/loungeConfig';
 import { loungeLogger } from './utils/logger';
 
-const port = Number(process.env['PORT'] ?? 8083);
-const app = createLoungeApp(createSkeletonLoungeDependencies(process.env));
+const config = loadLoungeRuntimeConfig(process.env, 'v1.45.2', 1);
+const deps = createProductionLoungeDependencies(process.env);
+const app = createLoungeApp(deps);
 
-app.listen(port, () => {
-  loungeLogger.info('Private Lounge BFF architecture skeleton listening', { port });
+app.listen(config.port, () => {
+  loungeLogger.info('Private Lounge BFF listening', {
+    port: config.port,
+    nodeEnv: config.nodeEnv,
+    phase2EeaEnabled: config.phase2EeaEnabled,
+    useEmulators: Boolean(config.authEmulatorHost || config.firestoreEmulatorHost),
+  });
 });
