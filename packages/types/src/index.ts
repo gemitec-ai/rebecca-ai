@@ -1039,17 +1039,49 @@ export function parseUpstreamApiError(error: unknown): UpstreamApiError | null {
 /**
  * Subscription plan tier governing daily turn quotas in the Private Lounge.
  */
-export type LoungeSubscriptionTier = 'FREE' | 'SUPPORTER' | 'VIP';
+export type LoungeSubscriptionTier = 'FREE' | 'STANDARD';
 
 /**
  * Lifecycle state of a user's Private Lounge subscription.
  */
-export type LoungeSubscriptionStatus = 'ACTIVE' | 'PAST_DUE' | 'CANCELED';
+export type LoungeSubscriptionStatus = 'NONE' | 'ACTIVE' | 'CANCELING' | 'PAST_DUE' | 'CANCELED';
 
 /**
  * Account status for Private Lounge users.
  */
-export type LoungeAccountStatus = 'ACTIVE' | 'SUSPENDED';
+export type LoungeAccountStatus = 'ACTIVE' | 'SUSPENDED' | 'DELETING';
+/** Billing currency resolved by server Geo-IP or locked at initial Checkout. */
+export type LoungeCurrency = 'JPY' | 'USD';
+/** Currency recorded on a credit lot ('NONE' for promotional welcome grant). */
+export type LoungeCreditCurrency = 'NONE' | LoungeCurrency;
+/** Billing product catalog identifiers supported by Private Lounge. */
+export type LoungeProductId =
+  | 'WELCOME_BONUS_20'
+  | 'TRIAL_TICKET_100'
+  | 'CHARGE_TICKET_100'
+  | 'STANDARD_MONTHLY';
+/** Lifecycle status of an individual promotional or paid credit lot. */
+export type LoungeCreditLotStatus = 'ACTIVE' | 'EXHAUSTED' | 'EXPIRED' | 'REVOKED';
+/** Quota ledger mutation classification for operational and audit traceability. */
+export type LoungeQuotaDeltaType =
+  | 'RESERVE_DAILY'
+  | 'RESERVE_LOT'
+  | 'COMPENSATION_REFUND'
+  | 'GRANT_WELCOME'
+  | 'GRANT_LOT'
+  | 'DAILY_RESET'
+  | 'REFUND_CLAWBACK'
+  | 'UPGRADE_TOPUP';
+/** Normalized order status derived directly from Stripe Charge / Refund / Dispute state. */
+export type LoungeOrderStatus =
+  | 'COMPLETED'
+  | 'PARTIAL_REFUNDED'
+  | 'REFUNDED'
+  | 'DISPUTED'
+  | 'FAILED'
+  | 'PENDING';
+/** Deep-link flow parameter supported when creating a Stripe Customer Portal session. */
+export type LoungePortalFlow = 'default' | 'payment_method_update' | 'subscription_cancel';
 
 /**
  * Supported UI and conversational response languages in the Gemitec Private Lounge.
@@ -1134,6 +1166,14 @@ export interface LoungeUser {
   /** Indicates whether post-X-link Language & Timezone onboarding confirmation has completed. */
   onboardingCompleted: boolean;
   disclaimerConsent: LoungeUserDisclaimerConsent;
+  /** Opt-out preference allowing anonymized/service-improvement analytics outside EEA Paid Tier. */
+  allowServiceImprovementAnalytics: boolean;
+  /** Server-determined ISO 3166-1 alpha-2 country code (e.g. Geo-IP or Stripe Checkout). */
+  countryCode?: string;
+  /** True when Geo-IP / billing origin is in EEA, UK, or Switzerland (Phase 2 gate). */
+  isEeaResident?: boolean;
+  /** Server-locked billing currency ('JPY' for JP, 'USD' otherwise; never driven by UI language). */
+  preferredCurrency?: LoungeCurrency;
   createdAt: string;
   updatedAt: string;
   lastLoginAt: string;
@@ -1154,6 +1194,7 @@ export interface LoungeUpdatePreferencesRequestDto {
   language?: LoungeLanguage;
   timezone?: string;
   completeOnboarding?: boolean;
+  allowServiceImprovementAnalytics?: boolean;
 }
 
 /**
@@ -1170,7 +1211,11 @@ export interface LoungeProcessedEvent {
   eventId: string;
   eventType: string;
   uid?: string;
+  /** Deterministic resource target identifier (`cs_...`, `in_...`, or `cus_...`). */
+  targetId?: string;
   processedAt: string;
+  /** ISO 8601 expiration timestamp backing the 90-day Firestore TTL policy. */
+  expireAt?: string;
 }
 
 /**
@@ -1188,27 +1233,85 @@ export interface LoungeUserDoc extends LoungeUser {
   episodicBuffer?: ConversationLogEntry[];
   /** ISO 8601 datetime of the last completed Private Lounge Dreaming consolidation. */
   lastDreamedAt?: string;
+  /** Server-only counter of Gemini 3 search_web executions during `dailySearchResetDate`. */
+  dailySearchCount?: number;
+  /** Local YYYY-MM-DD key anchoring `dailySearchCount` in the user's configured timezone. */
+  dailySearchResetDate?: string;
 }
 
 /**
- * Domain model for a Private Lounge subscription and daily chat turn quota (`lounge_subscriptions`).
+ * Public client-facing subscription and hybrid quota projection (`lounge_subscriptions`).
+ * Strips Stripe internal identifiers and server-only daily counters before serialization.
  */
 export interface LoungeSubscription {
   uid: string;
   tier: LoungeSubscriptionTier;
   status: LoungeSubscriptionStatus;
+  /** Locked checkout billing currency (assigned at Geo-IP resolution or initial Checkout). */
+  billingCurrency?: LoungeCurrency;
+  /** Configured daily allowance: `5` for FREE/PAST_DUE/CANCELED, `100` for STANDARD ACTIVE/CANCELING. */
   dailyTurnQuota: number;
+  /** Remaining turns from today's non-rollover daily allowance (`0..dailyTurnQuota`). */
+  dailyRemainingTurns: number;
+  /** Materialized sum of `remainingTurns` across non-expired `ACTIVE` credit lots. */
+  purchasedRemainingTurns: number;
+  /** Unified remaining turns presented to the user (`dailyRemainingTurns + purchasedRemainingTurns`). */
   remainingChatTurns: number;
-  quotaResetAt: string;
-  stripeCustomerId?: string;
+  /** Earliest expiration ISO 8601 timestamp across `ACTIVE` credit lots, or `null` when none exist. */
+  earliestLotExpiresAt: string | null;
+  /** ISO 8601 timestamp when daily quota was last reset. */
+  lastDailyResetAt: string;
+  /** IANA timezone string active during the last daily quota reset (for TZ-change clamping). */
+  lastQuotaResetTimezone: string;
+  /** Monotonic ISO 8601 timestamp for the next local-midnight daily quota reset. */
+  nextDailyResetAt: string;
+  /** Subscription billing period end derived from `subscription.items.data[0].current_period_end`. */
   currentPeriodEnd: string;
+  /** Cached one-time trial ticket eligibility flag (`true` once consumed or blocked). */
+  trialTicketUsed: boolean;
+  /** True when the active Stripe subscription is scheduled to cancel at `currentPeriodEnd`. */
+  cancelAtPeriodEnd: boolean;
   updatedAt: string;
 }
 
 /**
- * Persisted Firestore schema shape for `lounge_subscriptions` documents.
+ * Full Firestore-persisted Private Lounge subscription & quota document (`lounge_subscriptions`).
  */
-export type LoungeSubscriptionDoc = LoungeSubscription;
+export interface LoungeSubscriptionDoc extends LoungeSubscription {
+  stripeCustomerId?: string;
+  stripeSubscriptionId?: string;
+  stripeScheduleId?: string;
+  /** Last processed Stripe invoice ID (`in_...`) guarding against stale invoice replay. */
+  lastProcessedInvoiceId?: string;
+  /** Server-only daily turns consumed during the current quota day (`0..dailyTurnQuota`). */
+  todaysConsumedDailyTurns: number;
+  /** Server-only search_web turns consumed during the current quota day. */
+  todaysSearchCount?: number;
+}
+
+/**
+ * Projects a server-side `LoungeSubscriptionDoc` into a browser-safe `LoungeSubscription` DTO.
+ */
+export function toPublicLoungeSubscription(doc: LoungeSubscriptionDoc): LoungeSubscription {
+  return {
+    uid: doc.uid,
+    tier: doc.tier,
+    status: doc.status,
+    ...(doc.billingCurrency !== undefined ? { billingCurrency: doc.billingCurrency } : {}),
+    dailyTurnQuota: doc.dailyTurnQuota,
+    dailyRemainingTurns: doc.dailyRemainingTurns,
+    purchasedRemainingTurns: doc.purchasedRemainingTurns,
+    remainingChatTurns: doc.remainingChatTurns,
+    earliestLotExpiresAt: doc.earliestLotExpiresAt,
+    lastDailyResetAt: doc.lastDailyResetAt,
+    lastQuotaResetTimezone: doc.lastQuotaResetTimezone,
+    nextDailyResetAt: doc.nextDailyResetAt,
+    currentPeriodEnd: doc.currentPeriodEnd,
+    trialTicketUsed: doc.trialTicketUsed,
+    cancelAtPeriodEnd: doc.cancelAtPeriodEnd,
+    updatedAt: doc.updatedAt,
+  };
+}
 
 /**
  * Domain model for an isolated Private Lounge conversation thread (`lounge_sessions`).
@@ -1365,12 +1468,27 @@ export interface LoungePersonaBranding {
 }
 
 /**
+ * Public Firebase Web SDK bootstrap configuration returned by `/api/v1/lounge/config`.
+ */
+export interface LoungeFirebaseWebConfig {
+  apiKey: string;
+  authDomain: string;
+  projectId: string;
+  appId: string;
+  tenantId?: string;
+}
+
+/**
  * Runtime shell configuration payload returned by `GET /api/v1/lounge/config`.
  */
 export interface LoungeRuntimeConfigDto {
   appVersion: string;
   disclaimerVersion: number;
   persona: LoungePersonaBranding;
+  firebase?: LoungeFirebaseWebConfig;
+  useEmulators?: boolean;
+  production?: boolean;
+  phase2EeaEnabled?: boolean;
 }
 
 /**
@@ -1400,6 +1518,7 @@ export interface LoungeSendMessageResponseDto {
   userMessage: LoungeMessage;
   assistantMessage: LoungeMessage;
   remainingChatTurns: number;
+  subscription?: LoungeSubscription;
   unlockedGalleryItem?: LoungeGalleryItem;
 }
 
@@ -1457,3 +1576,252 @@ export interface LoungeGalleryListResponseDto extends LoungePaginatedResponseDto
 
 
 
+/**
+ * Public client-facing representation of a non-zero or historical credit lot.
+ * Excludes server-only Stripe PaymentIntent identifiers.
+ */
+export interface LoungeCreditLot {
+  id: string;
+  uid: string;
+  productId: Extract<LoungeProductId, 'WELCOME_BONUS_20' | 'TRIAL_TICKET_100' | 'CHARGE_TICKET_100'>;
+  isPaid: boolean;
+  initialTurns: number;
+  remainingTurns: number;
+  currency: LoungeCreditCurrency;
+  /** Price paid in minor currency units (`0` for welcome bonus, integer yen for JPY, cents for USD). */
+  unitAmount: number;
+  status: LoungeCreditLotStatus;
+  /** Anchored strictly to Stripe `PaymentIntent.created` (ISO 8601), or grant time for free lots. */
+  purchasedAt: string;
+  /** Expiration timestamp (`purchasedAt + 180 days`) in ISO 8601. */
+  expiresAt: string;
+}
+
+/**
+ * Full Firestore-persisted document in `lounge_credit_lots`.
+ * Indexed by `(uid, status, expiresAt)` for FIFO consumption and `(uid, stripePaymentIntentId)` for webhook lookup.
+ */
+export interface LoungeCreditLotDoc extends LoungeCreditLot {
+  stripePaymentIntentId?: string;
+}
+
+/**
+ * Projects a server `LoungeCreditLotDoc` to a safe client `LoungeCreditLot`.
+ */
+export function toPublicLoungeCreditLot(doc: LoungeCreditLotDoc): LoungeCreditLot {
+  return {
+    id: doc.id,
+    uid: doc.uid,
+    productId: doc.productId,
+    isPaid: doc.isPaid,
+    initialTurns: doc.initialTurns,
+    remainingTurns: doc.remainingTurns,
+    currency: doc.currency,
+    unitAmount: doc.unitAmount,
+    status: doc.status,
+    purchasedAt: doc.purchasedAt,
+    expiresAt: doc.expiresAt,
+  };
+}
+
+/**
+ * Operational quota audit ledger record persisted in `lounge_quota_ledger` with a 180-day Firestore TTL.
+ */
+export interface LoungeQuotaLedgerDoc {
+  id: string;
+  uid: string;
+  deltaType: LoungeQuotaDeltaType;
+  deltaDaily: number;
+  deltaPurchased: number;
+  balanceTotalAfter: number;
+  lotId?: string;
+  referenceId: string;
+  createdAt: string;
+  /** ISO 8601 expiration timestamp backing the 180-day Firestore TTL policy. */
+  expireAt: string;
+}
+
+/**
+ * Non-PII anti-fraud grant tracker persisted in `lounge_trial_grants`.
+ * Never stores `uid`, X handles, or Stripe session/customer IDs so deleted users remain anonymized.
+ */
+export interface LoungeTrialGrantDoc {
+  /** Keyed by `HMAC-SHA256(secret[keyVersion], xUserId)`. */
+  xUserIdHash: string;
+  /** Keyring version (`>= 1`) used to compute `xUserIdHash`. */
+  keyVersion: number;
+  riskStatus: 'OK' | 'DISPUTE_BLOCKED';
+  welcomeBonusGrantedAt?: string;
+  trialTicketGrantedAt?: string;
+  /** ISO 8601 retention limit (e.g. 3 years anti-abuse retention). */
+  retainUntil: string;
+}
+
+/**
+ * Purchaser-selectable product catalog entry rendered in Billing Tab 1.
+ */
+export interface LoungeBillingProductDto {
+  productId: Exclude<LoungeProductId, 'WELCOME_BONUS_20'>;
+  mode: 'payment' | 'subscription';
+  currency: LoungeCurrency;
+  unitAmountMinor: number;
+  formattedPrice: string;
+  grantedTurns: number;
+  /** Lot validity in days (`180` for one-time tickets; `null` for daily-resetting subscription). */
+  validityDays: number | null;
+  taxInclusive: boolean;
+  promotionCodesAllowed: boolean;
+  eligible: boolean;
+  ineligibleReason?: 'TRIAL_ALREADY_USED' | 'SUBSCRIPTION_ALREADY_ACTIVE' | 'GEO_BLOCKED';
+}
+
+/**
+ * Catalog and eligibility payload returned by `GET /api/v1/lounge/billing/catalog`.
+ */
+export interface LoungeBillingCatalogDto {
+  currency: LoungeCurrency;
+  currencyLocked: boolean;
+  countryCode: string;
+  isEeaResident: boolean;
+  phase2EeaEnabled: boolean;
+  trialEligible: boolean;
+  subscriptionStatus: LoungeSubscriptionStatus;
+  products: LoungeBillingProductDto[];
+}
+
+/**
+ * Request DTO creating a Stripe Checkout Session (`POST /api/v1/lounge/billing/checkout`).
+ * All ASCT disclosure checkboxes default to unchecked client-side and must be `true`.
+ */
+export interface LoungeCreateCheckoutRequestDto {
+  productId: Exclude<LoungeProductId, 'WELCOME_BONUS_20'>;
+  acceptedPurchaseDisclosure: boolean;
+  acceptedAutoRenewalOptIn: boolean;
+  confirmedAdultOrParentalConsent: boolean;
+  euDigitalWaiverAccepted?: boolean;
+}
+
+/**
+ * Response DTO returning the hosted Stripe Checkout redirect URL and masked session ID.
+ */
+export interface LoungeCreateCheckoutResponseDto {
+  checkoutUrl: string;
+  sessionIdMasked: string;
+}
+
+/**
+ * Request DTO for immediate post-Checkout verification (`POST /api/v1/lounge/billing/checkout/verify`).
+ */
+export interface LoungeVerifyCheckoutRequestDto {
+  sessionId: string;
+}
+
+/**
+ * Response DTO returning updated quota projection after synchronous Checkout verification.
+ */
+export interface LoungeVerifyCheckoutResponseDto {
+  subscription: LoungeSubscription;
+  verified: boolean;
+  autoRefundedConflict?: boolean;
+}
+
+/**
+ * Request DTO generating a deep-linked Stripe Customer Portal URL (`POST /api/v1/lounge/billing/portal`).
+ */
+export interface LoungeCreatePortalRequestDto {
+  flow: LoungePortalFlow;
+}
+
+/**
+ * Response DTO containing the single-use Stripe Customer Portal URL.
+ */
+export interface LoungeCreatePortalResponseDto {
+  portalUrl: string;
+}
+
+/**
+ * Detailed turn-bucket breakdown rendered inside Billing Tab 2 (`Subscription Management`).
+ */
+export interface LoungeQuotaBreakdownDto {
+  dailyTurnQuota: number;
+  dailyRemainingTurns: number;
+  purchasedRemainingTurns: number;
+  remainingChatTurns: number;
+  activeLots: LoungeCreditLot[];
+  nextDailyResetAt: string;
+  consumptionOrder: readonly ['DAILY', 'LOT_FIFO'];
+  phase2EuWithdrawalEligible?: boolean;
+}
+
+/**
+ * Proactive non-intrusive reminder when an active ticket lot expires within 14 days.
+ */
+export interface LoungeExpiringLotWarningDto {
+  hoursRemaining: number;
+  expiringTurns: number;
+  expiresAt: string;
+}
+
+/**
+ * Detailed subscription and quota breakdown payload returned by `GET /api/v1/lounge/billing/subscription`.
+ */
+export interface LoungeSubscriptionDetailResponseDto {
+  subscription: LoungeSubscription;
+  quotaBreakdown: LoungeQuotaBreakdownDto;
+  expiringSoonWarning?: LoungeExpiringLotWarningDto;
+}
+
+/**
+ * Request DTO for Phase 2 EEA statutory 14-day electronic withdrawal (`POST /api/v1/lounge/billing/eu-withdrawal`).
+ */
+export interface LoungeEuWithdrawalRequestDto {
+  targetType: 'SUBSCRIPTION' | 'CREDIT_LOT';
+  targetId: string;
+  confirmedWithdrawal: boolean;
+}
+
+/**
+ * Response DTO confirming Phase 2 EEA withdrawal execution, refund, and transactional confirmation dispatch.
+ */
+export interface LoungeEuWithdrawalResponseDto {
+  withdrawnAt: string;
+  refundedAmountMinor: number;
+  currency: LoungeCurrency;
+  revokedTurns: number;
+  receiptEmailDispatched: boolean;
+  subscription: LoungeSubscription;
+}
+
+/**
+ * Normalized Stripe Charge order record serialized by `GET /api/v1/lounge/billing/orders`.
+ */
+export interface LoungeBillingOrderItemDto {
+  chargeId: string;
+  productId: Exclude<LoungeProductId, 'WELCOME_BONUS_20'> | 'UNKNOWN';
+  status: LoungeOrderStatus;
+  amountMinor: number;
+  refundedAmountMinor: number;
+  currency: LoungeCurrency;
+  createdAt: string;
+  receiptAvailable: boolean;
+  remainingTurns?: number;
+  initialTurns?: number;
+  lotStatus?: LoungeCreditLotStatus;
+  expiresAt?: string;
+}
+
+/**
+ * Cursor-paginated purchase history response returned by `GET /api/v1/lounge/billing/orders`.
+ */
+export interface LoungeBillingOrdersResponseDto {
+  orders: LoungeBillingOrderItemDto[];
+  nextCursor: string | null;
+  hasMore: boolean;
+}
+
+/**
+ * Response DTO returning an ownership-verified Stripe hosted receipt URL.
+ */
+export interface LoungeBillingReceiptResponseDto {
+  receiptUrl: string;
+}

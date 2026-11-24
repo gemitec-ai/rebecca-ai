@@ -236,12 +236,15 @@ All collections are mapped to constants in `COLLECTIONS` (`packages/db/src/schem
 | `COLLECTIONS.SYSTEM` | `/system` | System singletons (`persona`, `preferences`, `x_api_state`) | None |
 | `COLLECTIONS.SYSTEM_STATS` | `/system_stats` | Dashboard KPIs (`global`) & DAU trends (`dau_YYYY-MM-DD`) | None |
 | `COLLECTIONS.LOUNGE_USERS` | `/lounge_users` | Isolated Private Lounge users & scroll-verified consent | None |
-| `COLLECTIONS.LOUNGE_SUBSCRIPTIONS` | `/lounge_subscriptions` | Isolated Private Lounge plan tiers & daily turn quotas | None |
+| `COLLECTIONS.LOUNGE_SUBSCRIPTIONS` | `/lounge_subscriptions` | Isolated Private Lounge plan tiers, Stripe customer/sub IDs & hybrid quotas | None |
 | `COLLECTIONS.LOUNGE_SESSIONS` | `/lounge_sessions` | Isolated Private Lounge conversation threads | None |
 | `COLLECTIONS.LOUNGE_MESSAGES` | `/lounge_messages` | Isolated Private Lounge turn logs & token metering | None |
 | `COLLECTIONS.LOUNGE_RAG_MEMORIES` | `/lounge_rag_memories` | Isolated Private Lounge episodic memories (no X write-back) | None |
 | `COLLECTIONS.LOUNGE_GALLERY` | `/lounge_gallery` | Isolated Private Lounge unlocked Bot illustration gallery | None |
-| `COLLECTIONS.LOUNGE_PROCESSED_EVENTS` | `/lounge_processed_events` | Isolated Private Lounge webhook & async task idempotency | None |
+| `COLLECTIONS.LOUNGE_PROCESSED_EVENTS` | `/lounge_processed_events` | Isolated Private Lounge webhook & async task idempotency | 90 days (`expireAt`) |
+| `COLLECTIONS.LOUNGE_CREDIT_LOTS` | `/lounge_credit_lots` | Promotional welcome & paid ticket credit lots (FIFO expiry buckets) | None |
+| `COLLECTIONS.LOUNGE_QUOTA_LEDGER` | `/lounge_quota_ledger` | Operational hybrid quota mutation & refund audit ledger | 180 days (`expireAt`) |
+| `COLLECTIONS.LOUNGE_TRIAL_GRANTS` | `/lounge_trial_grants` | Non-PII HMAC anti-fraud welcome/trial eligibility registry | `retainUntil` (3y policy) |
 
 ---
 
@@ -611,12 +614,13 @@ Synthesized by `@rebecca/memory` (`DreamingConsolidationEngine`) and orchestrate
 
 ### 4.18 Isolated Private Lounge Collections (`lounge_*`)
 
-The **Gemitec Private Lounge** enforces a strict **1 X account = 1 Private Lounge account = 1 continuous conversation session** architecture inside seven dedicated collections completely isolated from the Public X Bot (`users`, `conversation_logs`, `rag_memories`, `processed_events`, `system/persona`, `timeline_history`) and Admin Dashboard (`admin_users`), guarded in application repositories via `createUserScopedLoungeDb(collections, uid)` and `assertLoungeRecordOwnedByUid`:
+The **Gemitec Private Lounge** enforces a strict **1 X account = 1 Private Lounge account = 1 continuous conversation session** architecture inside ten dedicated collections completely isolated from the Public X Bot (`users`, `conversation_logs`, `rag_memories`, `processed_events`, `system/persona`, `timeline_history`) and Admin Dashboard (`admin_users`), guarded in application repositories via `createUserScopedLoungeDb(collections, uid)` and `assertLoungeRecordOwnedByUid`:
 
 - **Two-Layer Cognitive Memory Architecture**:
   - *Independent Private Lounge Memory (`lounge_*`)*: Stores per-user Dreaming structured profiles (`lounge_users.coreProfile`), sliding episodic turns (`lounge_users.episodicBuffer`), vectorized episodic semantic memories (`lounge_rag_memories.embedding`), and raw turns (`lounge_messages`) completely separate from Public X.
   - *Read-Only Public X Bot Injection*: On reply generation, the Lounge BFF reads (never mutates) the user's Public X structured `coreProfile`, vectorized `rag_memories`, recent `conversation_logs`, and the AI persona's Layer 1 Global Evolution (`extended_prompt`), Layer 2 Self-Reflection (`timeline_summary`), and Layer 3 recent X posts (`timeline_history`) via `IPublicXMemoryReadPort`.
-- **Irreversible Account Withdrawal**: Deleting a user account cascades across `lounge_users`, `lounge_subscriptions`, `lounge_sessions`, `lounge_messages`, `lounge_rag_memories`, and `lounge_gallery` without affecting Public X records.
+- **Zero Card / Zero Billing-Ledger Delegation (`PCI DSS SAQ-A`)**: Credit card metadata and 7-year accounting invoices/charges are delegated 100% to Stripe. Firestore intentionally omits any `lounge_billing_orders` collection.
+- **Irreversible Account Withdrawal**: Deleting a user account cascades across `lounge_users`, `lounge_subscriptions`, `lounge_sessions`, `lounge_messages`, `lounge_rag_memories`, `lounge_gallery`, `lounge_credit_lots`, and `lounge_quota_ledger` without affecting Public X records. Non-PII HMAC abuse-prevention records (`lounge_trial_grants`) remain completely anonymized.
 
 #### `lounge_users` (`COLLECTIONS.LOUNGE_USERS`)
 Document ID = Firebase Auth `uid`. Unique index invariant: `xUserId` is 1:1 (duplicate X account sign-up is rejected with HTTP 409).
@@ -628,32 +632,51 @@ Document ID = Firebase Auth `uid`. Unique index invariant: `xUserId` is 1:1 (dup
 | `xHandle` | `string` | Sanitized X handle (`@username`). |
 | `displayName` | `string` | Display nickname shown in the Lounge UI. |
 | `avatarUrl` | `string` | Profile avatar path or HTTPS URL. |
-| `status` | `'ACTIVE' \| 'SUSPENDED'` | Lounge account status. |
+| `status` | `'ACTIVE' \| 'SUSPENDED' \| 'DELETING'` | Lounge account status (`DELETING` permits idempotent fail-closed withdrawal retries). |
 | `language` | `LoungeLanguage` | Selected UI & AI reply language (`ja \| en \| de \| pt \| es \| zh-HK \| vi \| th`). |
-| `timezone` | `string` | User's IANA timezone identifier (e.g. `Asia/Tokyo`) for day/night time-of-day awareness. |
+| `timezone` | `string` | User's IANA timezone identifier (e.g. `Asia/Tokyo`) for day/night time-of-day awareness and local midnight quota resets. |
 | `onboardingCompleted` | `boolean` | `false` on X sign-up until the user confirms Language & Timezone on `ONBOARDING` (`true`). Resumes onboarding automatically on re-entry if incomplete. |
+| `allowServiceImprovementAnalytics` | `boolean` | Opt-out toggle permitting service-improvement analytics outside Phase 2 EEA Paid Tier (`true` by default for non-EEA users). |
+| `countryCode` | `string \| undefined` | Server-derived ISO 3166-1 alpha-2 country code from Geo-IP / Stripe Checkout. |
+| `isEeaResident` | `boolean \| undefined` | Server-side EEA/UK/Switzerland flag for Phase 2 regulatory gating. |
+| `preferredCurrency` | `'JPY' \| 'USD' \| undefined` | Server-locked billing currency (`JPY` for `JP`, `USD` otherwise; independent of UI `language`). |
 | `disclaimerConsent` | `LoungeUserDisclaimerConsent` | Scroll-verified sign-up/re-consent record (`disclaimerVersion` positive integer `>= 1`, `agreedToGeminiTrainingUsage`, `agreedToZeroPiiProhibition`, `agreedToOneWayMemoryIsolation`, `scrolledToBottomAt`, `consentedAt`). |
 | `coreProfile` | `UserCoreProfile \| undefined` | Structured user profile consolidated independently via Private Lounge Dreaming (server-only). |
 | `episodicBuffer` | `ConversationLogEntry[] \| undefined` | Recent private raw turn sliding buffer for Dreaming consolidation (server-only). |
 | `lastDreamedAt` | `Timestamp \| undefined` | Last completed Private Lounge Dreaming consolidation timestamp (server-only). |
+| `dailySearchCount` | `number \| undefined` | Server-only counter tracking daily Gemini 3 `search_web` invocations. |
+| `dailySearchResetDate` | `string \| undefined` | Local `YYYY-MM-DD` key anchoring `dailySearchCount` in the user's configured timezone. |
 | `createdAt` | `Timestamp` (ISO 8601) | Account registration timestamp. |
 | `updatedAt` | `Timestamp` (ISO 8601) | Last profile update timestamp. |
 | `lastLoginAt` | `Timestamp` (ISO 8601) | Most recent authenticated login timestamp. |
 
 #### `lounge_subscriptions` (`COLLECTIONS.LOUNGE_SUBSCRIPTIONS`)
-Document ID = Firebase Auth `uid`.
+Document ID = Firebase Auth `uid`. Single-field default index on `stripeCustomerId` supports Stripe webhook resolution. Internal Stripe identifiers (`stripeCustomerId`, `stripeSubscriptionId`, `stripeScheduleId`, `lastProcessedInvoiceId`) and server counters (`todaysConsumedDailyTurns`, `todaysSearchCount`) are stripped by `toPublicLoungeSubscription` before leaving the BFF.
 
 | Field Name | Type | Description |
 | :--- | :--- | :--- |
 | `uid` | `string` (Doc ID) | Owning Lounge user UID. |
-| `tier` | `'FREE' \| 'SUPPORTER' \| 'VIP'` | Private Lounge membership plan tier. |
-| `status` | `'ACTIVE' \| 'PAST_DUE' \| 'CANCELED'` | Billing entitlement status. |
-| `dailyTurnQuota` | `number` | Maximum daily turn allowance granted by `tier`. |
-| `remainingChatTurns` | `number` | Remaining interactive turns before next quota reset (`>= 0`). |
-| `quotaResetAt` | `Timestamp` (ISO 8601) | Scheduled ISO timestamp for daily quota replenishment. |
-| `stripeCustomerId` | `string \| undefined` | Optional Stripe Customer reference. |
-| `currentPeriodEnd` | `Timestamp` (ISO 8601) | Subscription billing period boundary. |
-| `updatedAt` | `Timestamp` (ISO 8601) | Last quota or subscription update timestamp. |
+| `tier` | `'FREE' \| 'STANDARD'` | Private Lounge membership plan tier (`SUPPORTER`/`VIP` migrate cleanly on read to `STANDARD`). |
+| `status` | `'NONE' \| 'ACTIVE' \| 'CANCELING' \| 'PAST_DUE' \| 'CANCELED'` | Stripe subscription entitlement state (decoupled from `lounge_users.status`). |
+| `billingCurrency` | `'JPY' \| 'USD' \| undefined` | Billing currency locked at Geo-IP resolution / first Checkout. |
+| `dailyTurnQuota` | `number` | Non-rollover daily allowance (`5` for `FREE`/`PAST_DUE`/`CANCELED`; `100` for `STANDARD` `ACTIVE`/`CANCELING`). |
+| `dailyRemainingTurns` | `number` | Remaining turns from today's non-rollover daily bucket (`0..dailyTurnQuota`). |
+| `purchasedRemainingTurns` | `number` | Materialized sum of `remainingTurns` across non-expired `ACTIVE` lots (`>= 0`). |
+| `remainingChatTurns` | `number` | Unified remaining turns presented to client UI (`dailyRemainingTurns + purchasedRemainingTurns`). |
+| `earliestLotExpiresAt` | `Timestamp \| null` | Nearest expiration timestamp among `ACTIVE` lots (`null` when empty) triggering lazy intraday expiry checks. |
+| `lastDailyResetAt` | `Timestamp` (ISO 8601) | Timestamp of last daily quota reset. |
+| `lastQuotaResetTimezone` | `string` | IANA timezone active during `lastDailyResetAt` (used to clamp timezone switches to >= 24h without drift). |
+| `nextDailyResetAt` | `Timestamp` (ISO 8601) | Monotonic next local-midnight reset anchor. |
+| `currentPeriodEnd` | `Timestamp` (ISO 8601) | Stripe period end sourced from `subscription.items.data[0].current_period_end`. |
+| `trialTicketUsed` | `boolean` | Cached eligibility flag for the one-time trial ticket. |
+| `cancelAtPeriodEnd` | `boolean` | True when subscription cancels at `currentPeriodEnd` (`CANCELING`). |
+| `stripeCustomerId` | `string \| undefined` | Server-only pre-created Stripe Customer ID (`cus_...`). |
+| `stripeSubscriptionId` | `string \| undefined` | Server-only Stripe Subscription ID (`sub_...`). |
+| `stripeScheduleId` | `string \| undefined` | Server-only Stripe Subscription Schedule ID (`sub_sched_...`). |
+| `lastProcessedInvoiceId` | `string \| undefined` | Server-only latest applied Stripe Invoice ID (`in_...`) protecting month-boundary refunds. |
+| `todaysConsumedDailyTurns` | `number` | Server-only turns consumed from today's daily quota (`0..dailyTurnQuota`). |
+| `todaysSearchCount` | `number \| undefined` | Server-only quota-aligned `search_web` counter. |
+| `updatedAt` | `Timestamp` (ISO 8601) | Last quota or subscription state update timestamp. |
 
 #### `lounge_sessions` (`COLLECTIONS.LOUNGE_SESSIONS`)
 Document ID = Firebase Auth `uid` (each user owns one continuous conversation session). Composite index: `uid ASC, updatedAt DESC`.
@@ -723,7 +746,55 @@ Document ID = External Event ID / Stripe Webhook Event ID. Isolated idempotency 
 | `eventId` | `string` (Doc ID) | Unique idempotency key from Stripe or internal background event source. |
 | `eventType` | `string` | Event type discriminator (e.g., `checkout.session.completed`). |
 | `uid` | `string \| undefined` | Optional target Private Lounge user UID. |
+| `targetId` | `string \| undefined` | Deterministic Stripe target ID (`cs_...`, `in_...`, or `cus_...`). |
 | `processedAt` | `Timestamp` (ISO 8601) | Timestamp when event processing completed. |
+| `expireAt` | `Timestamp \| undefined` | Optional 90-day Firestore TTL automatic cleanup timestamp. |
+
+#### `lounge_credit_lots` (`COLLECTIONS.LOUNGE_CREDIT_LOTS`)
+Document ID = Stripe Checkout Session ID (`cs_...`) or `welcome_{uid}`. FIFO credit buckets consumed only after `dailyRemainingTurns` reaches zero. Composite indexes: `(uid ASC, status ASC, expiresAt ASC)` and `(uid ASC, stripePaymentIntentId ASC)`.
+
+| Field Name | Type | Description |
+| :--- | :--- | :--- |
+| `id` | `string` (Doc ID) | Checkout session ID or deterministic `welcome_{uid}` identifier. |
+| `uid` | `string` | Owning Lounge user UID. |
+| `productId` | `'WELCOME_BONUS_20' \| 'TRIAL_TICKET_100' \| 'CHARGE_TICKET_100'` | Promotional or ticket lot classification. |
+| `isPaid` | `boolean` | `false` for `WELCOME_BONUS_20`, `true` for paid ticket lots. |
+| `initialTurns` | `number` | Initial turn allocation (`20` or `100`). |
+| `remainingTurns` | `number` | Unused remaining turns (`0..initialTurns`). |
+| `currency` | `'NONE' \| 'JPY' \| 'USD'` | Currency recorded on the credit lot. |
+| `unitAmount` | `number` | Paid price in minor currency units (`0` for free grant). |
+| `status` | `'ACTIVE' \| 'EXHAUSTED' \| 'EXPIRED' \| 'REVOKED'` | Lot consumption or revocation lifecycle state. |
+| `stripePaymentIntentId` | `string \| undefined` | Server-only Stripe PaymentIntent ID (`pi_...`) used for refund/dispute attribution. |
+| `purchasedAt` | `Timestamp` (ISO 8601) | Anchored strictly to Stripe `PaymentIntent.created` (or welcome grant timestamp). |
+| `expiresAt` | `Timestamp` (ISO 8601) | 180-day statutory/operational validity deadline (`purchasedAt + 180 days`). |
+
+#### `lounge_quota_ledger` (`COLLECTIONS.LOUNGE_QUOTA_LEDGER`)
+Document ID = UUID. Operational 180-day TTL audit trail capturing every quota reservation, compensation refund, daily reset, and ticket grant. Composite index: `uid ASC, createdAt DESC`.
+
+| Field Name | Type | Description |
+| :--- | :--- | :--- |
+| `id` | `string` (Doc ID) | Unique ledger entry identifier. |
+| `uid` | `string` | Owning Lounge user UID. |
+| `deltaType` | `LoungeQuotaDeltaType` | Mutation kind (`RESERVE_DAILY \| RESERVE_LOT \| COMPENSATION_REFUND \| GRANT_WELCOME \| GRANT_LOT \| DAILY_RESET \| REFUND_CLAWBACK \| UPGRADE_TOPUP`). |
+| `deltaDaily` | `number` | Signed change applied to `dailyRemainingTurns`. |
+| `deltaPurchased` | `number` | Signed change applied to `purchasedRemainingTurns`. |
+| `balanceTotalAfter` | `number` | Resulting `remainingChatTurns` immediately after mutation. |
+| `lotId` | `string \| undefined` | Optional target `lounge_credit_lots` document ID. |
+| `referenceId` | `string` | Correlated `messageId`, `cs_...`, `in_...`, or `evt_...`. |
+| `createdAt` | `Timestamp` (ISO 8601) | Mutation timestamp. |
+| `expireAt` | `Timestamp` | 180-day Firestore TTL automatic expiration timestamp (also purged immediately on account deletion). |
+
+#### `lounge_trial_grants` (`COLLECTIONS.LOUNGE_TRIAL_GRANTS`)
+Document ID = `HMAC-SHA256(secret[keyVersion], xUserId)`. Non-PII anti-fraud registry preventing repeated welcome-bonus or ¥200 trial farming across withdrawal/re-registration. Never stores `uid`, X handles, emails, or Stripe IDs.
+
+| Field Name | Type | Description |
+| :--- | :--- | :--- |
+| `xUserIdHash` | `string` (Doc ID) | Versioned HMAC-SHA256 digest of `xUserId`. |
+| `keyVersion` | `number` | HMAC keyring secret version (`>= 1`). |
+| `riskStatus` | `'OK' \| 'DISPUTE_BLOCKED'` | Dispute fraud flag blocking re-registration abuse. |
+| `welcomeBonusGrantedAt` | `Timestamp \| undefined` | Set once upon initial `+20` welcome bonus grant. |
+| `trialTicketGrantedAt` | `Timestamp \| undefined` | Set once upon initial one-time `TRIAL_TICKET_100` grant. |
+| `retainUntil` | `Timestamp` (ISO 8601) | Anti-fraud retention deadline (`createdAt + 3 years`). |
 
 ---
 
@@ -744,9 +815,14 @@ Document ID = External Event ID / Stripe Webhook Event ID. Isolated idempotency 
    - `lounge_messages`: `sessionId` ASC + `createdAt` DESC (enables latest-turn context window fetches).
    - `lounge_rag_memories`: `uid` ASC + `updatedAt` DESC (enables ordered private RAG memory lookup).
    - `lounge_gallery`: `uid` ASC + `unlocked` DESC (enables unlocked-first paginated illustration gallery).
+   - `lounge_credit_lots`: `uid` ASC + `status` ASC + `expiresAt` ASC (enables FIFO active credit lot deduction and lazy expiry scans).
+   - `lounge_credit_lots`: `uid` ASC + `stripePaymentIntentId` ASC (enables scoped order-to-lot joins without unscoped queries).
+   - `lounge_quota_ledger`: `uid` ASC + `createdAt` DESC (enables ordered audit history per user).
 3. **TTL Policies**:
    - `conversation_logs.expireAt`: Enabled (5-year automatic expiration).
    - `timeline_history.expireAt`: Enabled (5-year automatic expiration).
+   - `lounge_quota_ledger.expireAt`: Enabled (180-day automatic expiration).
+   - `lounge_processed_events.expireAt`: Enabled (90-day automatic expiration).
 
 ---
 

@@ -45,12 +45,18 @@ import {
   type RewardImageDoc,
   type SupportTransactionDoc,
   type LoungeAccountStatus,
+  type LoungeCreditCurrency,
+  type LoungeCreditLotDoc,
+  type LoungeCreditLotStatus,
+  type LoungeCurrency,
   type LoungeEmotionState,
   type LoungeGalleryItemDoc,
   type LoungeLanguage,
   type LoungeMemoryCategory,
   type LoungeMessageDoc,
   type LoungeProcessedEventDoc,
+  type LoungeQuotaDeltaType,
+  type LoungeQuotaLedgerDoc,
   type LoungeRagMemoryDoc,
   type LoungeSenderRole,
   type LoungeSessionDoc,
@@ -58,6 +64,7 @@ import {
   type LoungeSubscriptionStatus,
   type LoungeSubscriptionTier,
   type LoungeTokenUsage,
+  type LoungeTrialGrantDoc,
   type LoungeUserDisclaimerConsent,
   type LoungeUserDoc,
 } from './schema';
@@ -469,13 +476,42 @@ const campaignDocConverter: FirestoreDataConverter<CampaignDoc> = {
 // Isolated Private Lounge Converters & Schema Guards
 // ---------------------------------------------------------------------------
 
-const LOUNGE_ACCOUNT_STATUSES: readonly LoungeAccountStatus[] = ['ACTIVE', 'SUSPENDED'];
+const LOUNGE_ACCOUNT_STATUSES: readonly LoungeAccountStatus[] = ['ACTIVE', 'SUSPENDED', 'DELETING'];
 const LOUNGE_LANGUAGES: readonly LoungeLanguage[] = ['ja', 'en', 'de', 'pt', 'es', 'zh-HK', 'vi', 'th'];
-const LOUNGE_SUBSCRIPTION_TIERS: readonly LoungeSubscriptionTier[] = ['FREE', 'SUPPORTER', 'VIP'];
+const LOUNGE_SUBSCRIPTION_TIERS: readonly LoungeSubscriptionTier[] = ['FREE', 'STANDARD'];
 const LOUNGE_SUBSCRIPTION_STATUSES: readonly LoungeSubscriptionStatus[] = [
+  'NONE',
   'ACTIVE',
+  'CANCELING',
   'PAST_DUE',
   'CANCELED',
+];
+const LOUNGE_CURRENCIES: readonly LoungeCurrency[] = ['JPY', 'USD'];
+const LOUNGE_CREDIT_CURRENCIES: readonly LoungeCreditCurrency[] = ['NONE', 'JPY', 'USD'];
+const LOUNGE_CREDIT_LOT_PRODUCTS: ReadonlyArray<LoungeCreditLotDoc['productId']> = [
+  'WELCOME_BONUS_20',
+  'TRIAL_TICKET_100',
+  'CHARGE_TICKET_100',
+];
+const LOUNGE_CREDIT_LOT_STATUSES: readonly LoungeCreditLotStatus[] = [
+  'ACTIVE',
+  'EXHAUSTED',
+  'EXPIRED',
+  'REVOKED',
+];
+const LOUNGE_QUOTA_DELTA_TYPES: readonly LoungeQuotaDeltaType[] = [
+  'RESERVE_DAILY',
+  'RESERVE_LOT',
+  'COMPENSATION_REFUND',
+  'GRANT_WELCOME',
+  'GRANT_LOT',
+  'DAILY_RESET',
+  'REFUND_CLAWBACK',
+  'UPGRADE_TOPUP',
+];
+const LOUNGE_TRIAL_RISK_STATUSES: ReadonlyArray<LoungeTrialGrantDoc['riskStatus']> = [
+  'OK',
+  'DISPUTE_BLOCKED',
 ];
 const LOUNGE_EMOTION_STATES: readonly LoungeEmotionState[] = [
   'NEUTRAL',
@@ -633,6 +669,69 @@ function toOptionalString(
   return value;
 }
 
+function toOptionalBoolean(
+  value: unknown,
+  collectionName: string,
+  docId: string,
+  fieldName: string,
+): boolean | undefined {
+  if (value === undefined || value === null) {
+    return undefined;
+  }
+  return toRequiredBoolean(value, collectionName, docId, fieldName);
+}
+
+function toOptionalNumber(
+  value: unknown,
+  collectionName: string,
+  docId: string,
+  fieldName: string,
+): number | undefined {
+  if (value === undefined || value === null) {
+    return undefined;
+  }
+  return toRequiredNumber(value, collectionName, docId, fieldName);
+}
+
+function toNonNegativeInteger(
+  value: unknown,
+  collectionName: string,
+  docId: string,
+  fieldName: string,
+): number {
+  if (typeof value !== 'number' || !Number.isInteger(value) || value < 0) {
+    throw new Error(
+      `Invalid non-negative integer field "${fieldName}" in ${collectionName} doc "${docId}"`,
+    );
+  }
+  return value;
+}
+
+function toOptionalEnum<T extends string>(
+  value: unknown,
+  allowed: readonly T[],
+  collectionName: string,
+  docId: string,
+  fieldName: string,
+): T | undefined {
+  if (value === undefined || value === null) {
+    return undefined;
+  }
+  return toRequiredEnum(value, allowed, collectionName, docId, fieldName);
+}
+
+function toNullableLoungeIso(
+  value: Timestamp | Date | string | null | undefined,
+  collectionName: string,
+  docId: string,
+  fieldName: string,
+): string | null {
+  if (value === undefined || value === null) {
+    return null;
+  }
+  return toRequiredLoungeIso(value, collectionName, docId, fieldName);
+}
+
 function parseDisclaimerConsent(
   raw: unknown,
   docId: string,
@@ -754,6 +853,7 @@ const loungeUserConverter: FirestoreDataConverter<LoungeUserDoc> = {
       language: user.language,
       timezone: user.timezone,
       onboardingCompleted: user.onboardingCompleted,
+      allowServiceImprovementAnalytics: user.allowServiceImprovementAnalytics,
       disclaimerConsent: {
         disclaimerVersion: user.disclaimerConsent.disclaimerVersion,
         agreedToGeminiTrainingUsage: user.disclaimerConsent.agreedToGeminiTrainingUsage,
@@ -772,6 +872,15 @@ const loungeUserConverter: FirestoreDataConverter<LoungeUserDoc> = {
       updatedAt: toRequiredFirestoreTimestamp(user.updatedAt, 'updatedAt'),
       lastLoginAt: toRequiredFirestoreTimestamp(user.lastLoginAt, 'lastLoginAt'),
     };
+    if (user.countryCode !== undefined) {
+      data['countryCode'] = user.countryCode;
+    }
+    if (user.isEeaResident !== undefined) {
+      data['isEeaResident'] = user.isEeaResident;
+    }
+    if (user.preferredCurrency !== undefined) {
+      data['preferredCurrency'] = user.preferredCurrency;
+    }
     if (user.coreProfile !== undefined) {
       data['coreProfile'] = user.coreProfile;
     }
@@ -780,6 +889,12 @@ const loungeUserConverter: FirestoreDataConverter<LoungeUserDoc> = {
     }
     if (user.lastDreamedAt !== undefined) {
       data['lastDreamedAt'] = toRequiredFirestoreTimestamp(user.lastDreamedAt, 'lastDreamedAt');
+    }
+    if (user.dailySearchCount !== undefined) {
+      data['dailySearchCount'] = user.dailySearchCount;
+    }
+    if (user.dailySearchResetDate !== undefined) {
+      data['dailySearchResetDate'] = user.dailySearchResetDate;
     }
     return data;
   },
@@ -793,6 +908,37 @@ const loungeUserConverter: FirestoreDataConverter<LoungeUserDoc> = {
       COLLECTIONS.LOUNGE_USERS,
       id,
       'lastDreamedAt',
+    );
+    const countryCode = toOptionalString(
+      data['countryCode'],
+      COLLECTIONS.LOUNGE_USERS,
+      id,
+      'countryCode',
+    );
+    const isEeaResident = toOptionalBoolean(
+      data['isEeaResident'],
+      COLLECTIONS.LOUNGE_USERS,
+      id,
+      'isEeaResident',
+    );
+    const preferredCurrency = toOptionalEnum(
+      data['preferredCurrency'],
+      LOUNGE_CURRENCIES,
+      COLLECTIONS.LOUNGE_USERS,
+      id,
+      'preferredCurrency',
+    );
+    const dailySearchCount = toOptionalNumber(
+      data['dailySearchCount'],
+      COLLECTIONS.LOUNGE_USERS,
+      id,
+      'dailySearchCount',
+    );
+    const dailySearchResetDate = toOptionalString(
+      data['dailySearchResetDate'],
+      COLLECTIONS.LOUNGE_USERS,
+      id,
+      'dailySearchResetDate',
     );
     return {
       uid: id,
@@ -813,10 +959,24 @@ const loungeUserConverter: FirestoreDataConverter<LoungeUserDoc> = {
         data['onboardingCompleted'] === undefined
           ? true
           : toRequiredBoolean(data['onboardingCompleted'], COLLECTIONS.LOUNGE_USERS, id, 'onboardingCompleted'),
+      allowServiceImprovementAnalytics:
+        data['allowServiceImprovementAnalytics'] === undefined
+          ? true
+          : toRequiredBoolean(
+              data['allowServiceImprovementAnalytics'],
+              COLLECTIONS.LOUNGE_USERS,
+              id,
+              'allowServiceImprovementAnalytics',
+            ),
+      ...(countryCode !== undefined ? { countryCode } : {}),
+      ...(isEeaResident !== undefined ? { isEeaResident } : {}),
+      ...(preferredCurrency !== undefined ? { preferredCurrency } : {}),
       disclaimerConsent: parseDisclaimerConsent(data['disclaimerConsent'], id),
       ...(coreProfile !== undefined ? { coreProfile } : {}),
       ...(episodicBuffer !== undefined ? { episodicBuffer } : {}),
       ...(lastDreamedAt !== undefined ? { lastDreamedAt } : {}),
+      ...(dailySearchCount !== undefined ? { dailySearchCount } : {}),
+      ...(dailySearchResetDate !== undefined ? { dailySearchResetDate } : {}),
       createdAt: toRequiredLoungeIso(data['createdAt'], COLLECTIONS.LOUNGE_USERS, id, 'createdAt'),
       updatedAt: toRequiredLoungeIso(data['updatedAt'], COLLECTIONS.LOUNGE_USERS, id, 'updatedAt'),
       lastLoginAt: toRequiredLoungeIso(data['lastLoginAt'], COLLECTIONS.LOUNGE_USERS, id, 'lastLoginAt'),
@@ -825,7 +985,8 @@ const loungeUserConverter: FirestoreDataConverter<LoungeUserDoc> = {
 };
 
 /**
- * Converter for isolated `lounge_subscriptions` tier and daily quota documents.
+ * Converter for isolated `lounge_subscriptions` tier, Stripe reference, and hybrid quota documents.
+ * Supports backward-compatible reads from legacy `'SUPPORTER' | 'VIP'` / `quotaResetAt` skeleton records.
  */
 const loungeSubscriptionConverter: FirestoreDataConverter<LoungeSubscriptionDoc> = {
   toFirestore(sub: LoungeSubscriptionDoc): DocumentData {
@@ -833,34 +994,216 @@ const loungeSubscriptionConverter: FirestoreDataConverter<LoungeSubscriptionDoc>
       tier: sub.tier,
       status: sub.status,
       dailyTurnQuota: sub.dailyTurnQuota,
+      dailyRemainingTurns: sub.dailyRemainingTurns,
+      purchasedRemainingTurns: sub.purchasedRemainingTurns,
       remainingChatTurns: sub.remainingChatTurns,
-      quotaResetAt: toRequiredFirestoreTimestamp(sub.quotaResetAt, 'quotaResetAt'),
+      earliestLotExpiresAt:
+        sub.earliestLotExpiresAt === null
+          ? null
+          : toRequiredFirestoreTimestamp(sub.earliestLotExpiresAt, 'earliestLotExpiresAt'),
+      lastDailyResetAt: toRequiredFirestoreTimestamp(sub.lastDailyResetAt, 'lastDailyResetAt'),
+      lastQuotaResetTimezone: sub.lastQuotaResetTimezone,
+      nextDailyResetAt: toRequiredFirestoreTimestamp(sub.nextDailyResetAt, 'nextDailyResetAt'),
       currentPeriodEnd: toRequiredFirestoreTimestamp(sub.currentPeriodEnd, 'currentPeriodEnd'),
+      trialTicketUsed: sub.trialTicketUsed,
+      cancelAtPeriodEnd: sub.cancelAtPeriodEnd,
+      todaysConsumedDailyTurns: sub.todaysConsumedDailyTurns,
       updatedAt: toRequiredFirestoreTimestamp(sub.updatedAt, 'updatedAt'),
     };
+    if (sub.billingCurrency !== undefined) {
+      data['billingCurrency'] = sub.billingCurrency;
+    }
     if (sub.stripeCustomerId !== undefined) {
       data['stripeCustomerId'] = sub.stripeCustomerId;
+    }
+    if (sub.stripeSubscriptionId !== undefined) {
+      data['stripeSubscriptionId'] = sub.stripeSubscriptionId;
+    }
+    if (sub.stripeScheduleId !== undefined) {
+      data['stripeScheduleId'] = sub.stripeScheduleId;
+    }
+    if (sub.lastProcessedInvoiceId !== undefined) {
+      data['lastProcessedInvoiceId'] = sub.lastProcessedInvoiceId;
+    }
+    if (sub.todaysSearchCount !== undefined) {
+      data['todaysSearchCount'] = sub.todaysSearchCount;
     }
     return data;
   },
   fromFirestore(snapshot: QueryDocumentSnapshot): LoungeSubscriptionDoc {
     const data = snapshot.data();
     const id = snapshot.id;
+    const rawTier = data['tier'];
+    const tier: LoungeSubscriptionTier =
+      rawTier === 'SUPPORTER' || rawTier === 'VIP'
+        ? 'STANDARD'
+        : toRequiredEnum(rawTier, LOUNGE_SUBSCRIPTION_TIERS, COLLECTIONS.LOUNGE_SUBSCRIPTIONS, id, 'tier');
+    const status = toRequiredEnum(
+      data['status'],
+      LOUNGE_SUBSCRIPTION_STATUSES,
+      COLLECTIONS.LOUNGE_SUBSCRIPTIONS,
+      id,
+      'status',
+    );
+    const updatedAt = toRequiredLoungeIso(
+      data['updatedAt'],
+      COLLECTIONS.LOUNGE_SUBSCRIPTIONS,
+      id,
+      'updatedAt',
+    );
+    const dailyTurnQuota = toRequiredNumber(
+      data['dailyTurnQuota'],
+      COLLECTIONS.LOUNGE_SUBSCRIPTIONS,
+      id,
+      'dailyTurnQuota',
+    );
+    const remainingChatTurns = toRequiredNumber(
+      data['remainingChatTurns'],
+      COLLECTIONS.LOUNGE_SUBSCRIPTIONS,
+      id,
+      'remainingChatTurns',
+    );
+    const dailyRemainingTurns =
+      data['dailyRemainingTurns'] !== undefined
+        ? toRequiredNumber(
+            data['dailyRemainingTurns'],
+            COLLECTIONS.LOUNGE_SUBSCRIPTIONS,
+            id,
+            'dailyRemainingTurns',
+          )
+        : remainingChatTurns;
+    const purchasedRemainingTurns =
+      data['purchasedRemainingTurns'] !== undefined
+        ? toRequiredNumber(
+            data['purchasedRemainingTurns'],
+            COLLECTIONS.LOUNGE_SUBSCRIPTIONS,
+            id,
+            'purchasedRemainingTurns',
+          )
+        : 0;
+    const rawReset = data['nextDailyResetAt'] ?? data['quotaResetAt'];
+    const nextDailyResetAt = toRequiredLoungeIso(
+      rawReset as Timestamp | Date | string | null | undefined,
+      COLLECTIONS.LOUNGE_SUBSCRIPTIONS,
+      id,
+      'nextDailyResetAt',
+    );
+    const lastDailyResetAt =
+      data['lastDailyResetAt'] !== undefined
+        ? toRequiredLoungeIso(
+            data['lastDailyResetAt'] as Timestamp | Date | string | null | undefined,
+            COLLECTIONS.LOUNGE_SUBSCRIPTIONS,
+            id,
+            'lastDailyResetAt',
+          )
+        : updatedAt;
+    const lastQuotaResetTimezone =
+      data['lastQuotaResetTimezone'] !== undefined
+        ? toRequiredString(
+            data['lastQuotaResetTimezone'],
+            COLLECTIONS.LOUNGE_SUBSCRIPTIONS,
+            id,
+            'lastQuotaResetTimezone',
+          )
+        : 'UTC';
+    const earliestLotExpiresAt = toNullableLoungeIso(
+      data['earliestLotExpiresAt'] as Timestamp | Date | string | null | undefined,
+      COLLECTIONS.LOUNGE_SUBSCRIPTIONS,
+      id,
+      'earliestLotExpiresAt',
+    );
+    const trialTicketUsed =
+      data['trialTicketUsed'] !== undefined
+        ? toRequiredBoolean(
+            data['trialTicketUsed'],
+            COLLECTIONS.LOUNGE_SUBSCRIPTIONS,
+            id,
+            'trialTicketUsed',
+          )
+        : false;
+    const cancelAtPeriodEnd =
+      data['cancelAtPeriodEnd'] !== undefined
+        ? toRequiredBoolean(
+            data['cancelAtPeriodEnd'],
+            COLLECTIONS.LOUNGE_SUBSCRIPTIONS,
+            id,
+            'cancelAtPeriodEnd',
+          )
+        : status === 'CANCELING';
+    const todaysConsumedDailyTurns =
+      data['todaysConsumedDailyTurns'] !== undefined
+        ? toRequiredNumber(
+            data['todaysConsumedDailyTurns'],
+            COLLECTIONS.LOUNGE_SUBSCRIPTIONS,
+            id,
+            'todaysConsumedDailyTurns',
+          )
+        : Math.max(0, dailyTurnQuota - dailyRemainingTurns);
+    const billingCurrency = toOptionalEnum(
+      data['billingCurrency'],
+      LOUNGE_CURRENCIES,
+      COLLECTIONS.LOUNGE_SUBSCRIPTIONS,
+      id,
+      'billingCurrency',
+    );
+    const stripeCustomerId = toOptionalString(
+      data['stripeCustomerId'],
+      COLLECTIONS.LOUNGE_SUBSCRIPTIONS,
+      id,
+      'stripeCustomerId',
+    );
+    const stripeSubscriptionId = toOptionalString(
+      data['stripeSubscriptionId'],
+      COLLECTIONS.LOUNGE_SUBSCRIPTIONS,
+      id,
+      'stripeSubscriptionId',
+    );
+    const stripeScheduleId = toOptionalString(
+      data['stripeScheduleId'],
+      COLLECTIONS.LOUNGE_SUBSCRIPTIONS,
+      id,
+      'stripeScheduleId',
+    );
+    const lastProcessedInvoiceId = toOptionalString(
+      data['lastProcessedInvoiceId'],
+      COLLECTIONS.LOUNGE_SUBSCRIPTIONS,
+      id,
+      'lastProcessedInvoiceId',
+    );
+    const todaysSearchCount = toOptionalNumber(
+      data['todaysSearchCount'],
+      COLLECTIONS.LOUNGE_SUBSCRIPTIONS,
+      id,
+      'todaysSearchCount',
+    );
     return {
       uid: id,
-      tier: toRequiredEnum(data['tier'], LOUNGE_SUBSCRIPTION_TIERS, COLLECTIONS.LOUNGE_SUBSCRIPTIONS, id, 'tier'),
-      status: toRequiredEnum(data['status'], LOUNGE_SUBSCRIPTION_STATUSES, COLLECTIONS.LOUNGE_SUBSCRIPTIONS, id, 'status'),
-      dailyTurnQuota: toRequiredNumber(data['dailyTurnQuota'], COLLECTIONS.LOUNGE_SUBSCRIPTIONS, id, 'dailyTurnQuota'),
-      remainingChatTurns: toRequiredNumber(data['remainingChatTurns'], COLLECTIONS.LOUNGE_SUBSCRIPTIONS, id, 'remainingChatTurns'),
-      quotaResetAt: toRequiredLoungeIso(data['quotaResetAt'], COLLECTIONS.LOUNGE_SUBSCRIPTIONS, id, 'quotaResetAt'),
-      stripeCustomerId: toOptionalString(
-        data['stripeCustomerId'],
+      tier,
+      status,
+      ...(billingCurrency !== undefined ? { billingCurrency } : {}),
+      dailyTurnQuota,
+      dailyRemainingTurns,
+      purchasedRemainingTurns,
+      remainingChatTurns,
+      earliestLotExpiresAt,
+      lastDailyResetAt,
+      lastQuotaResetTimezone,
+      nextDailyResetAt,
+      currentPeriodEnd: toRequiredLoungeIso(
+        data['currentPeriodEnd'],
         COLLECTIONS.LOUNGE_SUBSCRIPTIONS,
         id,
-        'stripeCustomerId',
+        'currentPeriodEnd',
       ),
-      currentPeriodEnd: toRequiredLoungeIso(data['currentPeriodEnd'], COLLECTIONS.LOUNGE_SUBSCRIPTIONS, id, 'currentPeriodEnd'),
-      updatedAt: toRequiredLoungeIso(data['updatedAt'], COLLECTIONS.LOUNGE_SUBSCRIPTIONS, id, 'updatedAt'),
+      trialTicketUsed,
+      cancelAtPeriodEnd,
+      todaysConsumedDailyTurns,
+      ...(stripeCustomerId !== undefined ? { stripeCustomerId } : {}),
+      ...(stripeSubscriptionId !== undefined ? { stripeSubscriptionId } : {}),
+      ...(stripeScheduleId !== undefined ? { stripeScheduleId } : {}),
+      ...(lastProcessedInvoiceId !== undefined ? { lastProcessedInvoiceId } : {}),
+      ...(todaysSearchCount !== undefined ? { todaysSearchCount } : {}),
+      updatedAt,
     };
   },
 };
@@ -1035,6 +1378,28 @@ const loungeGalleryConverter: FirestoreDataConverter<LoungeGalleryItemDoc> = {
   },
 };
 
+const LOUNGE_TRIAL_FORBIDDEN_PII_FIELDS = [
+  'uid',
+  'grantedUid',
+  'xUserId',
+  'xHandle',
+  'displayName',
+  'email',
+  'stripeCustomerId',
+  'stripeSessionId',
+  'sessionId',
+] as const;
+
+function assertNoTrialGrantPii(record: Record<string, unknown>, docId: string): void {
+  for (const field of LOUNGE_TRIAL_FORBIDDEN_PII_FIELDS) {
+    if (record[field] !== undefined) {
+      throw new Error(
+        `Forbidden PII field "${field}" detected in ${COLLECTIONS.LOUNGE_TRIAL_GRANTS} doc "${docId}"`,
+      );
+    }
+  }
+}
+
 /**
  * Converter for isolated `lounge_processed_events` Stripe/webhook idempotency records.
  */
@@ -1047,17 +1412,267 @@ const loungeProcessedEventConverter: FirestoreDataConverter<LoungeProcessedEvent
     if (event.uid !== undefined) {
       data['uid'] = event.uid;
     }
+    if (event.targetId !== undefined) {
+      data['targetId'] = event.targetId;
+    }
+    if (event.expireAt !== undefined) {
+      data['expireAt'] = toRequiredFirestoreTimestamp(event.expireAt, 'expireAt');
+    }
     return data;
   },
   fromFirestore(snapshot: QueryDocumentSnapshot): LoungeProcessedEventDoc {
     const data = snapshot.data();
     const id = snapshot.id;
     const uid = toOptionalString(data['uid'], COLLECTIONS.LOUNGE_PROCESSED_EVENTS, id, 'uid');
+    const targetId = toOptionalString(
+      data['targetId'],
+      COLLECTIONS.LOUNGE_PROCESSED_EVENTS,
+      id,
+      'targetId',
+    );
+    const expireAt = toOptionalLoungeIso(
+      data['expireAt'],
+      COLLECTIONS.LOUNGE_PROCESSED_EVENTS,
+      id,
+      'expireAt',
+    );
     return {
       eventId: id,
       eventType: toRequiredString(data['eventType'], COLLECTIONS.LOUNGE_PROCESSED_EVENTS, id, 'eventType'),
       ...(uid !== undefined ? { uid } : {}),
+      ...(targetId !== undefined ? { targetId } : {}),
       processedAt: toRequiredLoungeIso(data['processedAt'], COLLECTIONS.LOUNGE_PROCESSED_EVENTS, id, 'processedAt'),
+      ...(expireAt !== undefined ? { expireAt } : {}),
+    };
+  },
+};
+
+/**
+ * Converter for isolated `lounge_credit_lots` promotional and paid credit buckets.
+ */
+const loungeCreditLotConverter: FirestoreDataConverter<LoungeCreditLotDoc> = {
+  toFirestore(lot: LoungeCreditLotDoc): DocumentData {
+    const data: DocumentData = {
+      uid: lot.uid,
+      productId: lot.productId,
+      isPaid: lot.isPaid,
+      initialTurns: lot.initialTurns,
+      remainingTurns: lot.remainingTurns,
+      currency: lot.currency,
+      unitAmount: lot.unitAmount,
+      status: lot.status,
+      purchasedAt: toRequiredFirestoreTimestamp(lot.purchasedAt, 'purchasedAt'),
+      expiresAt: toRequiredFirestoreTimestamp(lot.expiresAt, 'expiresAt'),
+    };
+    if (lot.stripePaymentIntentId !== undefined) {
+      data['stripePaymentIntentId'] = lot.stripePaymentIntentId;
+    }
+    return data;
+  },
+  fromFirestore(snapshot: QueryDocumentSnapshot): LoungeCreditLotDoc {
+    const data = snapshot.data();
+    const id = snapshot.id;
+    const stripePaymentIntentId = toOptionalString(
+      data['stripePaymentIntentId'],
+      COLLECTIONS.LOUNGE_CREDIT_LOTS,
+      id,
+      'stripePaymentIntentId',
+    );
+    return {
+      id,
+      uid: toRequiredString(data['uid'], COLLECTIONS.LOUNGE_CREDIT_LOTS, id, 'uid'),
+      productId: toRequiredEnum(
+        data['productId'],
+        LOUNGE_CREDIT_LOT_PRODUCTS,
+        COLLECTIONS.LOUNGE_CREDIT_LOTS,
+        id,
+        'productId',
+      ),
+      isPaid: toRequiredBoolean(data['isPaid'], COLLECTIONS.LOUNGE_CREDIT_LOTS, id, 'isPaid'),
+      initialTurns: toPositiveInteger(
+        data['initialTurns'],
+        COLLECTIONS.LOUNGE_CREDIT_LOTS,
+        id,
+        'initialTurns',
+      ),
+      remainingTurns: toNonNegativeInteger(
+        data['remainingTurns'],
+        COLLECTIONS.LOUNGE_CREDIT_LOTS,
+        id,
+        'remainingTurns',
+      ),
+      currency: toRequiredEnum(
+        data['currency'],
+        LOUNGE_CREDIT_CURRENCIES,
+        COLLECTIONS.LOUNGE_CREDIT_LOTS,
+        id,
+        'currency',
+      ),
+      unitAmount: toNonNegativeInteger(
+        data['unitAmount'],
+        COLLECTIONS.LOUNGE_CREDIT_LOTS,
+        id,
+        'unitAmount',
+      ),
+      status: toRequiredEnum(
+        data['status'],
+        LOUNGE_CREDIT_LOT_STATUSES,
+        COLLECTIONS.LOUNGE_CREDIT_LOTS,
+        id,
+        'status',
+      ),
+      ...(stripePaymentIntentId !== undefined ? { stripePaymentIntentId } : {}),
+      purchasedAt: toRequiredLoungeIso(
+        data['purchasedAt'],
+        COLLECTIONS.LOUNGE_CREDIT_LOTS,
+        id,
+        'purchasedAt',
+      ),
+      expiresAt: toRequiredLoungeIso(
+        data['expiresAt'],
+        COLLECTIONS.LOUNGE_CREDIT_LOTS,
+        id,
+        'expiresAt',
+      ),
+    };
+  },
+};
+
+/**
+ * Converter for isolated `lounge_quota_ledger` 180-day TTL operational quota mutation records.
+ */
+const loungeQuotaLedgerConverter: FirestoreDataConverter<LoungeQuotaLedgerDoc> = {
+  toFirestore(entry: LoungeQuotaLedgerDoc): DocumentData {
+    const data: DocumentData = {
+      uid: entry.uid,
+      deltaType: entry.deltaType,
+      deltaDaily: entry.deltaDaily,
+      deltaPurchased: entry.deltaPurchased,
+      balanceTotalAfter: entry.balanceTotalAfter,
+      referenceId: entry.referenceId,
+      createdAt: toRequiredFirestoreTimestamp(entry.createdAt, 'createdAt'),
+      expireAt: toRequiredFirestoreTimestamp(entry.expireAt, 'expireAt'),
+    };
+    if (entry.lotId !== undefined) {
+      data['lotId'] = entry.lotId;
+    }
+    return data;
+  },
+  fromFirestore(snapshot: QueryDocumentSnapshot): LoungeQuotaLedgerDoc {
+    const data = snapshot.data();
+    const id = snapshot.id;
+    const lotId = toOptionalString(data['lotId'], COLLECTIONS.LOUNGE_QUOTA_LEDGER, id, 'lotId');
+    return {
+      id,
+      uid: toRequiredString(data['uid'], COLLECTIONS.LOUNGE_QUOTA_LEDGER, id, 'uid'),
+      deltaType: toRequiredEnum(
+        data['deltaType'],
+        LOUNGE_QUOTA_DELTA_TYPES,
+        COLLECTIONS.LOUNGE_QUOTA_LEDGER,
+        id,
+        'deltaType',
+      ),
+      deltaDaily: toRequiredNumber(data['deltaDaily'], COLLECTIONS.LOUNGE_QUOTA_LEDGER, id, 'deltaDaily'),
+      deltaPurchased: toRequiredNumber(
+        data['deltaPurchased'],
+        COLLECTIONS.LOUNGE_QUOTA_LEDGER,
+        id,
+        'deltaPurchased',
+      ),
+      balanceTotalAfter: toNonNegativeInteger(
+        data['balanceTotalAfter'],
+        COLLECTIONS.LOUNGE_QUOTA_LEDGER,
+        id,
+        'balanceTotalAfter',
+      ),
+      ...(lotId !== undefined ? { lotId } : {}),
+      referenceId: toRequiredString(
+        data['referenceId'],
+        COLLECTIONS.LOUNGE_QUOTA_LEDGER,
+        id,
+        'referenceId',
+      ),
+      createdAt: toRequiredLoungeIso(
+        data['createdAt'],
+        COLLECTIONS.LOUNGE_QUOTA_LEDGER,
+        id,
+        'createdAt',
+      ),
+      expireAt: toRequiredLoungeIso(
+        data['expireAt'],
+        COLLECTIONS.LOUNGE_QUOTA_LEDGER,
+        id,
+        'expireAt',
+      ),
+    };
+  },
+};
+
+/**
+ * Converter for non-PII `lounge_trial_grants` anti-fraud grant records.
+ * Rejects any PII keys (`uid`, `xUserId`, `email`, `stripeCustomerId`, `stripeSessionId`) on read/write.
+ */
+const loungeTrialGrantConverter: FirestoreDataConverter<LoungeTrialGrantDoc> = {
+  toFirestore(grant: LoungeTrialGrantDoc): DocumentData {
+    assertNoTrialGrantPii(grant as unknown as Record<string, unknown>, grant.xUserIdHash);
+    const data: DocumentData = {
+      keyVersion: grant.keyVersion,
+      riskStatus: grant.riskStatus,
+      retainUntil: toRequiredFirestoreTimestamp(grant.retainUntil, 'retainUntil'),
+    };
+    if (grant.welcomeBonusGrantedAt !== undefined) {
+      data['welcomeBonusGrantedAt'] = toRequiredFirestoreTimestamp(
+        grant.welcomeBonusGrantedAt,
+        'welcomeBonusGrantedAt',
+      );
+    }
+    if (grant.trialTicketGrantedAt !== undefined) {
+      data['trialTicketGrantedAt'] = toRequiredFirestoreTimestamp(
+        grant.trialTicketGrantedAt,
+        'trialTicketGrantedAt',
+      );
+    }
+    return data;
+  },
+  fromFirestore(snapshot: QueryDocumentSnapshot): LoungeTrialGrantDoc {
+    const data = snapshot.data();
+    const id = snapshot.id;
+    assertNoTrialGrantPii(data, id);
+    const welcomeBonusGrantedAt = toOptionalLoungeIso(
+      data['welcomeBonusGrantedAt'],
+      COLLECTIONS.LOUNGE_TRIAL_GRANTS,
+      id,
+      'welcomeBonusGrantedAt',
+    );
+    const trialTicketGrantedAt = toOptionalLoungeIso(
+      data['trialTicketGrantedAt'],
+      COLLECTIONS.LOUNGE_TRIAL_GRANTS,
+      id,
+      'trialTicketGrantedAt',
+    );
+    return {
+      xUserIdHash: id,
+      keyVersion: toPositiveInteger(
+        data['keyVersion'],
+        COLLECTIONS.LOUNGE_TRIAL_GRANTS,
+        id,
+        'keyVersion',
+      ),
+      riskStatus: toRequiredEnum(
+        data['riskStatus'],
+        LOUNGE_TRIAL_RISK_STATUSES,
+        COLLECTIONS.LOUNGE_TRIAL_GRANTS,
+        id,
+        'riskStatus',
+      ),
+      ...(welcomeBonusGrantedAt !== undefined ? { welcomeBonusGrantedAt } : {}),
+      ...(trialTicketGrantedAt !== undefined ? { trialTicketGrantedAt } : {}),
+      retainUntil: toRequiredLoungeIso(
+        data['retainUntil'],
+        COLLECTIONS.LOUNGE_TRIAL_GRANTS,
+        id,
+        'retainUntil',
+      ),
     };
   },
 };
@@ -1230,6 +1845,18 @@ export function getCollections(db: Firestore) {
     loungeProcessedEvents: db
       .collection(COLLECTIONS.LOUNGE_PROCESSED_EVENTS)
       .withConverter(loungeProcessedEventConverter),
+    /** Typed isolated Private Lounge credit lot documents (`lounge_credit_lots`). */
+    loungeCreditLots: db
+      .collection(COLLECTIONS.LOUNGE_CREDIT_LOTS)
+      .withConverter(loungeCreditLotConverter),
+    /** Typed isolated Private Lounge 180-day TTL quota ledger documents (`lounge_quota_ledger`). */
+    loungeQuotaLedger: db
+      .collection(COLLECTIONS.LOUNGE_QUOTA_LEDGER)
+      .withConverter(loungeQuotaLedgerConverter),
+    /** Typed non-PII HMAC anti-fraud trial/welcome grant records (`lounge_trial_grants`). */
+    loungeTrialGrants: db
+      .collection(COLLECTIONS.LOUNGE_TRIAL_GRANTS)
+      .withConverter(loungeTrialGrantConverter),
   } as const;
 }
 
@@ -1268,7 +1895,14 @@ export function assertLoungeRecordOwnedByUid<T extends { uid: string }>(
 export function createUserScopedLoungeDb(
   collections: Pick<
     DbCollections,
-    'loungeUsers' | 'loungeSubscriptions' | 'loungeSessions' | 'loungeMessages' | 'loungeRagMemories' | 'loungeGallery'
+    | 'loungeUsers'
+    | 'loungeSubscriptions'
+    | 'loungeSessions'
+    | 'loungeMessages'
+    | 'loungeRagMemories'
+    | 'loungeGallery'
+    | 'loungeCreditLots'
+    | 'loungeQuotaLedger'
   >,
   uid: string,
 ) {
@@ -1282,9 +1916,12 @@ export function createUserScopedLoungeDb(
     subscriptionDoc: () => collections.loungeSubscriptions.doc(scopedUid),
     sessionDoc: () => collections.loungeSessions.doc(scopedUid),
     galleryDoc: (assetId: string) => collections.loungeGallery.doc(`${scopedUid}_${assetId}`),
+    creditLotDoc: (lotId: string) => collections.loungeCreditLots.doc(lotId),
     messagesQuery: () => collections.loungeMessages.where('uid', '==', scopedUid),
     ragMemoriesQuery: () => collections.loungeRagMemories.where('uid', '==', scopedUid),
     galleryQuery: () => collections.loungeGallery.where('uid', '==', scopedUid),
+    creditLotsQuery: () => collections.loungeCreditLots.where('uid', '==', scopedUid),
+    quotaLedgerQuery: () => collections.loungeQuotaLedger.where('uid', '==', scopedUid),
     assertOwned: <T extends { uid: string }>(record: T, collectionName: string): T =>
       assertLoungeRecordOwnedByUid(record, scopedUid, collectionName),
   };
@@ -1307,6 +1944,9 @@ export {
   loungeRagMemoryConverter,
   loungeGalleryConverter,
   loungeProcessedEventConverter,
+  loungeCreditLotConverter,
+  loungeQuotaLedgerConverter,
+  loungeTrialGrantConverter,
 };
 
 // Re-export all schema models and collection constants.

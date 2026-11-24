@@ -134,6 +134,18 @@ export const COLLECTIONS = {
    * Doc ID = Event UUID / Stripe Event ID.
    */
   LOUNGE_PROCESSED_EVENTS: 'lounge_processed_events',
+  /**
+   * Isolated Private Lounge promotional and paid turn credit lots (`welcome_{uid}` or `cs_...`).
+   */
+  LOUNGE_CREDIT_LOTS: 'lounge_credit_lots',
+  /**
+   * Isolated Private Lounge 180-day TTL operational quota mutation audit ledger.
+   */
+  LOUNGE_QUOTA_LEDGER: 'lounge_quota_ledger',
+  /**
+   * Non-PII HMAC anti-fraud grant registry preventing welcome/trial abuse across re-registrations.
+   */
+  LOUNGE_TRIAL_GRANTS: 'lounge_trial_grants',
 } as const;
 
 /** Union type of all canonical Firestore collection names managed by `@rebecca/db`. */
@@ -261,23 +273,37 @@ export type {
   ConversationLogEntry,
   UserCoreProfile,
   LoungeAccountStatus,
+  LoungeCreditCurrency,
+  LoungeCreditLot,
+  LoungeCreditLotDoc,
+  LoungeCreditLotStatus,
+  LoungeCurrency,
   LoungeDeleteAccountRequestDto,
   LoungeEmotionState,
   LoungeGalleryItemDoc,
   LoungeLanguage,
   LoungeMemoryCategory,
   LoungeMessageDoc,
+  LoungeOrderStatus,
+  LoungePortalFlow,
   LoungePrivateMemorySnapshot,
   LoungeProcessedEventDoc,
+  LoungeProductId,
   LoungePublicXMemorySnapshot,
+  LoungeQuotaDeltaType,
+  LoungeQuotaLedgerDoc,
   LoungeRagMemoryDoc,
   LoungeSenderRole,
   LoungeSessionDoc,
+  LoungeSubscription,
   LoungeSubscriptionDoc,
   LoungeSubscriptionStatus,
   LoungeSubscriptionTier,
   LoungeTokenUsage,
+  LoungeTrialGrantDoc,
+  LoungeUser,
   LoungeUserDisclaimerConsent,
   LoungeUserDoc,
 } from '@rebecca/types';
+export { toPublicLoungeCreditLot, toPublicLoungeSubscription } from '@rebecca/types';
 

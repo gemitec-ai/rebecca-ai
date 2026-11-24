@@ -22,6 +22,9 @@ import {
   loungeRagMemoryConverter,
   loungeGalleryConverter,
   loungeProcessedEventConverter,
+  loungeCreditLotConverter,
+  loungeQuotaLedgerConverter,
+  loungeTrialGrantConverter,
 } from '../../src/index';
 import {
   UserStatus,
@@ -39,6 +42,11 @@ import {
   LoungeProcessedEventDoc,
   LoungeRagMemoryDoc,
   LoungeGalleryItemDoc,
+  LoungeCreditLotDoc,
+  LoungeQuotaLedgerDoc,
+  LoungeTrialGrantDoc,
+  toPublicLoungeCreditLot,
+  toPublicLoungeSubscription,
 } from '@rebecca/types';
 
 describe('@rebecca/db Unit Tests', () => {
@@ -608,6 +616,9 @@ describe('@rebecca/db Unit Tests', () => {
       expect(mockCollection).toHaveBeenCalledWith(COLLECTIONS.LOUNGE_RAG_MEMORIES);
       expect(mockCollection).toHaveBeenCalledWith(COLLECTIONS.LOUNGE_GALLERY);
       expect(mockCollection).toHaveBeenCalledWith(COLLECTIONS.LOUNGE_PROCESSED_EVENTS);
+      expect(mockCollection).toHaveBeenCalledWith(COLLECTIONS.LOUNGE_CREDIT_LOTS);
+      expect(mockCollection).toHaveBeenCalledWith(COLLECTIONS.LOUNGE_QUOTA_LEDGER);
+      expect(mockCollection).toHaveBeenCalledWith(COLLECTIONS.LOUNGE_TRIAL_GRANTS);
 
       expect(collections.users).toEqual({ converter: userConverter });
       expect(collections.loungeUsers).toEqual({ converter: loungeUserConverter });
@@ -617,11 +628,14 @@ describe('@rebecca/db Unit Tests', () => {
       expect(collections.loungeRagMemories).toEqual({ converter: loungeRagMemoryConverter });
       expect(collections.loungeGallery).toEqual({ converter: loungeGalleryConverter });
       expect(collections.loungeProcessedEvents).toEqual({ converter: loungeProcessedEventConverter });
+      expect(collections.loungeCreditLots).toEqual({ converter: loungeCreditLotConverter });
+      expect(collections.loungeQuotaLedger).toEqual({ converter: loungeQuotaLedgerConverter });
+      expect(collections.loungeTrialGrants).toEqual({ converter: loungeTrialGrantConverter });
     });
   });
 
   describe('Isolated Private Lounge COLLECTIONS & Converters', () => {
-    it('defines seven isolated lounge_* collection names distinct from public bot collections', () => {
+    it('defines ten isolated lounge_* collection names distinct from public bot collections', () => {
       expect(COLLECTIONS.LOUNGE_USERS).toBe('lounge_users');
       expect(COLLECTIONS.LOUNGE_SUBSCRIPTIONS).toBe('lounge_subscriptions');
       expect(COLLECTIONS.LOUNGE_SESSIONS).toBe('lounge_sessions');
@@ -629,6 +643,9 @@ describe('@rebecca/db Unit Tests', () => {
       expect(COLLECTIONS.LOUNGE_RAG_MEMORIES).toBe('lounge_rag_memories');
       expect(COLLECTIONS.LOUNGE_GALLERY).toBe('lounge_gallery');
       expect(COLLECTIONS.LOUNGE_PROCESSED_EVENTS).toBe('lounge_processed_events');
+      expect(COLLECTIONS.LOUNGE_CREDIT_LOTS).toBe('lounge_credit_lots');
+      expect(COLLECTIONS.LOUNGE_QUOTA_LEDGER).toBe('lounge_quota_ledger');
+      expect(COLLECTIONS.LOUNGE_TRIAL_GRANTS).toBe('lounge_trial_grants');
       expect(COLLECTIONS.LOUNGE_USERS).not.toBe(COLLECTIONS.USERS);
       expect(COLLECTIONS.LOUNGE_RAG_MEMORIES).not.toBe(COLLECTIONS.RAG_MEMORIES);
       expect(COLLECTIONS.LOUNGE_PROCESSED_EVENTS).not.toBe(COLLECTIONS.PROCESSED_MENTIONS);
@@ -645,6 +662,7 @@ describe('@rebecca/db Unit Tests', () => {
         language: 'zh-HK',
         timezone: 'Asia/Hong_Kong',
         onboardingCompleted: false,
+        allowServiceImprovementAnalytics: true,
         disclaimerConsent: {
           disclaimerVersion: 1,
           agreedToGeminiTrainingUsage: true,
@@ -800,15 +818,23 @@ describe('@rebecca/db Unit Tests', () => {
       ).toThrow(/Invalid or missing datetime field "lastLoginAt"/);
     });
 
-    it('serializes and deserializes loungeSubscriptionConverter with optional stripeCustomerId', () => {
+    it('serializes and deserializes loungeSubscriptionConverter with hybrid quota, legacy migration, and DTO projection', () => {
       const baseSub: LoungeSubscriptionDoc = {
         uid: 'uid_lounge_001',
-        tier: 'SUPPORTER',
+        tier: 'STANDARD',
         status: 'ACTIVE',
-        dailyTurnQuota: 30,
-        remainingChatTurns: 24,
-        quotaResetAt: '2026-11-23T00:00:00.000Z',
+        dailyTurnQuota: 100,
+        dailyRemainingTurns: 80,
+        purchasedRemainingTurns: 25,
+        remainingChatTurns: 105,
+        earliestLotExpiresAt: null,
+        lastDailyResetAt: '2026-11-22T00:00:00.000Z',
+        lastQuotaResetTimezone: 'Asia/Tokyo',
+        nextDailyResetAt: '2026-11-23T00:00:00.000Z',
         currentPeriodEnd: '2026-12-22T12:00:00.000Z',
+        trialTicketUsed: false,
+        cancelAtPeriodEnd: false,
+        todaysConsumedDailyTurns: 20,
         updatedAt: '2026-11-22T12:05:00.000Z',
       };
       const rawWithoutStripe = loungeSubscriptionConverter.toFirestore(baseSub);
@@ -817,12 +843,50 @@ describe('@rebecca/db Unit Tests', () => {
         loungeSubscriptionConverter.fromFirestore({ id: 'uid_lounge_001', data: () => rawWithoutStripe } as any),
       ).toEqual(baseSub);
 
-      const withStripe: LoungeSubscriptionDoc = { ...baseSub, stripeCustomerId: 'cus_test_001' };
+      const withStripe: LoungeSubscriptionDoc = {
+        ...baseSub,
+        billingCurrency: 'JPY',
+        earliestLotExpiresAt: '2027-05-20T00:00:00.000Z',
+        stripeCustomerId: 'cus_test_001',
+        stripeSubscriptionId: 'sub_test_001',
+        stripeScheduleId: 'sub_sched_test_001',
+        lastProcessedInvoiceId: 'in_test_001',
+        todaysSearchCount: 2,
+      };
       const rawWithStripe = loungeSubscriptionConverter.toFirestore(withStripe);
       expect(rawWithStripe['stripeCustomerId']).toBe('cus_test_001');
-      expect(
-        loungeSubscriptionConverter.fromFirestore({ id: 'uid_lounge_001', data: () => rawWithStripe } as any),
-      ).toEqual(withStripe);
+      expect(rawWithStripe['earliestLotExpiresAt']).toBeInstanceOf(Timestamp);
+      const parsedWithStripe = loungeSubscriptionConverter.fromFirestore({
+        id: 'uid_lounge_001',
+        data: () => rawWithStripe,
+      } as any);
+      expect(parsedWithStripe).toEqual(withStripe);
+
+      const publicProjection = toPublicLoungeSubscription(parsedWithStripe);
+      expect('stripeCustomerId' in publicProjection).toBe(false);
+      expect('stripeSubscriptionId' in publicProjection).toBe(false);
+      expect('stripeScheduleId' in publicProjection).toBe(false);
+      expect('lastProcessedInvoiceId' in publicProjection).toBe(false);
+      expect('todaysConsumedDailyTurns' in publicProjection).toBe(false);
+      expect(publicProjection.remainingChatTurns).toBe(105);
+
+      const migratedLegacy = loungeSubscriptionConverter.fromFirestore({
+        id: 'uid_legacy_001',
+        data: () => ({
+          tier: 'SUPPORTER',
+          status: 'ACTIVE',
+          dailyTurnQuota: 30,
+          remainingChatTurns: 24,
+          quotaResetAt: '2026-11-23T00:00:00.000Z',
+          currentPeriodEnd: '2026-12-22T12:00:00.000Z',
+          updatedAt: '2026-11-22T12:05:00.000Z',
+        }),
+      } as any);
+      expect(migratedLegacy.tier).toBe('STANDARD');
+      expect(migratedLegacy.nextDailyResetAt).toBe('2026-11-23T00:00:00.000Z');
+      expect(migratedLegacy.dailyRemainingTurns).toBe(24);
+      expect(migratedLegacy.purchasedRemainingTurns).toBe(0);
+      expect(migratedLegacy.todaysConsumedDailyTurns).toBe(6);
 
       expect(() =>
         loungeSubscriptionConverter.fromFirestore({
@@ -1011,11 +1075,19 @@ describe('@rebecca/db Unit Tests', () => {
             ...loungeSubscriptionConverter.toFirestore({
               uid: 'uid_lounge_001',
               tier: 'FREE',
-              status: 'ACTIVE',
+              status: 'NONE',
               dailyTurnQuota: 5,
+              dailyRemainingTurns: 5,
+              purchasedRemainingTurns: 0,
               remainingChatTurns: 5,
-              quotaResetAt: '2026-11-23T00:00:00.000Z',
+              earliestLotExpiresAt: null,
+              lastDailyResetAt: '2026-11-22T00:00:00.000Z',
+              lastQuotaResetTimezone: 'Asia/Tokyo',
+              nextDailyResetAt: '2026-11-23T00:00:00.000Z',
               currentPeriodEnd: '2026-12-22T12:00:00.000Z',
+              trialTicketUsed: false,
+              cancelAtPeriodEnd: false,
+              todaysConsumedDailyTurns: 0,
               updatedAt: '2026-11-22T12:05:00.000Z',
             }),
             stripeCustomerId: 12345,
@@ -1086,6 +1158,109 @@ describe('@rebecca/db Unit Tests', () => {
           data: () => ({ ...rawMinEvt, processedAt: 12345 }),
         } as any),
       ).toThrow(/Invalid or missing datetime field "processedAt"/);
+
+      const ttlEvent: LoungeProcessedEventDoc = {
+        eventId: 'evt_ttl_001',
+        eventType: 'invoice.paid',
+        uid: 'uid_lounge_001',
+        targetId: 'in_test_001',
+        processedAt: '2026-11-23T01:00:00.000Z',
+        expireAt: '2027-02-21T01:00:00.000Z',
+      };
+      const rawTtlEvt = loungeProcessedEventConverter.toFirestore(ttlEvent);
+      expect(rawTtlEvt['expireAt']).toBeInstanceOf(Timestamp);
+      expect(
+        loungeProcessedEventConverter.fromFirestore({
+          id: 'evt_ttl_001',
+          data: () => rawTtlEvt,
+        } as any),
+      ).toEqual(ttlEvent);
+    });
+
+    it('serializes and deserializes loungeCreditLotConverter, loungeQuotaLedgerConverter, and non-PII loungeTrialGrantConverter', () => {
+      const lot: LoungeCreditLotDoc = {
+        id: 'cs_test_001',
+        uid: 'uid_lounge_001',
+        productId: 'CHARGE_TICKET_100',
+        isPaid: true,
+        initialTurns: 100,
+        remainingTurns: 75,
+        currency: 'JPY',
+        unitAmount: 500,
+        status: 'ACTIVE',
+        stripePaymentIntentId: 'pi_test_001',
+        purchasedAt: '2026-11-22T12:00:00.000Z',
+        expiresAt: '2027-05-21T12:00:00.000Z',
+      };
+      const rawLot = loungeCreditLotConverter.toFirestore(lot);
+      expect(rawLot['purchasedAt']).toBeInstanceOf(Timestamp);
+      expect(rawLot['expiresAt']).toBeInstanceOf(Timestamp);
+      const parsedLot = loungeCreditLotConverter.fromFirestore({
+        id: 'cs_test_001',
+        data: () => rawLot,
+      } as any);
+      expect(parsedLot).toEqual(lot);
+      const publicLot = toPublicLoungeCreditLot(parsedLot);
+      expect('stripePaymentIntentId' in publicLot).toBe(false);
+
+      expect(() =>
+        loungeCreditLotConverter.fromFirestore({
+          id: 'lot_bad_neg',
+          data: () => ({ ...rawLot, remainingTurns: -1 }),
+        } as any),
+      ).toThrow(/Invalid non-negative integer field "remainingTurns"/);
+
+      const ledger: LoungeQuotaLedgerDoc = {
+        id: 'ledger_001',
+        uid: 'uid_lounge_001',
+        deltaType: 'RESERVE_LOT',
+        deltaDaily: 0,
+        deltaPurchased: -1,
+        balanceTotalAfter: 74,
+        lotId: 'cs_test_001',
+        referenceId: 'msg_001',
+        createdAt: '2026-11-22T12:05:00.000Z',
+        expireAt: '2027-05-21T12:05:00.000Z',
+      };
+      const rawLedger = loungeQuotaLedgerConverter.toFirestore(ledger);
+      expect(rawLedger['expireAt']).toBeInstanceOf(Timestamp);
+      expect(
+        loungeQuotaLedgerConverter.fromFirestore({
+          id: 'ledger_001',
+          data: () => rawLedger,
+        } as any),
+      ).toEqual(ledger);
+
+      const grant: LoungeTrialGrantDoc = {
+        xUserIdHash: 'hmac_digest_v1',
+        keyVersion: 1,
+        riskStatus: 'OK',
+        welcomeBonusGrantedAt: '2026-11-22T12:00:00.000Z',
+        trialTicketGrantedAt: '2026-11-22T12:30:00.000Z',
+        retainUntil: '2029-11-22T12:00:00.000Z',
+      };
+      const rawGrant = loungeTrialGrantConverter.toFirestore(grant);
+      expect(rawGrant['retainUntil']).toBeInstanceOf(Timestamp);
+      expect(
+        loungeTrialGrantConverter.fromFirestore({
+          id: 'hmac_digest_v1',
+          data: () => rawGrant,
+        } as any),
+      ).toEqual(grant);
+
+      expect(() =>
+        loungeTrialGrantConverter.toFirestore({
+          ...grant,
+          uid: 'uid_leak',
+        } as unknown as LoungeTrialGrantDoc),
+      ).toThrow(/Forbidden PII field "uid"/);
+
+      expect(() =>
+        loungeTrialGrantConverter.fromFirestore({
+          id: 'hmac_leak',
+          data: () => ({ ...rawGrant, stripeSessionId: 'cs_leak' }),
+        } as any),
+      ).toThrow(/Forbidden PII field "stripeSessionId"/);
     });
 
     it('enforces multi-tenant uid isolation via createUserScopedLoungeDb and assertLoungeRecordOwnedByUid', () => {
@@ -1098,6 +1273,8 @@ describe('@rebecca/db Unit Tests', () => {
         loungeMessages: { where: mockWhere } as any,
         loungeRagMemories: { where: mockWhere } as any,
         loungeGallery: { doc: mockDoc, where: mockWhere } as any,
+        loungeCreditLots: { doc: mockDoc, where: mockWhere } as any,
+        loungeQuotaLedger: { where: mockWhere } as any,
       };
 
       expect(() => createUserScopedLoungeDb(scopedCollections, '   ')).toThrow(
@@ -1108,12 +1285,17 @@ describe('@rebecca/db Unit Tests', () => {
       expect(scoped.subscriptionDoc()).toEqual({ docId: 'uid_owner_01' });
       expect(scoped.sessionDoc()).toEqual({ docId: 'uid_owner_01' });
       expect(scoped.galleryDoc('img_01')).toEqual({ docId: 'uid_owner_01_img_01' });
+      expect(scoped.creditLotDoc('cs_01')).toEqual({ docId: 'cs_01' });
       expect(scoped.messagesQuery()).toEqual({ scoped: true });
       expect(scoped.ragMemoriesQuery()).toEqual({ scoped: true });
       expect(scoped.galleryQuery()).toEqual({ scoped: true });
+      expect(scoped.creditLotsQuery()).toEqual({ scoped: true });
+      expect(scoped.quotaLedgerQuery()).toEqual({ scoped: true });
       expect(mockWhere).toHaveBeenNthCalledWith(1, 'uid', '==', 'uid_owner_01');
       expect(mockWhere).toHaveBeenNthCalledWith(2, 'uid', '==', 'uid_owner_01');
       expect(mockWhere).toHaveBeenNthCalledWith(3, 'uid', '==', 'uid_owner_01');
+      expect(mockWhere).toHaveBeenNthCalledWith(4, 'uid', '==', 'uid_owner_01');
+      expect(mockWhere).toHaveBeenNthCalledWith(5, 'uid', '==', 'uid_owner_01');
 
       const ownedRecord = { uid: 'uid_owner_01', content: 'hi' };
       expect(scoped.assertOwned(ownedRecord, COLLECTIONS.LOUNGE_MESSAGES)).toBe(ownedRecord);

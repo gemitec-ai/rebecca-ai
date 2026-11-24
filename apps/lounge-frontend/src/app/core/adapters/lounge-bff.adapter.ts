@@ -347,12 +347,20 @@ export class LoungeBffAdapter
 
   private subscription: LoungeSubscription = {
     uid: 'uid_preview_001',
-    tier: 'SUPPORTER',
+    tier: 'STANDARD',
     status: 'ACTIVE',
-    dailyTurnQuota: 30,
+    billingCurrency: 'JPY',
+    dailyTurnQuota: 100,
+    dailyRemainingTurns: 24,
+    purchasedRemainingTurns: 0,
     remainingChatTurns: 24,
-    quotaResetAt: '2026-11-23T00:00:00.000Z',
+    earliestLotExpiresAt: null,
+    lastDailyResetAt: '2026-11-22T00:00:00.000Z',
+    lastQuotaResetTimezone: 'Asia/Tokyo',
+    nextDailyResetAt: '2026-11-23T00:00:00.000Z',
     currentPeriodEnd: '2026-12-22T00:00:00.000Z',
+    trialTicketUsed: false,
+    cancelAtPeriodEnd: false,
     updatedAt: '2026-11-22T12:00:00.000Z',
   };
 
@@ -871,6 +879,7 @@ export class LoungeBffAdapter
       language: this.preferredLanguage,
       timezone: this.preferredTimezone,
       onboardingCompleted,
+      allowServiceImprovementAnalytics: true,
       disclaimerConsent: {
         disclaimerVersion: this.resolvedRuntimeConfig?.disclaimerVersion ?? environment.disclaimerVersion,
         agreedToGeminiTrainingUsage: true,
