@@ -428,8 +428,8 @@ export function createLoungeApp(deps: LoungeAppDependencies): Express {
   app.use(express.json({ limit: '256kb' }));
   app.use(
     rateLimit({
-      windowMs: 60 * 1000,
-      max: 120,
+      windowMs: 15 * 60 * 1000,
+      max: 1500,
       standardHeaders: true,
       legacyHeaders: false,
     }),

@@ -421,7 +421,10 @@ export class LoungeBillingUseCase implements ILoungeBillingUseCase {
     if (sub.stripeCustomerId !== customerId || !sub.billingCurrency || !user.preferredCurrency) {
       const nowIso = new Date().toISOString();
       await this.firestore.runTransaction(async (tx: Transaction) => {
-        const latestSubSnap = await tx.get(this.collections.loungeSubscriptions.doc(uid));
+        const [latestSubSnap, latestUserSnap] = await Promise.all([
+          tx.get(this.collections.loungeSubscriptions.doc(uid)),
+          tx.get(this.collections.loungeUsers.doc(uid)),
+        ]);
         const latestSub = latestSubSnap.data();
         if (latestSubSnap.exists && latestSub) {
           tx.set(this.collections.loungeSubscriptions.doc(uid), {
@@ -431,7 +434,6 @@ export class LoungeBillingUseCase implements ILoungeBillingUseCase {
             updatedAt: nowIso,
           });
         }
-        const latestUserSnap = await tx.get(this.collections.loungeUsers.doc(uid));
         const latestUser = latestUserSnap.data();
         if (latestUserSnap.exists && latestUser && !latestUser.preferredCurrency) {
           tx.set(this.collections.loungeUsers.doc(uid), {
