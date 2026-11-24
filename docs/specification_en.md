@@ -365,3 +365,32 @@ Visual and temporal campaign orchestration suite for episodic storytelling arcs 
 5. **Emergency Kill-Switch & Lifecycle Controls**:
    - 1-click pause and resume controls from both the dashboard list and editor top bar.
    - Clones historical campaigns into future date windows with automatic slot status reset.
+
+## 8. Gemitec Private Lounge & Stripe Billing Specifications
+
+Isolated 1-on-1 member lounge (`apps/lounge-backend` on port `8083`, `apps/lounge-frontend` on port `4300`) physically decoupled from the Admin Dashboard and Public X posting pipelines.
+
+### 8.1 Data Isolation & 10-Collection Schema
+All Private Lounge persistence resides exclusively inside ten dedicated `lounge_*` Firestore collections:
+- `lounge_users`, `lounge_sessions`, `lounge_messages`, `lounge_rag_memories`, `lounge_gallery`
+- `lounge_subscriptions`, `lounge_credit_lots`, `lounge_quota_ledger` (180-day TTL), `lounge_processed_events` (90-day TTL), `lounge_trial_grants` (3-year non-PII HMAC retention)
+
+### 8.2 Hybrid Quota Engine & Anti-Abuse Invariants
+1. **Daily Non-Rollover Allowance**: `FREE` accounts receive `5` turns/day; active `STANDARD` subscriptions receive `100` turns/day. Timezone rollover clamping applies a 24-hour cooldown solely on explicit user timezone changes.
+2. **180-Day FIFO Credit Lots**: Paid lots and the one-time `WELCOME_BONUS_20` grant expire after `180` days (`LOUNGE_CREDIT_LOT_VALIDITY_DAYS`) to stay clear of Japanese Payment Services Act prepaid issuer registration thresholds. Paid/welcome turns are deducted in oldest-expiration FIFO order only after daily turns are exhausted.
+3. **Zero-PII Trial & Dispute Continuity**: `lounge_trial_grants` records versioned HMAC-SHA256 hashes of X user IDs (`LOUNGE_TRIAL_HMAC_KEYS`) for `3` years, blocking duplicate `WELCOME_BONUS_20` / `TRIAL_TICKET_100` grants after withdrawal/re-signup and flagging chargeback disputes across re-registrations.
+
+### 8.3 Stripe SAQ-A Billing, Geo-Currency Locking & Webhooks
+- **Zero Cardholder Data Storage**: Checkout and recurring self-service delegate strictly to Stripe Checkout and Stripe Customer Portal (`isAllowedStripeRedirectUrl` host verification; live Stripe keys fail closed outside `NODE_ENV=production`).
+- **Server-Locked Geo Currency**: Resolved from CDN/LB Geo-IP headers (`x-client-country` / `cf-ipcountry`; `JP` -> `JPY`, otherwise `USD`) and locked at first purchase; EEA/UK/CH residents remain gated (`GEO_BLOCKED` HTTP `403`) until `LOUNGE_PHASE2_EEA_ENABLED=true`.
+- **Product Catalog**:
+  - `TRIAL_TICKET_100`: `¥200` (tax-inclusive) / `$1.50` — `100` turns (`180` days), one-time per X account.
+  - `CHARGE_TICKET_100`: `¥500` (tax-inclusive) / `$3.50` — `100` turns (`180` days), promotion codes allowed.
+  - `STANDARD_MONTHLY`: `¥1,400` (tax-inclusive) / `$9.50` — `100` daily turns recurring monthly.
+- **Webhook & Pre-Checkout Disclosure**: `/api/v1/lounge/webhooks/stripe` verifies `stripe-signature` over raw request bodies. Frontend `PreCheckoutModalComponent` (native `<dialog>`) requires acknowledgment linking to `/tos.html`, `/privacy.html`, and `/tokushoho.html` prior to Checkout launch.
+
+### 8.4 Gemini 3 Flash-Lite, Search Grounding, Dreaming & Withdrawal
+- Conversations use `gemini-3.1-flash-lite` (capped at `450` output tokens, `1500` input characters, plus daily Google Search grounding limits of `2` Free / `3` Paid or Standard) and `gemini-embedding-2` for private RAG retrieval.
+- Global daily circuit breakers default to `LOUNGE_GLOBAL_DAILY_SIGNUP_CAP=2000` and `LOUNGE_GLOBAL_DAILY_TURN_CAP=50000`.
+- Memory summarization runs asynchronously via nightly `/api/v1/lounge/batch` (`/batch/lounge-dreaming`) rather than mid-chat UI interruption.
+- 2-step withdrawal cancels Stripe subscriptions and removes the Stripe customer before wiping user/session/memory data locally (`502 STRIPE_CANCELLATION_FAILED` aborts local deletion on upstream failure).

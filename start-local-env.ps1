@@ -8,8 +8,8 @@ Write-Host "   REBECCA AI - LOCAL DEVELOPER ENVIRONMENT STARTUP       " -Foregro
 Write-Host "==========================================================" -ForegroundColor Cyan
 
 # 0. Preflight: Clean up orphaned processes on local environment ports
-Write-Host "[0/7] Performing preflight port and process check..." -ForegroundColor Yellow
-$TargetPorts = @(8080, 9099, 9199, 4000, 5001, 8081, 50051, 4200)
+Write-Host "[0/9] Performing preflight port and process check..." -ForegroundColor Yellow
+$TargetPorts = @(8080, 9099, 9199, 4000, 5001, 8081, 8082, 8083, 50051, 4200, 4300)
 $KilledAny = $false
 
 foreach ($Port in $TargetPorts) {
@@ -174,17 +174,31 @@ $FrontendCommand = 'npm run dev --workspace=dashboard-frontend'
 Start-Process powershell -ArgumentList "-NoExit", "-Command", $FrontendCommand -WorkingDirectory $PWD
 Write-Host "-> Dashboard Frontend launching (HTTP port 4200)..." -ForegroundColor Gray
 
+# 9. Start Private Lounge Backend (BFF Server)
+Write-Host "[8/9] Starting Private Lounge Backend (BFF Server)..." -ForegroundColor Yellow
+$LoungeBffCommand = "`$env:FIRESTORE_EMULATOR_HOST='127.0.0.1:8080'; `$env:FIREBASE_AUTH_EMULATOR_HOST='127.0.0.1:9099'; `$env:USE_FIREBASE_EMULATOR='true'; `$env:GCP_PROJECT_ID='rebecca-ai-gal-local'; `$env:PORT='8083'; `$env:LOUNGE_PUBLIC_ORIGIN='http://localhost:4300'; `$env:CORS_ALLOWED_ORIGINS='http://localhost:4300,http://127.0.0.1:4300'; npm run dev --workspace=lounge-backend"
+Start-Process powershell -ArgumentList "-NoExit", "-Command", $LoungeBffCommand -WorkingDirectory $PWD
+Write-Host "-> Private Lounge BFF launched (HTTP port 8083)..." -ForegroundColor Gray
+
+# 10. Start Private Lounge Frontend (Angular Dev Server)
+Write-Host "[9/9] Starting Private Lounge Frontend (Angular App)..." -ForegroundColor Yellow
+$LoungeFrontendCommand = 'npm run dev --workspace=lounge-frontend'
+Start-Process powershell -ArgumentList "-NoExit", "-Command", $LoungeFrontendCommand -WorkingDirectory $PWD
+Write-Host "-> Private Lounge Frontend launching (HTTP port 4300)..." -ForegroundColor Gray
+
 Write-Host ""
 Write-Host "==========================================================" -ForegroundColor Green
 Write-Host "   ALL SERVICES STARTED SUCCESSFULLY!                     " -ForegroundColor Green
 Write-Host "==========================================================" -ForegroundColor Green
 Write-Host "   Access URLs:" -ForegroundColor White
 Write-Host "   - Admin Dashboard UI:   http://localhost:4200/" -ForegroundColor Cyan
+Write-Host "   - Private Lounge UI:    http://localhost:4300/" -ForegroundColor Cyan
 Write-Host "   - Firebase Emulator UI: http://127.0.0.1:4000/" -ForegroundColor Cyan
 Write-Host "     * Auth Emulator:      http://127.0.0.1:4000/auth" -ForegroundColor Gray
 Write-Host "     * Firestore Emulator: http://127.0.0.1:4000/firestore" -ForegroundColor Gray
-Write-Host "   - BFF Backend Health:   http://localhost:8081/health" -ForegroundColor Cyan
+Write-Host "   - Dashboard BFF Health: http://localhost:8081/health" -ForegroundColor Cyan
 Write-Host "   - Bot Backend:          http://localhost:8082" -ForegroundColor Cyan
+Write-Host "   - Lounge BFF Health:    http://localhost:8083/api/v1/lounge/health" -ForegroundColor Cyan
 Write-Host "==========================================================" -ForegroundColor Green
 Write-Host "   Sign-in Credentials:" -ForegroundColor White
 Write-Host "   - Email:    admin@example.com" -ForegroundColor Magenta

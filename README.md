@@ -175,6 +175,8 @@ POLL_DURATION_MINUTES=1380
 - **`apps/bot-backend`**: The core worker service. Handles RAG memory injection, intent analysis, X API integration, and the background "Dreaming" evolution process.
 - **`apps/dashboard-backend`**: Backend-for-Frontend (BFF) server providing administrative REST endpoints to the control panel, secured via Firebase Auth. Communicates with the bot-backend via internal authenticated HTTP API.
 - **`apps/dashboard-frontend`**: A glassmorphic, Chibi-themed Angular administration control panel for monitoring AI interactions and system health.
+- **`apps/lounge-backend`**: Isolated Gemitec Private Lounge Express 5 BFF handling X-authenticated onboarding, hybrid daily/charge quota enforcement, Gemini Flash-Lite chat with web grounding, nightly dreaming memory consolidation, and Stripe SAQ-A billing webhooks.
+- **`apps/lounge-frontend`**: Gemitec Private Lounge Angular 22 Zoneless SPA featuring scroll-gated re-consent/onboarding, singleton chat HUD, artwork gallery, 3-tab Billing Hub, pre-checkout disclosure dialog, and multi-step withdrawal.
 - **`apps/functions`**: Firebase Cloud Functions that asynchronously aggregate raw timeline interactions into read-optimized statistics, ensuring dashboard query performance.
 
 ### Packages (`packages/`)

@@ -13,8 +13,8 @@ echo -e "\033[0;36m   REBECCA AI - LOCAL DEVELOPER ENVIRONMENT STARTUP       \03
 echo -e "\033[0;36m==========================================================\033[0m"
 
 # 0. Preflight: Clean up orphaned processes on local environment ports
-echo -e "\033[0;33m[0/7] Performing preflight port and process check...\033[0m"
-TARGET_PORTS=(8080 9099 9199 4000 5001 8081 50051 4200)
+echo -e "\033[0;33m[0/9] Performing preflight port and process check...\033[0m"
+TARGET_PORTS=(8080 9099 9199 4000 5001 8081 8082 8083 50051 4200 4300)
 KILLED_ANY=false
 
 for PORT in "${TARGET_PORTS[@]}"; do
@@ -181,16 +181,29 @@ echo -e "\033[0;33mStarting Dashboard Frontend (Angular Dev Server)...\033[0m"
 npm run dev --workspace=dashboard-frontend > .logs/dashboard-frontend.log 2>&1 &
 echo -e "\033[0;90m-> Dashboard Frontend launching (HTTP port 4200, logs in .logs/dashboard-frontend.log)...\033[0m"
 
+# 9. Start Private Lounge Backend (BFF Server)
+echo -e "\033[0;33m[8/9] Starting Private Lounge Backend (BFF Server)...\033[0m"
+USE_FIREBASE_EMULATOR="true" PORT="8083" LOUNGE_PUBLIC_ORIGIN="http://localhost:4300" CORS_ALLOWED_ORIGINS="http://localhost:4300,http://127.0.0.1:4300" \
+  npm run dev --workspace=lounge-backend > .logs/lounge-backend.log 2>&1 &
+echo -e "\033[0;90m-> Private Lounge BFF launched (HTTP port 8083, logs in .logs/lounge-backend.log)...\033[0m"
+
+# 10. Start Private Lounge Frontend (Angular Dev Server)
+echo -e "\033[0;33m[9/9] Starting Private Lounge Frontend (Angular Dev Server)...\033[0m"
+npm run dev --workspace=lounge-frontend > .logs/lounge-frontend.log 2>&1 &
+echo -e "\033[0;90m-> Private Lounge Frontend launching (HTTP port 4300, logs in .logs/lounge-frontend.log)...\033[0m"
+
 echo -e "\n\033[0;32m==========================================================\033[0m"
 echo -e "\033[0;32m   ALL SERVICES STARTED SUCCESSFULLY IN BACKGROUND!       \033[0m"
 echo -e "\033[0;32m==========================================================\033[0m"
 echo -e "\033[1;37m   Access URLs:\033[0m"
 echo -e "\033[0;36m   - Admin Dashboard UI:   http://localhost:4200/\033[0m"
+echo -e "\033[0;36m   - Private Lounge UI:    http://localhost:4300/\033[0m"
 echo -e "\033[0;36m   - Firebase Emulator UI: http://127.0.0.1:4000/\033[0m"
 echo -e "\033[0;90m     * Auth Emulator:      http://127.0.0.1:4000/auth\033[0m"
 echo -e "\033[0;90m     * Firestore Emulator: http://127.0.0.1:4000/firestore\033[0m"
-echo -e "\033[0;36m   - BFF Backend Health:   http://localhost:8081/health\033[0m"
+echo -e "\033[0;36m   - Dashboard BFF Health: http://localhost:8081/health\033[0m"
 echo -e "\033[0;36m   - Bot Backend:          http://localhost:8082\033[0m"
+echo -e "\033[0;36m   - Lounge BFF Health:    http://localhost:8083/api/v1/lounge/health\033[0m"
 echo -e "\033[0;32m==========================================================\033[0m"
 echo -e "\033[1;37m   Sign-in Credentials:\033[0m"
 echo -e "\033[0;35m   - Email:    admin@example.com\033[0m"

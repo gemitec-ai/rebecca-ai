@@ -1,23 +1,20 @@
-# `lounge-frontend`
+# Private Lounge Frontend (`apps/lounge-frontend`)
 
-Angular 22 Zoneless SPA architecture skeleton for the **Gemitec Private Lounge**.
+Angular 22 Zoneless single-page application for **Gemitec Private Lounge** (`PORT=4300` local proxy/dev server). Built with **Hexagonal Architecture** (Ports & Adapters), Angular **Signals**, and WCAG-compliant interactive modals/tabs.
 
-## Architecture
+## Architecture & Core Capabilities
 
-- **Hexagonal Ports (`src/app/core/ports/`)**:
-  - `LoungeConfigPort`: Runtime version, disclaimer version, and dynamic persona branding (`/config`).
-  - `LoungeAuthPort`: X-linked login, logout, and 1:1 X sign-up with scroll-verified disclaimer consent.
-  - `LoungeAccountPort`: Subscription tier, daily remaining chat turns summary, locale/timezone updates, and cascade account deletion.
-  - `LoungeSessionPort`: User's single persistent Private Lounge conversation session and message turn submission.
-  - `LoungeGalleryPort`: Paginated visual Bot illustration gallery automatically unlocked during chat turns.
-- **Adapters (`src/app/core/adapters/`)**: `LoungeBffAdapter` implements all five ports cleanly against `@rebecca/types` DTOs and dynamic `/api/v1/lounge/config` metadata.
-- **Signals Facade (`src/app/core/services/lounge-facade.service.ts`)**: Reactive Zoneless state orchestrating Auth (`LOGIN` / scroll-gated `SIGNUP`), post-signup Language/Timezone Onboarding (`ONBOARDING`), Single-Session Chat (`CHAT`), Slide-Over Sidebar Drawer, Bot Illustration Gallery (`GALLERY`), Options Preferences & 2-Step Withdrawal Modal (`OPTIONS`), across 8 supported languages (`ja`, `en`, `de`, `pt`, `es`, `zh-HK`, `vi`, `th`).
-
-## Commands
-
-```bash
-npm run dev --workspace=lounge-frontend
-npm run build --workspace=lounge-frontend
-npm test --workspace=lounge-frontend
-npm run lint --workspace=lounge-frontend
-```
+- **6 Hexagonal Domain Ports (`src/app/core/ports/`)**:
+  Auth, Account, Session/Chat, Gallery, Health/Runtime Config, and Billing (`LoungeBillingPort`), decoupled cleanly behind `LoungeBffAdapter` + `LoungeFacadeService`.
+- **Modular Firebase X Auth & Request Interceptor**:
+  - `LoungeAuthService` initializes a named Firebase app (`gemitec-private-lounge`), supports `OAuthProvider('twitter.com')` in Firebase Auth Emulator mode (`?emuXUser=` / `sessionStorage`) and `TwitterAuthProvider` popup in production.
+  - `loungeAuthInterceptor` attaches Firebase ID tokens only when `isTrustedLoungeApiDestination` matches and an authenticated user is present.
+- **Onboarding, Chat HUD & Artwork Gallery**:
+  - Scroll-gated disclaimer onboarding and inline versioned re-consent (`LOUNGE_DISCLAIMER_RECONSENT_REQUIRED`).
+  - Singleton chat HUD enforcing the `1500`-character message limit, analytics opt-out toggle, 8 UI languages, and 29 global hourly timezones.
+- **3-Tab Billing Hub & Pre-Checkout Disclosure (`BillingHubComponent` & `PreCheckoutModalComponent`)**:
+  - WAI-ARIA `tablist` (`focusgroup="tablist nomemory"`, arrow-key navigation, indicator border, separated `.tabpanel-surface` panels) covering Plans/Tickets, Subscription Management / Customer Portal, and Purchase History (`<table>` with `<caption>`, `<th scope="col">`, and Safari-safe pre-opened receipt links).
+  - Native `<dialog>` (`showModal()`) pre-checkout confirmation linking externally to `/tos.html`, `/privacy.html`, and `/tokushoho.html` before redirecting only to Stripe-allowlisted URLs (`isAllowedStripeRedirectUrl`).
+  - Automatic return synchronization on `?checkout=` and `?portal_return=1` query params.
+- **2-Step Account Withdrawal**:
+  Requires explicit confirmation and surfaces `502 STRIPE_CANCELLATION_FAILED` errors cleanly if remote Stripe subscription termination fails before local erasure.

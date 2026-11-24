@@ -132,9 +132,9 @@ jobs:
             }
 
   e2e-test:
-    name: Playwright Dashboard E2E Tests
+    name: Playwright Dashboard & Lounge E2E Tests
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 20
     needs: [build-and-test]
     permissions:
       contents: read
@@ -198,7 +198,10 @@ jobs:
             }
 
             const header = '### 📸 Playwright E2E UI Coverage & Visual Validation\n\n';
-            const statusBadge = '✅ **All 33/33 E2E Scenarios Passed under Angular 22 Zoneless**\n\n';
+            const jobSucceeded = '${{ job.status }}' === 'success';
+            const statusBadge = jobSucceeded
+              ? '✅ **All Playwright E2E Scenarios Passed under Angular 22 Zoneless**\n\n'
+              : '❌ **Playwright E2E Scenarios Failed (${{ job.status }})**\n\n';
             
             let table = '| # | Captured UI Screen / Component | File | Status |\n| :---: | :--- | :--- | :---: |\n';
             if (files.length === 0) {
