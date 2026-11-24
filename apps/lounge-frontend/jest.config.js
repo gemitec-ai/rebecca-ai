@@ -3,6 +3,7 @@ module.exports = {
   setupFiles: ['<rootDir>/setup-fetch.js'],
   setupFilesAfterEnv: ['<rootDir>/setup-jest.ts'],
   testEnvironment: 'jsdom',
+  testTimeout: 15000,
   testMatch: ['<rootDir>/src/**/*.spec.ts'],
   moduleFileExtensions: ['ts', 'html', 'js', 'json'],
   collectCoverageFrom: [

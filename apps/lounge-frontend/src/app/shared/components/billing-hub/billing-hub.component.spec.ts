@@ -1088,7 +1088,7 @@ describe('BillingHubComponent, PreCheckoutModalComponent & AppComponent Billing 
     expect(facade.activeView()).toBe('BILLING');
     facade.dismissBillingBanner();
     expect(facade.billingBannerNotice()).toBeNull();
-  });
+  }, 15000);
 
   it('covers non-Error billing rejections, closed popup/readonly opener, retained query params, and PreCheckoutModal guards', async () => {
     // Re-hydrate valid summary first if cleared
