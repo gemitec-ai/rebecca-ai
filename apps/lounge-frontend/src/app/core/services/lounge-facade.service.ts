@@ -2,11 +2,17 @@ import { Injectable, computed, inject, signal } from '@angular/core';
 import type {
   LOUNGE_ERROR_CODE_DISCLAIMER_RECONSENT_REQUIRED,
   LoungeAccountSummaryDto,
+  LoungeBillingCatalogDto,
+  LoungeBillingOrderItemDto,
+  LoungeBillingProductDto,
+  LoungeEuWithdrawalRequestDto,
   LoungeGalleryItem,
   LoungeLanguage,
   LoungeMessage,
   LoungePersonaBranding,
+  LoungePortalFlow,
   LoungeSession,
+  LoungeSubscriptionDetailResponseDto,
   LoungeUser,
 } from '@rebecca/types';
 import { environment } from '../../../environments/environment';
@@ -19,21 +25,43 @@ import {
 } from '../i18n/lounge-translations';
 import { LoungeAccountPort } from '../ports/lounge-account.port';
 import { LoungeAuthPort } from '../ports/lounge-auth.port';
+import { LoungeBillingPort } from '../ports/lounge-billing.port';
 import { LoungeConfigPort } from '../ports/lounge-config.port';
 import { LoungeGalleryPort } from '../ports/lounge-gallery.port';
 import { LoungeSessionPort } from '../ports/lounge-session.port';
+import { isAllowedStripeRedirectUrl } from '../utils/lounge-url-security';
 
 /** Top-level UI views in the Gemitec Private Lounge application. */
-export type LoungeActiveView = 'AUTH' | 'ONBOARDING' | 'CHAT' | 'GALLERY' | 'OPTIONS';
+export type LoungeActiveView = 'AUTH' | 'ONBOARDING' | 'CHAT' | 'GALLERY' | 'BILLING' | 'OPTIONS';
 
 /** Authentication tab modes on the X-linked entrance view. */
 export type LoungeAuthMode = 'LOGIN' | 'SIGNUP';
+
+/** Three primary tabs inside the Billing & Usage Hub view. */
+export type LoungeBillingTab = 'PLANS' | 'SUBSCRIPTION' | 'HISTORY';
 
 /** Fixed page size for upward chat history pagination (`desc` windowing). */
 export const LOUNGE_CHAT_PAGE_SIZE = 20;
 
 /** Fixed page size for numbered Gallery collection pagination (12 slots/page). */
 export const LOUNGE_GALLERY_PAGE_SIZE = 12;
+
+/** Maximum allowed composer character count enforced on client and backend. */
+export const MAX_LOUNGE_COMPOSER_LENGTH = 1500;
+
+/** Low-turns soft upsell threshold triggering a subtle non-blocking prompt in chat. */
+export const LOW_QUOTA_NUDGE_THRESHOLD = 2;
+
+/** Bounded Stripe orders page size (`[1, 30]`). */
+export const LOUNGE_BILLING_ORDERS_PAGE_SIZE = 20;
+
+/** ASCT Art. 12-6 checkboxes collected inside the pre-checkout confirmation modal. */
+export interface PreCheckoutConsentSubmission {
+  readonly acceptedPurchaseDisclosure: boolean;
+  readonly acceptedAutoRenewalOptIn: boolean;
+  readonly confirmedAdultOrParentalConsent: boolean;
+  readonly euDigitalWaiverAccepted?: boolean;
+}
 
 const DISCLAIMER_RECONSENT_REQUIRED_CODE: typeof LOUNGE_ERROR_CODE_DISCLAIMER_RECONSENT_REQUIRED =
   'DISCLAIMER_RECONSENT_REQUIRED';
@@ -49,6 +77,15 @@ function isReconsentRequiredError(
   );
 }
 
+function isStripeCancellationFailedError(err: unknown): boolean {
+  return (
+    typeof err === 'object' &&
+    err !== null &&
+    'code' in err &&
+    (err as { code?: unknown }).code === 'STRIPE_CANCELLATION_FAILED'
+  );
+}
+
 function resolveFallbackPersonaBranding(): LoungePersonaBranding {
   return {
     ...environment.persona,
@@ -59,15 +96,18 @@ function resolveFallbackPersonaBranding(): LoungePersonaBranding {
 /**
  * Signal-driven application facade orchestrating Bootstrapping Auto-Resume, Auth (`LOGIN`-first),
  * Integer-Versioned Re-Consent Gate, Onboarding locale confirmation, Single-Session Chat with
- * Gallery Unlock Juice, Slide-Over Sidebar, Gallery collection, Options, and 2-step Withdrawal.
+ * Gallery Unlock Juice, 3-Tab Billing Hub, Slide-Over Sidebar, Gallery, Options, and 2-step Withdrawal.
  */
 @Injectable({ providedIn: 'root' })
 export class LoungeFacadeService {
   private readonly configPort = inject(LoungeConfigPort, { optional: true });
   private readonly authPort = inject(LoungeAuthPort);
   private readonly accountPort = inject(LoungeAccountPort);
+  private readonly billingPort = inject(LoungeBillingPort, { optional: true });
   private readonly sessionPort = inject(LoungeSessionPort);
   private readonly galleryPort = inject(LoungeGalleryPort);
+
+  private isProductionRuntime: boolean = environment.production;
 
   public readonly isBootstrapping = signal<boolean>(true);
   public readonly activeView = signal<LoungeActiveView>('AUTH');
@@ -91,6 +131,7 @@ export class LoungeFacadeService {
   public readonly deleteAccountStep = signal<0 | 1 | 2>(0);
   public readonly deleteConfirmIrreversible = signal<boolean>(false);
   public readonly deleteConfirmNoRefund = signal<boolean>(false);
+  public readonly deleteStripeError = signal<string | null>(null);
 
   public readonly isLoading = signal<boolean>(false);
   public readonly errorMessage = signal<string | null>(null);
@@ -98,6 +139,20 @@ export class LoungeFacadeService {
 
   public readonly accountSummary = signal<LoungeAccountSummaryDto | null>(null);
   public readonly activeSession = signal<LoungeSession | null>(null);
+
+  public readonly billingTab = signal<LoungeBillingTab>('PLANS');
+  public readonly billingCatalog = signal<LoungeBillingCatalogDto | null>(null);
+  public readonly subscriptionDetail = signal<LoungeSubscriptionDetailResponseDto | null>(null);
+  public readonly billingOrders = signal<readonly LoungeBillingOrderItemDto[]>([]);
+  public readonly billingOrdersHasMore = signal<boolean>(false);
+  public readonly billingOrdersNextCursor = signal<string | null>(null);
+  public readonly isLoadingBilling = signal<boolean>(false);
+  public readonly isLoadingMoreOrders = signal<boolean>(false);
+  public readonly billingBannerNotice = signal<{
+    readonly tone: 'info' | 'warning' | 'success';
+    readonly text: string;
+  } | null>(null);
+  public readonly selectedCheckoutProduct = signal<LoungeBillingProductDto | null>(null);
   public readonly messages = signal<readonly LoungeMessage[]>([]);
   public readonly isLoadingOlderMessages = signal<boolean>(false);
   public readonly hasMoreMessages = signal<boolean>(false);
@@ -148,6 +203,26 @@ export class LoungeFacadeService {
     return Math.min(100, Math.max(0, Math.round((sub.remainingChatTurns / sub.dailyTurnQuota) * 100)));
   });
 
+  public readonly isPastDue = computed(
+    () => this.accountSummary()?.subscription.status === 'PAST_DUE',
+  );
+
+  public readonly hasActiveOrCancelingSubscription = computed(() => {
+    const status = this.accountSummary()?.subscription.status;
+    return status === 'ACTIVE' || status === 'CANCELING';
+  });
+
+  public readonly isLowQuotaNudge = computed(() => {
+    const sub = this.accountSummary()?.subscription;
+    return Boolean(sub && sub.remainingChatTurns > 0 && sub.remainingChatTurns <= LOW_QUOTA_NUDGE_THRESHOLD);
+  });
+
+  public readonly isQuotaExhausted = computed(
+    () => (this.accountSummary()?.subscription.remainingChatTurns ?? 0) <= 0,
+  );
+
+  public readonly composerCharCount = computed(() => this.composerDraft().length);
+
   /** Promise resolving when initial startup config and silent session restoration finish. */
   public readonly ready: Promise<void>;
 
@@ -169,7 +244,11 @@ export class LoungeFacadeService {
       const session = await this.authPort.getCurrentSession();
       if (session) {
         await this.hydrateAuthenticatedLounge();
-        this.resolvePostAuthView(this.accountSummary()?.user ?? session.user);
+        const activeUser = this.accountSummary()?.user ?? session.user;
+        this.resolvePostAuthView(activeUser);
+        if (!this.isReconsentRequired() && activeUser.onboardingCompleted) {
+          await this.handleBillingRedirectReturn();
+        }
       } else {
         this.activeView.set('AUTH');
       }
@@ -195,6 +274,9 @@ export class LoungeFacadeService {
       this.appVersion.set(config.appVersion);
       this.disclaimerVersion.set(config.disclaimerVersion);
       this.personaBranding.set(config.persona);
+      if (typeof config.production === 'boolean') {
+        this.isProductionRuntime = config.production;
+      }
     } catch {
       this.personaBranding.set(resolveFallbackPersonaBranding());
     }
@@ -256,6 +338,47 @@ export class LoungeFacadeService {
         this.timezone.set(previousTimezone);
         this.errorMessage.set(err instanceof Error ? err.message : 'Failed to update timezone');
       }
+    }
+  }
+
+  /**
+   * Updates user analytics opt-out preference (`allowServiceImprovementAnalytics`), persisting via
+   * `/account/preferences` and rolling back cleanly if backend persistence rejects.
+   */
+  public async setAnalyticsOptIn(allowed: boolean): Promise<void> {
+    const summary = this.accountSummary();
+    if (!summary) {
+      return;
+    }
+    const previousValue = summary.user.allowServiceImprovementAnalytics;
+    this.optionsSavedNotice.set(null);
+    this.accountSummary.update((prev) =>
+      prev
+        ? {
+            ...prev,
+            user: { ...prev.user, allowServiceImprovementAnalytics: allowed },
+          }
+        : prev,
+    );
+
+    try {
+      const updatedUser = await this.accountPort.updatePreferences({
+        allowServiceImprovementAnalytics: allowed,
+      });
+      this.accountSummary.update((prev) => (prev ? { ...prev, user: updatedUser } : prev));
+      this.optionsSavedNotice.set(this.t('optionsSavedNotice'));
+    } catch (err) {
+      this.accountSummary.update((prev) =>
+        prev
+          ? {
+              ...prev,
+              user: { ...prev.user, allowServiceImprovementAnalytics: previousValue },
+            }
+          : prev,
+      );
+      this.errorMessage.set(
+        err instanceof Error ? err.message : 'Failed to update analytics preference',
+      );
     }
   }
 
@@ -398,8 +521,13 @@ export class LoungeFacadeService {
   }
 
   /** Navigates across authenticated Lounge views and closes the Sidebar drawer automatically. */
-  public navigateTo(view: 'CHAT' | 'GALLERY' | 'OPTIONS'): void {
+  public navigateTo(view: 'CHAT' | 'GALLERY' | 'BILLING' | 'OPTIONS'): void {
+    if (view === 'BILLING') {
+      void this.openBilling('PLANS');
+      return;
+    }
     this.optionsSavedNotice.set(null);
+    this.selectedCheckoutProduct.set(null);
     if (view === 'GALLERY') {
       this.newlyUnlockedGalleryItem.set(null);
       if (this.galleryNeedsRefresh) {
@@ -408,6 +536,230 @@ export class LoungeFacadeService {
     }
     this.activeView.set(view);
     this.isSidebarOpen.set(false);
+  }
+
+  /** Navigates into the 3-Tab Billing & Usage Hub view and fetches the requested tab payload. */
+  public async openBilling(tab: LoungeBillingTab = 'PLANS'): Promise<void> {
+    this.optionsSavedNotice.set(null);
+    this.selectedCheckoutProduct.set(null);
+    this.isSidebarOpen.set(false);
+    this.activeView.set('BILLING');
+    await this.selectBillingTab(tab);
+  }
+
+  /** Switches tabs within the Billing & Usage Hub and loads the tab's authoritative server data. */
+  public async selectBillingTab(tab: LoungeBillingTab): Promise<void> {
+    this.billingTab.set(tab);
+    if (!this.billingPort || !this.accountSummary()) {
+      return;
+    }
+    this.isLoadingBilling.set(true);
+    this.errorMessage.set(null);
+    try {
+      if (tab === 'PLANS') {
+        const catalog = await this.billingPort.getCatalog();
+        this.billingCatalog.set(catalog);
+      } else if (tab === 'SUBSCRIPTION') {
+        const detail = await this.billingPort.getSubscriptionDetail();
+        this.subscriptionDetail.set(detail);
+        this.syncSubscriptionSummary(detail.subscription);
+      } else {
+        const page = await this.billingPort.listOrders({ limit: LOUNGE_BILLING_ORDERS_PAGE_SIZE });
+        this.billingOrders.set(page.orders);
+        this.billingOrdersHasMore.set(page.hasMore);
+        this.billingOrdersNextCursor.set(page.nextCursor);
+      }
+    } catch (err) {
+      this.errorMessage.set(err instanceof Error ? err.message : 'Failed to load billing details');
+    } finally {
+      this.isLoadingBilling.set(false);
+    }
+  }
+
+  /** Dismisses any transient checkout/portal notice banner shown inside the Billing Hub. */
+  public dismissBillingBanner(): void {
+    this.billingBannerNotice.set(null);
+  }
+
+  /** Opens the ASCT Art. 12-6 pre-checkout confirmation modal for a specific product card. */
+  public openPreCheckoutModal(product: LoungeBillingProductDto): void {
+    if (!product.eligible) {
+      return;
+    }
+    this.errorMessage.set(null);
+    this.selectedCheckoutProduct.set(product);
+  }
+
+  /** Closes the ASCT Art. 12-6 pre-checkout confirmation modal without initiating Stripe Checkout. */
+  public closePreCheckoutModal(): void {
+    this.selectedCheckoutProduct.set(null);
+  }
+
+  /** Creates a Stripe Checkout Session and navigates to the validated external Checkout URL. */
+  public async submitCheckout(consent: PreCheckoutConsentSubmission): Promise<void> {
+    const product = this.selectedCheckoutProduct();
+    if (!product || !this.billingPort || this.isLoadingBilling()) {
+      return;
+    }
+    if (
+      !consent.acceptedPurchaseDisclosure ||
+      !consent.acceptedAutoRenewalOptIn ||
+      !consent.confirmedAdultOrParentalConsent
+    ) {
+      throw new Error('All required pre-checkout disclosures must be accepted');
+    }
+    this.isLoadingBilling.set(true);
+    this.errorMessage.set(null);
+    try {
+      const response = await this.billingPort.createCheckout({
+        productId: product.productId,
+        acceptedPurchaseDisclosure: true,
+        acceptedAutoRenewalOptIn: true,
+        confirmedAdultOrParentalConsent: true,
+        ...(consent.euDigitalWaiverAccepted !== undefined
+          ? { euDigitalWaiverAccepted: consent.euDigitalWaiverAccepted }
+          : {}),
+      });
+      if (!isAllowedStripeRedirectUrl(response.checkoutUrl, !this.isProductionRuntime)) {
+        throw new Error('Untrusted Stripe Checkout redirect URL rejected');
+      }
+      this.selectedCheckoutProduct.set(null);
+      this.navigateExternalUrl(response.checkoutUrl);
+    } catch (err) {
+      this.errorMessage.set(err instanceof Error ? err.message : 'Failed to start checkout');
+    } finally {
+      this.isLoadingBilling.set(false);
+    }
+  }
+
+  /** Opens a Stripe Customer Portal flow after verifying the returned portal URL origin. */
+  public async openCustomerPortal(flow: LoungePortalFlow = 'default'): Promise<void> {
+    if (!this.billingPort || this.isLoadingBilling()) {
+      return;
+    }
+    this.isLoadingBilling.set(true);
+    this.errorMessage.set(null);
+    try {
+      const response = await this.billingPort.createPortal({ flow });
+      if (!isAllowedStripeRedirectUrl(response.portalUrl, !this.isProductionRuntime)) {
+        throw new Error('Untrusted Stripe Customer Portal URL rejected');
+      }
+      this.navigateExternalUrl(response.portalUrl);
+    } catch (err) {
+      this.errorMessage.set(err instanceof Error ? err.message : 'Failed to open Stripe portal');
+    } finally {
+      this.isLoadingBilling.set(false);
+    }
+  }
+
+  /** Appends the next cursor page of Stripe Charge-backed purchase history items. */
+  public async loadMoreOrders(): Promise<void> {
+    if (
+      !this.billingPort ||
+      this.isLoadingMoreOrders() ||
+      !this.billingOrdersHasMore() ||
+      !this.billingOrdersNextCursor()
+    ) {
+      return;
+    }
+    const startingAfter = this.billingOrdersNextCursor();
+    if (!startingAfter) {
+      this.billingOrdersHasMore.set(false);
+      return;
+    }
+    this.isLoadingMoreOrders.set(true);
+    this.errorMessage.set(null);
+    try {
+      const page = await this.billingPort.listOrders({
+        limit: LOUNGE_BILLING_ORDERS_PAGE_SIZE,
+        startingAfter,
+      });
+      this.billingOrders.update((prev) => {
+        const seen = new Set(prev.map((order) => order.chargeId));
+        const nextItems = page.orders.filter((order) => !seen.has(order.chargeId));
+        return nextItems.length > 0 ? [...prev, ...nextItems] : prev;
+      });
+      this.billingOrdersHasMore.set(page.hasMore);
+      this.billingOrdersNextCursor.set(page.nextCursor);
+    } catch (err) {
+      this.errorMessage.set(err instanceof Error ? err.message : 'Failed to load more orders');
+    } finally {
+      this.isLoadingMoreOrders.set(false);
+    }
+  }
+
+  /**
+   * Opens a Stripe hosted receipt safely across Safari/iOS popup blockers by synchronously opening
+   * a blank tab before awaiting the BFF receipt endpoint, then validating the Stripe origin URL.
+   */
+  public async openOrderReceipt(chargeId: string): Promise<void> {
+    if (!this.billingPort || !chargeId.trim()) {
+      return;
+    }
+    const popup = this.openBlankPopupWindow();
+    this.errorMessage.set(null);
+    try {
+      const res = await this.billingPort.getOrderReceipt(chargeId);
+      if (!isAllowedStripeRedirectUrl(res.receiptUrl, !this.isProductionRuntime)) {
+        throw new Error('Untrusted Stripe receipt URL rejected');
+      }
+      if (popup && !popup.closed) {
+        popup.location.replace(res.receiptUrl);
+      } else {
+        this.navigateExternalUrl(res.receiptUrl);
+      }
+    } catch (err) {
+      if (popup && !popup.closed) {
+        popup.close();
+      }
+      this.errorMessage.set(err instanceof Error ? err.message : 'Failed to open receipt');
+    }
+  }
+
+  /** Submits Phase 2 EEA 14-day statutory electronic withdrawal and refreshes quota state. */
+  public async submitEuWithdrawal(request: LoungeEuWithdrawalRequestDto): Promise<void> {
+    if (!this.billingPort || this.isLoadingBilling()) {
+      return;
+    }
+    this.isLoadingBilling.set(true);
+    this.errorMessage.set(null);
+    try {
+      const result = await this.billingPort.withdrawEu(request);
+      this.syncSubscriptionSummary(result.subscription);
+      this.billingBannerNotice.set({
+        tone: 'success',
+        text: this.t('billingEuWithdrawalDoneNotice'),
+      });
+      const detail = await this.billingPort.getSubscriptionDetail();
+      this.subscriptionDetail.set(detail);
+    } catch (err) {
+      this.errorMessage.set(err instanceof Error ? err.message : 'EEA withdrawal request failed');
+    } finally {
+      this.isLoadingBilling.set(false);
+    }
+  }
+
+  /** Synchronous popup pre-open helper (Safari-safe before `await`, overridable in tests). */
+  public openBlankPopupWindow(): Window | null {
+    if (typeof window === 'undefined' || typeof window.open !== 'function') {
+      return null;
+    }
+    const popup = window.open('', '_blank');
+    if (popup) {
+      try {
+        popup.opener = null;
+      } catch {
+        // Read-only opener in hardened sandboxes is harmless.
+      }
+    }
+    return popup;
+  }
+
+  /** External top-level navigation helper (overridable in unit tests to avoid JSDOM errors). */
+  public navigateExternalUrl(url: string): void {
+    if (typeof window !== 'undefined' && window.location) {
+      window.location.assign(url);
+    }
   }
 
   /** Loads a specific 1-based Gallery page via the unified bounded pagination contract. */
@@ -505,7 +857,7 @@ export class LoungeFacadeService {
 
   /** Submits a new chat turn in the user's single session and updates messages, quota, and Gallery. */
   public async sendMessage(content: string): Promise<void> {
-    const trimmed = content.trim();
+    const trimmed = content.trim().slice(0, MAX_LOUNGE_COMPOSER_LENGTH);
     if (!trimmed || !this.activeSession() || this.isLoading()) {
       return;
     }
@@ -575,10 +927,12 @@ export class LoungeFacadeService {
               ...prev,
               unlockedGalleryCount: nextUnlockedCount,
               totalGalleryCount: Math.max(prev.totalGalleryCount, nextTotalCount),
-              subscription: {
-                ...prev.subscription,
-                remainingChatTurns: res.remainingChatTurns,
-              },
+              subscription: res.subscription
+                ? res.subscription
+                : {
+                    ...prev.subscription,
+                    remainingChatTurns: res.remainingChatTurns,
+                  },
             }
           : prev,
       );
@@ -609,6 +963,7 @@ export class LoungeFacadeService {
   public openDeleteAccountModal(): void {
     this.deleteConfirmIrreversible.set(false);
     this.deleteConfirmNoRefund.set(false);
+    this.deleteStripeError.set(null);
     this.deleteAccountStep.set(1);
     this.errorMessage.set(null);
   }
@@ -616,6 +971,7 @@ export class LoungeFacadeService {
   /** Advances from initial deletion warning (Step 1) to final consent checkboxes (Step 2). */
   public proceedToDeleteAccountStep2(): void {
     if (this.deleteAccountStep() === 1) {
+      this.deleteStripeError.set(null);
       this.deleteAccountStep.set(2);
     }
   }
@@ -625,6 +981,7 @@ export class LoungeFacadeService {
     this.deleteAccountStep.set(0);
     this.deleteConfirmIrreversible.set(false);
     this.deleteConfirmNoRefund.set(false);
+    this.deleteStripeError.set(null);
   }
 
   /** Toggles mandatory acknowledgement that all data erasure is permanent and unrecoverable. */
@@ -639,7 +996,7 @@ export class LoungeFacadeService {
 
   /**
    * Executes irreversible cascade deletion via `DELETE /account` once Step 2 checkboxes are checked,
-   * wiping local session state and returning cleanly to Sign-Up view.
+   * wiping local session state and returning cleanly to Sign-Up view (aborting fail-closed on `502`).
    */
   public async confirmDeleteAccount(): Promise<void> {
     if (!this.canConfirmDeleteAccount()) {
@@ -647,6 +1004,7 @@ export class LoungeFacadeService {
     }
     this.isLoading.set(true);
     this.errorMessage.set(null);
+    this.deleteStripeError.set(null);
     try {
       await this.accountPort.deleteAccount({
         confirmedIrreversibleDeletion: true,
@@ -654,7 +1012,11 @@ export class LoungeFacadeService {
       });
       this.resetLocalSessionState('SIGNUP');
     } catch (err) {
-      this.errorMessage.set(err instanceof Error ? err.message : 'Account deletion failed');
+      if (isStripeCancellationFailedError(err)) {
+        this.deleteStripeError.set(this.t('deleteModalStripeErrorBanner'));
+      } else {
+        this.errorMessage.set(err instanceof Error ? err.message : 'Account deletion failed');
+      }
     } finally {
       this.isLoading.set(false);
     }
@@ -695,12 +1057,111 @@ export class LoungeFacadeService {
     this.galleryNeedsRefresh = false;
     this.composerDraft.set('');
     this.optionsSavedNotice.set(null);
+    this.billingTab.set('PLANS');
+    this.billingCatalog.set(null);
+    this.subscriptionDetail.set(null);
+    this.billingOrders.set([]);
+    this.billingOrdersHasMore.set(false);
+    this.billingOrdersNextCursor.set(null);
+    this.isLoadingBilling.set(false);
+    this.isLoadingMoreOrders.set(false);
+    this.billingBannerNotice.set(null);
+    this.selectedCheckoutProduct.set(null);
     this.resetDisclaimerScrollState();
     this.isReconsentRequired.set(false);
     this.closeDeleteAccountModal();
     this.isSidebarOpen.set(false);
     this.activeView.set('AUTH');
     this.authMode.set(nextAuthMode);
+  }
+
+  private syncSubscriptionSummary(subscription: LoungeAccountSummaryDto['subscription']): void {
+    this.accountSummary.update((prev) =>
+      prev
+        ? {
+            ...prev,
+            subscription,
+          }
+        : prev,
+    );
+  }
+
+  private async handleBillingRedirectReturn(): Promise<void> {
+    if (typeof window === 'undefined' || !window.location?.search || !this.billingPort) {
+      return;
+    }
+    const params = new URLSearchParams(window.location.search);
+    const checkoutParam = params.get('checkout');
+    const sessionId = params.get('session_id')?.trim();
+    const portalReturn = params.get('portal_return');
+    if (!checkoutParam && portalReturn !== '1') {
+      return;
+    }
+
+    const retainedParams = new URLSearchParams();
+    const previewScenario = params.get('previewScenario');
+    if (previewScenario) {
+      retainedParams.set('previewScenario', previewScenario);
+    }
+    const emuXUser = params.get('emuXUser');
+    if (emuXUser) {
+      retainedParams.set('emuXUser', emuXUser);
+    }
+    const nextSearch = retainedParams.toString();
+    const cleanUrl = `${window.location.pathname}${nextSearch ? `?${nextSearch}` : ''}`;
+    if (typeof window.history?.replaceState === 'function') {
+      window.history.replaceState({}, document.title, cleanUrl);
+    }
+
+    if (checkoutParam === 'success' && sessionId) {
+      this.activeView.set('BILLING');
+      this.isLoadingBilling.set(true);
+      try {
+        const verified = await this.billingPort.verifyCheckout({ sessionId });
+        this.syncSubscriptionSummary(verified.subscription);
+        this.billingBannerNotice.set(
+          verified.autoRefundedConflict
+            ? { tone: 'warning', text: this.t('billingCheckoutAutoRefundNotice') }
+            : { tone: 'success', text: this.t('billingCheckoutSuccessNotice') },
+        );
+        await this.selectBillingTab('PLANS');
+      } catch (err) {
+        this.errorMessage.set(err instanceof Error ? err.message : 'Checkout verification failed');
+      } finally {
+        this.isLoadingBilling.set(false);
+      }
+      return;
+    }
+
+    if (checkoutParam === 'cancel') {
+      this.billingBannerNotice.set({
+        tone: 'info',
+        text: this.t('billingCheckoutCanceledNotice'),
+      });
+      await this.openBilling('PLANS');
+      return;
+    }
+
+    if (portalReturn === '1') {
+      this.activeView.set('BILLING');
+      this.billingTab.set('SUBSCRIPTION');
+      this.isLoadingBilling.set(true);
+      try {
+        const detail = await this.billingPort.getSubscriptionDetail({ portalReturn: true });
+        this.subscriptionDetail.set(detail);
+        this.syncSubscriptionSummary(detail.subscription);
+        this.billingBannerNotice.set({
+          tone: 'info',
+          text: this.t('billingPortalReturnedNotice'),
+        });
+      } catch (err) {
+        this.errorMessage.set(
+          err instanceof Error ? err.message : 'Failed to synchronize Stripe portal status',
+        );
+      } finally {
+        this.isLoadingBilling.set(false);
+      }
+    }
   }
 
   private resetDisclaimerScrollState(): void {

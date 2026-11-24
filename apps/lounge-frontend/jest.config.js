@@ -30,8 +30,10 @@ module.exports = {
       },
     ],
   },
-  transformIgnorePatterns: ['node_modules/(?!.*\\.mjs$|marked)'],
+  transformIgnorePatterns: ['node_modules/(?!.*\\.mjs$|@firebase|firebase|marked)'],
   moduleNameMapper: {
     '^@rebecca/types$': '<rootDir>/../../packages/types/src/index.ts',
+    '^firebase/app$': '<rootDir>/../../node_modules/@firebase/app',
+    '^firebase/auth$': '<rootDir>/../../node_modules/@firebase/auth',
   },
 };

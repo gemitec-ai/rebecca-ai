@@ -370,6 +370,9 @@
               @case ('GALLERY') {
                 {{ facade.t('galleryTitle') }}
               }
+              @case ('BILLING') {
+                {{ facade.t('billingTitle') }}
+              }
               @case ('OPTIONS') {
                 {{ facade.t('optionsTitle') }}
               }
@@ -383,19 +386,22 @@
 
       <div class="topbar-right">
         @if (facade.accountSummary(); as summary) {
-          <div
+          <button
+            id="btn-topbar-billing"
+            type="button"
             class="turns-pill"
-            [title]="facade.t('remainingTurnsLabel')"
-            [attr.aria-label]="facade.t('remainingTurnsLabel')"
+            [class.turns-pill-warning]="facade.isPastDue()"
+            [attr.aria-label]="facade.t('topbarQuotaBtnAria')"
+            (click)="facade.openBilling('PLANS')"
           >
-            <span class="material-icons turns-pill-icon" aria-hidden="true"
-              >chat_bubble_outline</span
-            >
-            <span class="turns-pill-value">
+            <span class="material-icons turns-pill-icon" aria-hidden="true">
+              {{ facade.isPastDue() ? 'warning_amber' : 'chat_bubble_outline' }}
+            </span>
+            <span id="topbar-turns-value" class="turns-pill-value">
               {{ summary.subscription.remainingChatTurns }} /
               {{ summary.subscription.dailyTurnQuota }}
             </span>
-          </div>
+          </button>
         }
       </div>
     </header>
@@ -502,6 +508,17 @@
             <span class="nav-count-badge"
               >{{ unlockedGalleryCount() }}/{{ totalGalleryCount() }}</span
             >
+          </button>
+
+          <button
+            id="nav-btn-billing"
+            type="button"
+            class="nav-item"
+            [class.active]="facade.activeView() === 'BILLING'"
+            (click)="facade.openBilling('PLANS')"
+          >
+            <span class="material-icons nav-item-icon" aria-hidden="true">payments</span>
+            <span class="nav-item-label">{{ facade.t('navBilling') }}</span>
           </button>
 
           <button
@@ -724,10 +741,55 @@
                 }
               </div>
 
+              @if (facade.isPastDue()) {
+                <div id="chat-past-due-banner" class="past-due-banner" role="alert">
+                  <span class="material-icons" aria-hidden="true">warning_amber</span>
+                  <span class="hud-banner-text">{{ facade.t('pastDueBannerText') }}</span>
+                  <button
+                    id="btn-past-due-update-card"
+                    type="button"
+                    class="hud-banner-btn"
+                    (click)="facade.openCustomerPortal('payment_method_update')"
+                  >
+                    {{ facade.t('pastDueUpdateCardBtn') }}
+                  </button>
+                </div>
+              }
+
+              @if (facade.isLowQuotaNudge()) {
+                <div id="chat-low-quota-nudge" class="low-quota-banner" role="status">
+                  <span class="material-icons" aria-hidden="true">bolt</span>
+                  <span class="hud-banner-text">{{ facade.t('lowQuotaNudgeBanner') }}</span>
+                  <button
+                    id="btn-low-quota-view-plans"
+                    type="button"
+                    class="hud-banner-btn"
+                    (click)="facade.openBilling('PLANS')"
+                  >
+                    {{ facade.t('lowQuotaBuyBtn') }}
+                  </button>
+                </div>
+              }
+
               @if (facade.accountSummary()?.subscription?.remainingChatTurns === 0) {
-                <div class="quota-exhausted-banner" role="status">
+                <div id="chat-quota-exhausted-banner" class="quota-exhausted-banner" role="status">
                   <span class="material-icons" aria-hidden="true">info_outline</span>
-                  <span>{{ facade.t('quotaExhaustedBanner') }}</span>
+                  <div class="hud-banner-text">
+                    <span>{{ facade.t('quotaExhaustedBanner') }}</span>
+                    @if (formatResetTimestamp(facade.accountSummary()?.subscription?.nextDailyResetAt); as nextReset) {
+                      <span class="quota-countdown-text">
+                        ({{ facade.t('quotaCountdownHint') }} {{ nextReset }})
+                      </span>
+                    }
+                  </div>
+                  <button
+                    id="btn-quota-exhausted-buy"
+                    type="button"
+                    class="hud-banner-btn"
+                    (click)="facade.openBilling('PLANS')"
+                  >
+                    {{ facade.t('lowQuotaBuyBtn') }}
+                  </button>
                 </div>
               }
 
@@ -737,6 +799,7 @@
                   id="chat-composer-input"
                   class="composer-input"
                   rows="1"
+                  [attr.maxlength]="maxComposerLength"
                   [value]="facade.composerDraft()"
                   [placeholder]="facade.t('composerPlaceholder')"
                   [attr.aria-label]="facade.t('composerAria')"
@@ -747,6 +810,12 @@
                   (input)="onComposerInput($event)"
                   (keydown)="onComposerKeydown($event)"
                 ></textarea>
+
+                @if (facade.composerCharCount() >= 1200) {
+                  <span id="composer-char-counter" class="composer-char-counter" aria-live="off">
+                    {{ facade.composerCharCount() }}/{{ maxComposerLength }}
+                  </span>
+                }
 
                 <button
                   id="btn-send-message"
@@ -851,6 +920,10 @@
           </section>
         }
 
+        @case ('BILLING') {
+          <app-billing-hub />
+        }
+
         @case ('OPTIONS') {
           <section id="options-view" class="subview-container options-view">
             <header class="view-header">
@@ -907,6 +980,24 @@
                     (valueChange)="onTimezoneChange($event)"
                   />
                   <p class="option-hint">{{ facade.t('optionsTimezoneHint') }}</p>
+                </div>
+
+                <div class="options-divider" aria-hidden="true"></div>
+
+                <div class="option-group">
+                  <div class="analytics-toggle-row">
+                    <input
+                      id="chk-analytics-optin"
+                      type="checkbox"
+                      class="consent-checkbox"
+                      [checked]="facade.accountSummary()?.user?.allowServiceImprovementAnalytics ?? true"
+                      (change)="onAnalyticsOptInChange($event)"
+                    />
+                    <label for="chk-analytics-optin" class="option-label-text">
+                      {{ facade.t('optionsAnalyticsLabel') }}
+                    </label>
+                  </div>
+                  <p class="option-hint">{{ facade.t('optionsAnalyticsHint') }}</p>
                 </div>
 
                 @if (facade.optionsSavedNotice(); as savedMsg) {
@@ -994,6 +1085,20 @@
       @if (facade.deleteAccountStep() === 1) {
         <p class="delete-modal-body">{{ facade.t('deleteModalStep1Body') }}</p>
 
+        @if (facade.hasActiveOrCancelingSubscription()) {
+          <div class="delete-manage-sub-box">
+            <p class="delete-manage-sub-hint">{{ facade.t('deleteModalStep1ManageSubHint') }}</p>
+            <button
+              id="btn-delete-manage-subscription"
+              type="button"
+              class="hud-banner-btn"
+              (click)="openSubscriptionFromDeleteModal()"
+            >
+              {{ facade.t('deleteModalStep1ManageSubBtn') }}
+            </button>
+          </div>
+        }
+
         <div class="delete-modal-actions">
           <button
             #deleteCancelButton
@@ -1041,6 +1146,13 @@
             <span>{{ facade.t('deleteModalCheckNoRefund') }}</span>
           </label>
         </div>
+
+        @if (facade.deleteStripeError(); as stripeErr) {
+          <div id="delete-stripe-error-banner" class="past-due-banner" role="alert">
+            <span class="material-icons" aria-hidden="true">error_outline</span>
+            <span class="hud-banner-text">{{ stripeErr }}</span>
+          </div>
+        }
 
         <div class="delete-modal-actions">
           <button

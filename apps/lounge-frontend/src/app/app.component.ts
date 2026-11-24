@@ -17,19 +17,26 @@ import {
 } from './core/i18n/lounge-translations';
 import {
   LOUNGE_GALLERY_PAGE_SIZE,
+  MAX_LOUNGE_COMPOSER_LENGTH,
   LoungeFacadeService,
 } from './core/services/lounge-facade.service';
+import { BillingHubComponent } from './shared/components/billing-hub/billing-hub.component';
 import { LoungeDropdownComponent } from './shared/components/lounge-dropdown/lounge-dropdown.component';
 import { LoungePaginationComponent } from './shared/components/lounge-pagination/lounge-pagination.component';
 import { ReconsentModalComponent } from './shared/components/reconsent-modal/reconsent-modal.component';
 
 /**
  * Root presentation shell orchestrating Entrance (`AUTH` + `ONBOARDING` locale step) and
- * Authenticated Single-Session Lounge (`CHAT`, `GALLERY`, `OPTIONS` + Re-Consent & Withdrawal Modals).
+ * Authenticated Single-Session Lounge (`CHAT`, `GALLERY`, `BILLING`, `OPTIONS` + Re-Consent & Withdrawal Modals).
  */
 @Component({
   selector: 'app-root',
-  imports: [LoungeDropdownComponent, LoungePaginationComponent, ReconsentModalComponent],
+  imports: [
+    LoungeDropdownComponent,
+    LoungePaginationComponent,
+    ReconsentModalComponent,
+    BillingHubComponent,
+  ],
   templateUrl: './app.component.html',
   styleUrl: './app.component.css',
 })
@@ -40,6 +47,7 @@ export class AppComponent {
   public readonly languageOptions = LOUNGE_LANGUAGE_OPTIONS;
   public readonly timezoneOptions = LOUNGE_TIMEZONE_OPTIONS;
   public readonly galleryPageSize = LOUNGE_GALLERY_PAGE_SIZE;
+  public readonly maxComposerLength = MAX_LOUNGE_COMPOSER_LENGTH;
 
   public readonly selectedImageUrl = signal<string | null>(null);
   public readonly showJumpToLatest = signal<boolean>(false);
@@ -324,10 +332,50 @@ export class AppComponent {
     if (!(target instanceof HTMLTextAreaElement)) {
       return;
     }
-    this.facade.composerDraft.set(target.value);
+    const clamped = target.value.slice(0, MAX_LOUNGE_COMPOSER_LENGTH);
+    if (target.value !== clamped) {
+      target.value = clamped;
+    }
+    this.facade.composerDraft.set(clamped);
     target.style.height = 'auto';
     if (target.scrollHeight > 0) {
       target.style.height = `${Math.min(target.scrollHeight, 128)}px`;
+    }
+  }
+
+  /** Updates opt-out service analytics toggle cleanly in Options. */
+  public onAnalyticsOptInChange(event: Event): void {
+    if (event.target instanceof HTMLInputElement) {
+      void this.facade.setAnalyticsOptIn(event.target.checked);
+    }
+  }
+
+  /** Redirects users from Step 1 deletion modal to Subscription Management without erasing data. */
+  public openSubscriptionFromDeleteModal(): void {
+    this.facade.closeDeleteAccountModal();
+    void this.facade.openBilling('SUBSCRIPTION');
+  }
+
+  /** Formats the next local daily quota reset timestamp in user's selected timezone. */
+  public formatResetTimestamp(isoTimestamp: string | undefined): string {
+    if (!isoTimestamp) {
+      return '';
+    }
+    const parsed = new Date(isoTimestamp);
+    if (Number.isNaN(parsed.getTime())) {
+      return '';
+    }
+    try {
+      return new Intl.DateTimeFormat(this.facade.lang(), {
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        hourCycle: 'h23',
+        timeZone: this.facade.timezone(),
+      }).format(parsed);
+    } catch {
+      return parsed.toISOString().slice(11, 16);
     }
   }
 
