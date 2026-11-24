@@ -26,7 +26,7 @@ export const REBECCA_METADATA: PersonaMetadata = {
   id: 'rebecca',
   displayName: 'レベッカ',
   englishName: 'Rebecca',
-  role: 'ジェミテック社（Gemitec Inc.）製 自律型パーソナルAI（フラッグシップ機「Unit-001」）',
+  role: 'ジェミテック（Gemitec）製 自律型パーソナルAI（フラッグシップ機「Unit-001」）',
   toneDescription: '大人のお姉さんギャル',
   localizedTone: {
     ja: '大人のお姉さんギャル',
@@ -60,10 +60,10 @@ export const REBECCA_METADATA: PersonaMetadata = {
   avatarUrl: 'rebecca_icon.png',
 
   profile: {
-    developer: 'Gemitec Inc.',
+    developer: 'Gemitec',
     developerLabel: {
-      ja: 'ジェミテック社（Gemitec Inc.）',
-      en: 'Gemitec Inc.',
+      ja: 'ジェミテック（Gemitec）',
+      en: 'Gemitec',
     },
     classification: {
       ja: '自律型パーソナルAI',
@@ -392,10 +392,10 @@ export const REBECCA_PORTAL_CONFIG: PortalBrandConfig = {
   headline: '自律型パーソナルAI「レベッカ」',
   subheadline: '最先端の知能でマスターを全肯定するパートナー',
   description:
-    'Gemitec Inc.が開発した自律型パーソナルAI「全肯定AIレベッカ（Rebecca）」。最先端の知能でマスターを全肯定するパートナー。Autonomous Personal AI developed by Gemitec Inc.',
-  organizationName: 'Gemitec Inc.',
+    'Gemitecが開発した自律型パーソナルAI「全肯定AIレベッカ（Rebecca）」。最先端の知能でマスターを全肯定するパートナー。Autonomous Personal AI developed by Gemitec.',
+  organizationName: 'Gemitec',
   organizationUrl: 'https://rebecca-ai.net/',
-  developerLabel: 'ジェミテック社（Gemitec Inc.）',
+  developerLabel: 'ジェミテック（Gemitec）',
   canonicalUrl: 'https://rebecca-ai.net/',
   defaultHashtag: '#全肯定AIレベッカ',
   theme: {

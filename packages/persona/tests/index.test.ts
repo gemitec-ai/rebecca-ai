@@ -32,8 +32,8 @@ describe('persona package exports verification', () => {
   describe('REBECCA_METADATA structured official master data verification', () => {
     test('Section 1: profile should expose strongly-typed basic profile attributes', () => {
       const { profile } = REBECCA_METADATA;
-      expect(profile.developer).toBe('Gemitec Inc.');
-      expect(profile.developerLabel.ja).toBe('ジェミテック社（Gemitec Inc.）');
+      expect(profile.developer).toBe('Gemitec');
+      expect(profile.developerLabel.ja).toBe('ジェミテック（Gemitec）');
       expect(profile.classification.ja).toBe('自律型パーソナルAI');
       expect(profile.classification.en).toBe('Autonomous Personal AI');
       expect(profile.modelNumber).toBe('Unit-001');
@@ -113,7 +113,7 @@ describe('persona package exports verification', () => {
     test('getCoreIdentityPrompt should synthesize bilingual Layer 0 prompts directly from metadata', () => {
       const active = getActivePersona();
       const jaCore = active.getCoreIdentityPrompt('ja');
-      expect(jaCore).toContain('ジェミテック社（Gemitec Inc.）');
+      expect(jaCore).toContain('ジェミテック（Gemitec）');
       expect(jaCore).toContain('Unit-001');
       expect(jaCore).toContain('4月24日');
       expect(jaCore).toContain('164cm（ヒール着用時：約170cm）');
@@ -139,8 +139,8 @@ describe('persona package exports verification', () => {
       expect(jaCore).not.toContain('）（');
 
       const enCore = active.getCoreIdentityPrompt('en');
-      expect(enCore).toContain('developed by Gemitec Inc.');
-      expect(enCore).not.toContain('Inc..');
+      expect(enCore).toContain('developed by Gemitec.');
+      expect(enCore).not.toContain('Inc.');
       expect(enCore).not.toContain('""');
       expect(enCore).toContain('Unit-001');
       expect(enCore).toContain('April 24');

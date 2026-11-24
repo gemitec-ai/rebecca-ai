@@ -1,6 +1,7 @@
 import { defineConfig, Plugin } from 'vite';
 import { resolve } from 'path';
 import { activePortalConfig, generateThemeCssVariables } from './src/config/index.ts';
+import { formatObfuscatedSupportEmail } from './src/utils/contactEmail.ts';
 import { renderHead, HeadOptions } from './src/components/head.ts';
 import { renderHeader, PageContext } from './src/components/header.ts';
 import { renderFooter } from './src/components/footer.ts';
@@ -56,7 +57,11 @@ function portalHtmlPlugin(): Plugin {
         .replace(/{{X_URL}}/g, activePortalConfig.social.xUrl)
         .replace(/{{X_HANDLE}}/g, activePortalConfig.social.xHandle)
         .replace(/{{DEFAULT_HASHTAG}}/g, activePortalConfig.defaultHashtag)
-        .replace(/{{PIXAI_URL}}/g, activePortalConfig.social.pixaiUrl ?? '');
+        .replace(/{{PIXAI_URL}}/g, activePortalConfig.social.pixaiUrl ?? '')
+        .replace(
+          /{{SUPPORT_CONTACT_EMAIL_OBFUSCATED}}/g,
+          formatObfuscatedSupportEmail(process.env['SUPPORT_CONTACT_EMAIL']),
+        );
 
       return output;
     },

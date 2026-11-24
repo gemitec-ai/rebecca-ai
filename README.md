@@ -216,7 +216,7 @@ For detailed setup instructions, local testing environments (including the stand
 ## License
 
 - **Software Source Code**: This project's codebase and architecture are licensed under the [MIT License](LICENSE). Developers are free to fork, modify, self-host, and build commercial products using their own original characters and personas.
-- **Character IP & Brand Assets**: Character definitions, persona lore/datasets (`packages/persona/src/personas/rebecca.ts`, `packages/persona/src/data/personaPatterns.json`, `packages/persona/src/personaPatternVectors.ts`), official visual assets (`apps/portal-web/public/`, `apps/dashboard-frontend/public/`, `docs/rebecca_landscape.jpg`, `screenshots/`), brand marks ("Rebecca" / "Gemitec Inc."), and official LoRA models are **All Rights Reserved** by AKINA and excluded from the MIT License. See [CHARACTER_IP_NOTICE.md](CHARACTER_IP_NOTICE.md) and the official [Creative & Derivative Works Guidelines](https://rebecca-ai.net/guidelines) for permitted non-commercial fan creations.
+- **Character IP & Brand Assets**: Character definitions, persona lore/datasets (`packages/persona/src/personas/rebecca.ts`, `packages/persona/src/data/personaPatterns.json`, `packages/persona/src/personaPatternVectors.ts`), official visual assets (`apps/portal-web/public/`, `apps/dashboard-frontend/public/`, `docs/rebecca_landscape.jpg`, `screenshots/`), brand marks ("Rebecca" / "Gemitec"), and official LoRA models are **All Rights Reserved** by AKINA and excluded from the MIT License. See [CHARACTER_IP_NOTICE.md](CHARACTER_IP_NOTICE.md) and the official [Creative & Derivative Works Guidelines](https://rebecca-ai.net/guidelines) for permitted non-commercial fan creations.
 
 ## Author
 

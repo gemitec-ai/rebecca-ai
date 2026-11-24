@@ -18,7 +18,8 @@
         "NG_APP_API_URL",
         "NG_APP_ENV",
         "API_BASE_URL",
-        "PUBLIC_URL"
+        "PUBLIC_URL",
+        "SUPPORT_CONTACT_EMAIL"
       ]
     },
     "lint": {

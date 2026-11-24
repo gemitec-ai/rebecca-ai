@@ -1,4 +1,8 @@
-import { activePortalConfig, generateThemeCssVariables } from '../src/config';
+import {
+  activePortalConfig,
+  generateThemeCssVariables,
+} from '../src/config';
+import { formatObfuscatedSupportEmail } from '../src/utils/contactEmail';
 import { PortalBrandConfig } from '@rebecca/types';
 
 describe('Portal Brand Configuration', () => {
@@ -7,10 +11,16 @@ describe('Portal Brand Configuration', () => {
     expect(activePortalConfig.displayName).toBe('全肯定AIレベッカ');
     expect(activePortalConfig.englishName).toBe('Rebecca AI');
     expect(activePortalConfig.theme.primary).toBe('#ff2a85');
-    expect(activePortalConfig.organizationName).toBe('Gemitec Inc.');
+    expect(activePortalConfig.organizationName).toBe('Gemitec');
     expect(activePortalConfig.social.xUrl).toContain('x.com');
     expect(activePortalConfig.assets.cutoutImage).toBeTruthy();
     expect(activePortalConfig.support.enabled).toBe(true);
+  });
+
+  it('should format static obfuscated support email with safe placeholder fallback', () => {
+    expect(formatObfuscatedSupportEmail('support@example.org')).toBe('support [at mark] example.org');
+    expect(formatObfuscatedSupportEmail('')).toBe('contact [at mark] example.com');
+    expect(formatObfuscatedSupportEmail(undefined)).toBe('contact [at mark] example.com');
   });
 
   it('should generate valid CSS custom properties from brand config', () => {

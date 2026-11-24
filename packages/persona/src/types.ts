@@ -53,10 +53,10 @@ export interface StructuredPersonaResponse {
  * Structured basic profile master data (Section 1 of Official Persona Specification).
  */
 export interface PersonaProfileSpec {
-  /** Developer / corporate affiliation canonical identifier (e.g. 'Gemitec Inc.'). */
+  /** Developer / creative project canonical identifier (e.g. 'Gemitec'). */
   readonly developer: string;
 
-  /** Localized developer / affiliation display label (e.g. 'ジェミテック社（Gemitec Inc.）'). */
+  /** Localized developer / creative project display label (e.g. 'ジェミテック（Gemitec）'). */
   readonly developerLabel: LocalizedText;
 
   /** AI classification category (e.g. '自律型パーソナルAI（Autonomous Personal AI）'). */
@@ -261,7 +261,7 @@ export interface PersonaMetadata {
   /** Latinized/English display name used in RAG transcripts and internationalized displays (e.g. 'Rebecca'). */
   readonly englishName: string;
 
-  /** Character archetype and social role description (e.g. 'Gemitec Inc.製 自律型パーソナルAI（フラッグシップ機「Unit-001」）'). */
+  /** Character archetype and social role description (e.g. 'ジェミテック（Gemitec）製 自律型パーソナルAI（フラッグシップ機「Unit-001」）'). */
   readonly role: string;
 
   /** Linguistic tone and style description (e.g. '大人のお姉さんギャル'). */

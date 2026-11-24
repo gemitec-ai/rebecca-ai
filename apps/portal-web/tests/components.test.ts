@@ -7,7 +7,7 @@ describe('Portal HTML Template Components', () => {
   describe('renderHead', () => {
     it('should generate head tags with default portal title and description', () => {
       const html = renderHead(activePortalConfig);
-      expect(html).toContain('<title>全肯定AIレベッカ (Rebecca AI) - Autonomous Personal AI | Gemitec Inc.</title>');
+      expect(html).toContain('<title>全肯定AIレベッカ (Rebecca AI) - Autonomous Personal AI | Gemitec</title>');
       expect(html).toContain('name="description"');
       expect(html).not.toContain('name="robots"');
       expect(html).toContain('property="og:image"');
@@ -16,9 +16,9 @@ describe('Portal HTML Template Components', () => {
 
     it('renders robots meta tag when robots option is provided', () => {
       const html = renderHead(activePortalConfig, {
-        robots: 'noindex, nofollow, noarchive',
+        robots: 'noindex, nofollow, noarchive, noimageindex',
       });
-      expect(html).toContain('<meta name="robots" content="noindex, nofollow, noarchive">');
+      expect(html).toContain('<meta name="robots" content="noindex, nofollow, noarchive, noimageindex">');
     });
 
     it('should respect page-specific title and canonical overrides', () => {
@@ -80,8 +80,8 @@ describe('Portal HTML Template Components', () => {
       expect(html).toContain('https://pixai.art/model/2065444973255770138');
       expect(html).toContain('href="/privacy"');
       expect(html).toContain('href="/legal" rel="nofollow"');
-      expect(html).toContain('Gemitec Inc.');
-      expect(html).not.toContain('Gemitec Inc..');
+      expect(html).toContain('Gemitec');
+      expect(html).not.toContain('Gemitec Inc.');
       expect(html).toContain('All rights reserved.');
     });
 
