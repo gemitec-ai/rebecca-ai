@@ -29,8 +29,8 @@
   "author": "AKINA",
   "license": "MIT",
   "dependencies": {
-    "@rebecca/types": "*",
-    "@google-cloud/firestore": "^9.4.1"
+    "@google-cloud/firestore": "^9.4.1",
+    "@rebecca/types": "*"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
