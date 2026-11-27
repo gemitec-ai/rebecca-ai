@@ -17,10 +17,14 @@ describe('Portal Brand Configuration', () => {
     expect(activePortalConfig.support.enabled).toBe(true);
   });
 
-  it('should format static obfuscated support email with safe placeholder fallback', () => {
+  it('should format obfuscated support email without synthesizing fake fallback addresses', () => {
     expect(formatObfuscatedSupportEmail('support@example.org')).toBe('support [at mark] example.org');
-    expect(formatObfuscatedSupportEmail('')).toBe('contact [at mark] example.com');
-    expect(formatObfuscatedSupportEmail(undefined)).toBe('contact [at mark] example.com');
+    expect(formatObfuscatedSupportEmail('')).toBe('');
+    expect(formatObfuscatedSupportEmail(undefined)).toBe('');
+    expect(formatObfuscatedSupportEmail(null)).toBe('');
+    expect(() =>
+      formatObfuscatedSupportEmail('contact@example.com', { rejectPlaceholderDomains: true }),
+    ).toThrow(/Refusing synthetic placeholder SUPPORT_CONTACT_EMAIL/);
   });
 
   it('should generate valid CSS custom properties from brand config', () => {

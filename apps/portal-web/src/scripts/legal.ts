@@ -11,15 +11,18 @@ export async function loadLegalContactEmail(): Promise<void> {
     if (!res.ok) return;
 
     const data: PublicSupportPlansResponse = await res.json();
-    if (data && data.contactEmail) {
+    const formattedEmail = data && data.contactEmail ? formatObfuscatedSupportEmail(data.contactEmail) : '';
+    if (formattedEmail) {
       const emailText = document.getElementById('contact-email-text');
       const emailNote = document.getElementById('contact-email-note');
+      const emailFallback = document.getElementById('contact-email-fallback');
 
       if (emailText) {
-        emailText.textContent = formatObfuscatedSupportEmail(data.contactEmail);
+        emailText.textContent = formattedEmail;
         emailText.style.display = 'inline';
       }
       if (emailNote) emailNote.style.display = 'block';
+      if (emailFallback) emailFallback.style.display = 'none';
     }
   } catch (err) {
     console.warn('[Legal] Failed to load contact email:', err);

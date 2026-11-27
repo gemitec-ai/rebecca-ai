@@ -52,11 +52,11 @@ for (const pkg of packages) {
   if (fs.existsSync(fullPath)) {
     try {
       const data = JSON.parse(fs.readFileSync(fullPath, 'utf8'));
-      const total = data.total || {};
-      const stmts = parseFloat(total.statements?.pct || 0);
-      const branches = parseFloat(total.branches?.pct || 0);
-      const funcs = parseFloat(total.functions?.pct || 0);
-      const lines = parseFloat(total.lines?.pct || 0);
+      const total = data.total ?? {};
+      const stmts = parseFloat(String(total.statements?.pct ?? 0));
+      const branches = parseFloat(String(total.branches?.pct ?? 0));
+      const funcs = parseFloat(String(total.functions?.pct ?? 0));
+      const lines = parseFloat(String(total.lines?.pct ?? 0));
 
       const passed = stmts >= THRESHOLD && branches >= THRESHOLD && funcs >= THRESHOLD && lines >= THRESHOLD;
       if (pkg.requiredGate && !passed) {

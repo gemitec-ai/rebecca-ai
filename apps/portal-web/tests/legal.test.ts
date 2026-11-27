@@ -6,8 +6,9 @@ describe('Client Script - Legal Contact Email', () => {
   beforeEach(() => {
     document.body.innerHTML = `
       <div id="contact-email-wrapper">
-        <span id="contact-email-text" style="display:inline;">contact [at mark] example.com</span>
-        <span id="contact-email-note" style="display:block;"></span>
+        <span id="contact-email-text" style="display:none;"></span>
+        <span id="contact-email-note" style="display:none;"></span>
+        <span id="contact-email-fallback" style="display:inline;">Contact: Official X (@rebecca_ai_gal)</span>
       </div>
     `;
   });
@@ -16,7 +17,7 @@ describe('Client Script - Legal Contact Email', () => {
     global.fetch = originalFetch;
   });
 
-  it('should update pre-rendered static contact email when plans API provides contactEmail', async () => {
+  it('should reveal contact email and hide X fallback when plans API provides contactEmail', async () => {
     global.fetch = jest.fn().mockResolvedValue({
       ok: true,
       json: async () => ({
@@ -29,13 +30,15 @@ describe('Client Script - Legal Contact Email', () => {
 
     const emailText = document.getElementById('contact-email-text');
     const emailNote = document.getElementById('contact-email-note');
+    const emailFallback = document.getElementById('contact-email-fallback');
 
     expect(emailText?.textContent).toBe('support [at mark] example.org');
     expect(emailText?.style.display).toBe('inline');
     expect(emailNote?.style.display).toBe('block');
+    expect(emailFallback?.style.display).toBe('none');
   });
 
-  it('should preserve static build-time email if response is not ok', async () => {
+  it('should preserve X contact fallback when response is not ok', async () => {
     global.fetch = jest.fn().mockResolvedValue({
       ok: false,
       status: 500,
@@ -44,11 +47,13 @@ describe('Client Script - Legal Contact Email', () => {
     await loadLegalContactEmail();
 
     const emailText = document.getElementById('contact-email-text');
-    expect(emailText?.textContent).toBe('contact [at mark] example.com');
-    expect(emailText?.style.display).toBe('inline');
+    const emailFallback = document.getElementById('contact-email-fallback');
+    expect(emailText?.textContent).toBe('');
+    expect(emailText?.style.display).toBe('none');
+    expect(emailFallback?.style.display).toBe('inline');
   });
 
-  it('should preserve static build-time email if contactEmail is missing in response', async () => {
+  it('should keep email hidden when contactEmail is missing in response', async () => {
     global.fetch = jest.fn().mockResolvedValue({
       ok: true,
       json: async () => ({
@@ -60,8 +65,9 @@ describe('Client Script - Legal Contact Email', () => {
     await loadLegalContactEmail();
 
     const emailText = document.getElementById('contact-email-text');
-    expect(emailText?.textContent).toBe('contact [at mark] example.com');
-    expect(emailText?.style.display).toBe('inline');
+    const emailFallback = document.getElementById('contact-email-fallback');
+    expect(emailText?.style.display).toBe('none');
+    expect(emailFallback?.style.display).toBe('inline');
   });
 
   it('should run DOMContentLoaded trigger cleanly', () => {
@@ -81,14 +87,15 @@ describe('Client Script - Legal Contact Email', () => {
     await expect(loadLegalContactEmail()).resolves.toBeUndefined();
   });
 
-  it('should gracefully handle fetch rejection while preserving static contact', async () => {
+  it('should gracefully handle fetch rejection while preserving fallback contact channel', async () => {
     global.fetch = jest.fn().mockRejectedValue(new Error('Network error'));
     const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
 
     await loadLegalContactEmail();
 
     expect(warnSpy).toHaveBeenCalledWith('[Legal] Failed to load contact email:', expect.any(Error));
-    expect(document.getElementById('contact-email-text')?.textContent).toBe('contact [at mark] example.com');
+    expect(document.getElementById('contact-email-text')?.style.display).toBe('none');
+    expect(document.getElementById('contact-email-fallback')?.style.display).toBe('inline');
     warnSpy.mockRestore();
   });
 });

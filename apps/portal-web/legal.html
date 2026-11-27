@@ -28,8 +28,8 @@
         <span class="t-en">Act on Specified Commercial <span class="gradient-text">Transactions</span></span>
       </h1>
       <p class="page-desc">
-        <span class="t-ja">特定商取引に関する法律（特定商取引法）第11条に基づき、{{ENGLISH_NAME}} 公式サポータープログラムおよび <strong>Gemitec Private Lounge</strong>（有料プラン・都度チケット）にかかる取引条件を表示しています。</span>
-        <span class="t-en">Information published pursuant to Article 11 of Japan's Act on Specified Commercial Transactions covering the {{ENGLISH_NAME}} Official Supporter Program and <strong>Gemitec Private Lounge</strong> (paid plans and top-up tickets).</span>
+        <span class="t-ja">特定商取引に関する法律（特定商取引法）第11条に基づき、{{ENGLISH_NAME}} 公式サポータープログラムおよび <strong>{{CHARACTER_ENGLISH_NAME}} Private Lounge</strong>（有料プラン・都度チケット）にかかる取引条件を表示しています。</span>
+        <span class="t-en">Information published pursuant to Article 11 of Japan's Act on Specified Commercial Transactions covering the {{ENGLISH_NAME}} Official Supporter Program and <strong>{{CHARACTER_ENGLISH_NAME}} Private Lounge</strong> (paid plans and top-up tickets).</span>
       </p>
     </section>
 
@@ -53,8 +53,8 @@
               <span class="t-en">Representative</span>
             </th>
             <td>
-              <span class="t-ja">上記メールアドレス宛にご請求ください（請求があり次第遅滞なく電子メール等で開示します）</span>
-              <span class="t-en">Please request via the contact email address below (disclosed without delay by email upon request)</span>
+              <span class="t-ja">下記お問い合わせ窓口宛にご請求ください（請求があり次第遅滞なく電子メール等で開示します）</span>
+              <span class="t-en">Please request via the contact channel below (disclosed without delay by email upon request)</span>
             </td>
           </tr>
 
@@ -64,8 +64,8 @@
               <span class="t-en">Address</span>
             </th>
             <td>
-              <span class="t-ja">上記メールアドレス宛にご請求ください（請求があり次第遅滞なく電子メール等で開示します）</span>
-              <span class="t-en">Please request via the contact email address below (disclosed without delay by email upon request)</span>
+              <span class="t-ja">下記お問い合わせ窓口宛にご請求ください（請求があり次第遅滞なく電子メール等で開示します）</span>
+              <span class="t-en">Please request via the contact channel below (disclosed without delay by email upon request)</span>
             </td>
           </tr>
 
@@ -75,8 +75,8 @@
               <span class="t-en">Phone Number</span>
             </th>
             <td>
-              <span class="t-ja">上記メールアドレス宛にご請求ください（請求があり次第遅滞なく電子メール等で開示します）</span>
-              <span class="t-en">Please request via the contact email address below (disclosed without delay by email upon request)</span>
+              <span class="t-ja">下記お問い合わせ窓口宛にご請求ください（請求があり次第遅滞なく電子メール等で開示します）</span>
+              <span class="t-en">Please request via the contact channel below (disclosed without delay by email upon request)</span>
             </td>
           </tr>
 
@@ -87,10 +87,14 @@
             </th>
             <td>
               <span id="contact-email-wrapper">
-                <span id="contact-email-text" style="display:inline; font-family: var(--font-mono); color: #ffffff;">{{SUPPORT_CONTACT_EMAIL_OBFUSCATED}}</span>
-                <span id="contact-email-note" style="display:block; font-size: 11px; color: var(--text-muted); margin-top: 4px;">
+                <span id="contact-email-text" style="display:{{SUPPORT_EMAIL_TEXT_DISPLAY}}; font-family: var(--font-mono); color: #ffffff;">{{SUPPORT_CONTACT_EMAIL_OBFUSCATED}}</span>
+                <span id="contact-email-note" style="display:{{SUPPORT_EMAIL_NOTE_DISPLAY}}; font-size: 11px; color: var(--text-muted); margin-top: 4px;">
                   <span class="t-ja">※セキュリティ保護および自動収集プログラム（Bot）対策のため、「@」を「[at mark]」と表記しております。「@」へ置換のうえご連絡ください。</span>
                   <span class="t-en">* For security and anti-scraping protection, "@" is displayed as "[at mark]". Replace "[at mark]" with "@" when emailing.</span>
+                </span>
+                <span id="contact-email-fallback" style="display:{{SUPPORT_EMAIL_FALLBACK_DISPLAY}};">
+                  <span class="t-ja">お問い合わせ窓口（公式X {{X_HANDLE}}）</span>
+                  <span class="t-en">Contact: Official X ({{X_HANDLE}})</span>
                 </span>
               </span>
             </td>
@@ -103,7 +107,7 @@
             </th>
             <td>
               <span class="t-ja">
-                <strong>[Gemitec Private Lounge]</strong><br>
+                <strong>[{{CHARACTER_ENGLISH_NAME}} Private Lounge]</strong><br>
                 ・スタンダードプラン（月額自動更新）：¥1,400 / 月（税込・非EEA圏USD $9.50 / 月）<br>
                 ・トライアルチケット（+100回・1アカウント1回限り）：¥200（税込・USD $1.50）<br>
                 ・チャージチケット（+100回・都度買い切り）：¥500（税込・USD $3.50）<br>
@@ -112,7 +116,7 @@
                 各支援プランおよび決済画面に表示された金額（¥500 / ¥1,000 / ¥3,000 税込）
               </span>
               <span class="t-en">
-                <strong>[Gemitec Private Lounge]</strong><br>
+                <strong>[{{CHARACTER_ENGLISH_NAME}} Private Lounge]</strong><br>
                 - Standard Plan (Monthly auto-renewal): ¥1,400 / month (JPY tax incl.; Non-EEA USD $9.50 / month)<br>
                 - Trial Ticket (+100 turns, once per account): ¥200 (JPY tax incl.; USD $1.50)<br>
                 - Charge Ticket (+100 turns, one-time): ¥500 (JPY tax incl.; USD $3.50)<br>
@@ -152,7 +156,7 @@
             </th>
             <td>
               <span class="t-ja">
-                <strong>[Gemitec Private Lounge]</strong><br>
+                <strong>[{{CHARACTER_ENGLISH_NAME}} Private Lounge]</strong><br>
                 決済確定後、ただちに会話枠または月額プランがアカウントへ即時適用されます。<br>
                 ・<strong>有償都度チケット（トライアル／チャージ）有効期限</strong>：<strong>決済完了日時から180日間</strong>（資金決済法上の適用除外基準に基づき厳格管理され、追加購入等による期限延長は行われません）。<br>
                 ・<strong>毎日付与枠（無料 5回/日・スタンダード 100回/日）</strong>：翌日への繰り越しはありません。<br><br>
@@ -160,7 +164,7 @@
                 決済完了後即時（専用ページにてダウンロード提供。リンク有効期限は30分間です。期限経過・画面閉鎖後の再発行はできません）。
               </span>
               <span class="t-en">
-                <strong>[Gemitec Private Lounge]</strong><br>
+                <strong>[{{CHARACTER_ENGLISH_NAME}} Private Lounge]</strong><br>
                 Conversation turns or subscription benefits are granted immediately upon payment confirmation.<br>
                 - <strong>Paid Top-Up Tickets (Trial / Charge)</strong>: Strictly valid for <strong>180 days from payment confirmation</strong> (non-extendable across purchases under Japanese Payment Services Act rules).<br>
                 - <strong>Daily Quotas (Free 5/day, Standard 100/day)</strong>: Reset daily without rollover.<br><br>
@@ -199,7 +203,7 @@
             </th>
             <td>
               <span class="t-ja">インターネット接続、JavaScript / Cookie が有効な最新主要ブラウザ、PNG/JPEG 画像を閲覧・保存できる端末環境、および Private Lounge 利用時は X（旧Twitter）アカウント認証が必要です。</span>
-              <span class="t-en">Internet connection, modern web browser with JavaScript/Cookies enabled, device capable of viewing PNG/JPEG media, and an X (Twitter) account for Gemitec Private Lounge authentication.</span>
+              <span class="t-en">Internet connection, modern web browser with JavaScript/Cookies enabled, device capable of viewing PNG/JPEG media, and an X (Twitter) account for {{CHARACTER_ENGLISH_NAME}} Private Lounge authentication.</span>
             </td>
           </tr>
         </tbody>

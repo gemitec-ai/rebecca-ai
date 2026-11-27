@@ -30,8 +30,8 @@
       </h1>
 
       <p class="page-subtitle">
-        <span class="t-ja">自律型パーソナルAI「{{CHARACTER_ENGLISH_NAME}}（{{CHARACTER_NAME}}）」の公開X活動、サポータープログラム、および「Gemitec Private Lounge」における情報取得・利用目的・越境移転・データ保護方針です。</span>
-        <span class="t-en">Policy governing data collection, purposes of use, cross-border transfers, and retention across "{{CHARACTER_ENGLISH_NAME}}" public X interactions, Supporter Program, and "Gemitec Private Lounge".</span>
+        <span class="t-ja">自律型パーソナルAI「{{CHARACTER_ENGLISH_NAME}}（{{CHARACTER_NAME}}）」の公開X活動、サポータープログラム、および「{{CHARACTER_ENGLISH_NAME}} Private Lounge」における情報取得・利用目的・越境移転・データ保護方針です。</span>
+        <span class="t-en">Policy governing data collection, purposes of use, cross-border transfers, and retention across "{{CHARACTER_ENGLISH_NAME}}" public X interactions, Supporter Program, and "{{CHARACTER_ENGLISH_NAME}} Private Lounge".</span>
       </p>
 
       <div class="meta-bar">
@@ -68,7 +68,7 @@
         </div>
         <div class="block-ja">
           <p class="legal-body">
-            本サービス（公開Xボット、サポータープログラム、および Gemitec Private Lounge）では、提供機能に応じて以下の情報を取得・処理します。
+            本サービス（公開Xボット、サポータープログラム、および {{CHARACTER_ENGLISH_NAME}} Private Lounge）では、提供機能に応じて以下の情報を取得・処理します。
           </p>
           <ul class="legal-list">
             <li>公開Xアカウント情報（ユーザーID・ハンドル・表示名・アイコンURL・公開ポスト／リプライ履歴）</li>
@@ -80,7 +80,7 @@
         </div>
         <div class="block-en">
           <p class="legal-body">
-            Depending on the features used across the Public X Bot, Supporter Program, and Gemitec Private Lounge, we collect and process:
+            Depending on the features used across the Public X Bot, Supporter Program, and {{CHARACTER_ENGLISH_NAME}} Private Lounge, we collect and process:
           </p>
           <ul class="legal-list">
             <li>Public X account metadata (X user ID, handle, display name, avatar URL, and public posts/mentions).</li>
@@ -197,14 +197,14 @@
           <ul class="legal-list">
             <li><strong>退会時の即時完全消去</strong>：ユーザーが「退会」を実行すると、自社 Firestore 上のプロフィール、契約状態、チャットセッション、メッセージ、Private RAG・Dreaming記憶、ギャラリー記録、チケットロット、および監査台帳（通常時も180日TTL自動消去）を即時完全削除し、Stripe 上でも継続課金停止・支払手段削除・顧客オブジェクト削除（<code>customers.del</code>）を実行します。</li>
             <li><strong>最小限のシステム・不正防止記録</strong>：Webhook 冪等記録（<code>lounge_processed_events</code>）は <strong>90日TTL</strong> で自動消去します。初回ウェルカム・トライアル・チャージバック悪用防止のため、Firebase UID や注文IDを含まない鍵付き不可逆HMACハッシュのみ（<code>lounge_trial_grants</code>）を <strong>3年間</strong> 保持します。</li>
-            <li><strong>Stripe 台帳上の税法・不正防衛保全（GDPR 第17条第3項関係）</strong>：退会により今後の課金やカード情報は即時遮断されますが、税法（日本の電子帳簿保存法・GDPR Art. 17(3)(b)）に基づき保存が義務付けられる <strong>確定済み請求書（Invoice）は Stripe Redaction（個人情報マスク）の対象外</strong> として法定期間保持されます。また決済取引（Charge / PaymentIntent）は、チャージバック異議申立防御期間（GDPR Art. 6(1)(f) / Art. 17(3)(e)）である <strong>取引後 90 日経過後</strong> にマスク対象となります。</li>
+            <li><strong>Stripe 台帳上の税法・不正防衛保全（電子帳簿保存法・GDPR 第17条第3項関係）</strong>：退会により Stripe 上の Customer プロフィール・保存カード情報・継続課金は即時停止・削除（<code>customers.del</code>）されますが、確定済みの決済取引記録（Invoice、Charge、PaymentIntent 等）自体は自動では削除されず、日本の税法・電子帳簿保存法（5〜7年）に基づく法定帳簿保存およびチャージバック異議申立防御期間（取引後最低90日間・紛争解決まで）に必要な範囲で Stripe 基盤上に保全されます（確定済み Invoice は Stripe Redaction の対象外であり、法的保存義務・紛争対応期間中は決済記録のマスク削除を行いません）。</li>
           </ul>
         </div>
         <div class="block-en">
           <ul class="legal-list">
             <li><strong>Immediate Deletion Upon Withdrawal</strong>: Account withdrawal immediately wipes Private Lounge profiles, subscriptions, sessions, messages, Dreaming/RAG memories, gallery unlocks, credit lots, and quota ledger entries (normally 180-day TTL) from Firestore, and cancels Stripe subscriptions while calling <code>customers.del</code>.</li>
             <li><strong>Bounded System &amp; Anti-Fraud Records</strong>: Webhook idempotency records (<code>lounge_processed_events</code>) expire automatically after a <strong>90-day TTL</strong>. Non-PII keyed HMAC hashes (<code>lounge_trial_grants</code>, containing no UID or checkout ID) are retained for <strong>3 years</strong> strictly to prevent welcome/trial re-registration abuse and chargeback loops.</li>
-            <li><strong>Stripe Statutory Accounting &amp; Fraud Windows</strong>: Under statutory tax laws (Japanese EBPA 5–7 years, GDPR Art. 17(3)(b)), <strong>finalized Invoices remain excluded from Stripe PII Redaction</strong>. Charges and PaymentIntents become eligible for Stripe PII redaction after the <strong>90-day</strong> dispute defense window (GDPR Art. 6(1)(f) / Art. 17(3)(e)).</li>
+            <li><strong>Stripe Statutory Accounting &amp; Fraud Windows</strong>: Account withdrawal immediately removes the Stripe Customer object, saved payment methods, and future subscriptions via <code>customers.del</code>. Historical settlement records (<code>Invoice</code>, <code>Charge</code>, <code>PaymentIntent</code>) remain retained on Stripe's platform as required for the <strong>90-day</strong> chargeback defense window and statutory tax/accounting retention laws (5–7 years under Japanese tax law / EBPA; GDPR Art. 6(1)(f), Art. 17(3)(b)/(e); finalized Invoices are permanently excluded from Stripe PII Redaction, and transaction records are not redacted while dispute or statutory tax obligations apply).</li>
           </ul>
         </div>
       </section>

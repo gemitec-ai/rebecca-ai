@@ -1,30 +1,55 @@
 /**
  * @file serve-frontend.js
- * @description Lightweight Local Static Asset Web Server & API Reverse Proxy for E2E / Development.
+ * @description Parameterized Local Static Asset Web Server & Raw-Byte API Reverse Proxy for E2E / Dev.
  *
- * Architecture Role:
- *   In production, Firebase Hosting serves static Angular SPA bundles from Global CDN edge caches
- *   and automatically rewrites `/api/**` routes directly to the Cloud Run Dashboard BFF container.
- *   In local development and Playwright E2E test environments, this server simulates the Firebase
- *   Hosting reverse-proxy layer by:
- *     1. Serving compiled Angular 18 assets (`apps/dashboard-frontend/dist/dashboard-frontend/browser`)
- *        with proper MIME types and path traversal protections.
- *     2. Routing single-page application (SPA) client-side routes fallback to `index.html`.
- *     3. Transparently proxying all `/api/*` HTTP requests to the local Express BFF server (port 8081).
+ * Serves a compiled Angular SPA bundle (`FRONTEND_DIST_DIR`) on `http://127.0.0.1:<FRONTEND_PORT>`,
+ * forwards `/api/*` and `/health` requests transparently (preserving raw streams for Stripe webhook HMAC
+ * verification) to the Express BFF server on `127.0.0.1:<BFF_PORT>`, and optionally serves deterministic
+ * `/e2e-assets/*` fixtures from `E2E_ASSETS_DIR`.
  *
- * Usage:
- *   node scripts/serve-frontend.js
- *   (Listens on http://127.0.0.1:4200, forwards /api/* to http://127.0.0.1:8081)
+ * Environment Variables:
+ *   FRONTEND_PORT     - Listening port (default: 4200)
+ *   BFF_PORT          - Target Express BFF port (default: 8081)
+ *   FRONTEND_DIST_DIR - Path to built SPA directory, absolute or relative to `scripts/`
+ *                       (default: `../apps/dashboard-frontend/dist/dashboard-frontend/browser`)
+ *   E2E_ASSETS_DIR    - Optional static fixture directory (default: `../apps/dashboard-e2e/test-assets`)
+ *   SERVER_LABEL      - Log label prefix (default: `Dashboard`)
  */
 
-const http = require('http');
-const fs = require('fs');
-const path = require('path');
+const fs = require('node:fs');
+const http = require('node:http');
+const path = require('node:path');
 
-const PORT = 4200;
-const BFF_PORT = 8081;
-const DIST_DIR = path.resolve(__dirname, '../apps/dashboard-frontend/dist/dashboard-frontend/browser');
-const E2E_ASSETS_DIR = path.resolve(__dirname, '../apps/dashboard-e2e/test-assets');
+function resolvePositivePort(rawValue, fallback) {
+  const parsed = Number.parseInt(String(rawValue ?? '').trim(), 10);
+  if (!Number.isInteger(parsed) || parsed < 1 || parsed > 65535) {
+    return fallback;
+  }
+  return parsed;
+}
+
+function resolveConfiguredDir(rawValue, defaultRelative) {
+  const candidate = String(rawValue ?? '').trim();
+  if (!candidate) {
+    return path.resolve(__dirname, defaultRelative);
+  }
+  return path.isAbsolute(candidate) ? path.resolve(candidate) : path.resolve(__dirname, candidate);
+}
+
+const PORT = resolvePositivePort(process.env.FRONTEND_PORT, 4200);
+const BFF_PORT = resolvePositivePort(process.env.BFF_PORT, 8081);
+const DIST_DIR = resolveConfiguredDir(
+  process.env.FRONTEND_DIST_DIR,
+  '../apps/dashboard-frontend/dist/dashboard-frontend/browser',
+);
+const E2E_ASSETS_DIR = resolveConfiguredDir(
+  process.env.E2E_ASSETS_DIR,
+  '../apps/dashboard-e2e/test-assets',
+);
+const SERVER_LABEL = (String(process.env.SERVER_LABEL ?? 'Dashboard').trim() || 'Dashboard').replace(
+  /[\r\n]/g,
+  '',
+);
 
 const MIME_TYPES = {
   '.html': 'text/html; charset=utf-8',
@@ -33,16 +58,21 @@ const MIME_TYPES = {
   '.json': 'application/json; charset=utf-8',
   '.png': 'image/png',
   '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.webp': 'image/webp',
   '.svg': 'image/svg+xml',
   '.ico': 'image/x-icon',
+  '.woff2': 'font/woff2',
 };
 
 /**
- * Safely resolves and serves a static file from `baseDir` without TOCTOU races.
- * Returns 'served', 'forbidden', or 'missing'.
+ * Safely reads and serves a static file directly via `fs.readFileSync` inside `try/catch`
+ * (avoiding pre-check TOCTOU races) with strict path-traversal containment.
+ * Returns `'served'`, `'forbidden'`, or `'missing'`.
  */
 function tryServeStaticFile(baseDir, rawRelativeUrl, res) {
-  const safeRelativePath = path.normalize(rawRelativeUrl).replace(/^(\.\.[\/\\])+/, '');
+  const trimmedRel = String(rawRelativeUrl ?? '').replace(/^[/\\]+/, '');
+  const safeRelativePath = path.normalize(trimmedRel).replace(/^(\.\.[/\\])+/, '');
   const filePath = path.resolve(baseDir, '.' + path.sep + safeRelativePath);
 
   if (filePath !== baseDir && !filePath.startsWith(baseDir + path.sep)) {
@@ -53,40 +83,45 @@ function tryServeStaticFile(baseDir, rawRelativeUrl, res) {
 
   try {
     const content = fs.readFileSync(filePath);
-    const ext = path.extname(filePath);
+    const ext = path.extname(filePath).toLowerCase();
     res.writeHead(200, {
-      'Content-Type': MIME_TYPES[ext] || 'application/octet-stream',
-      'Content-Length': content.length
+      'Content-Type': MIME_TYPES[ext] ?? 'application/octet-stream',
+      'Content-Length': content.length,
     });
     res.end(content);
     return 'served';
-  } catch (_err) {
+  } catch {
     return 'missing';
   }
 }
 
 const server = http.createServer((req, res) => {
-  // 1. Reverse Proxy: forward /api/* requests to BFF backend running on port 8081
-  if ((req.url || '').startsWith('/api/')) {
+  const reqUrl = req.url ?? '/';
+
+  // 1. Reverse Proxy: forward /api/* and /health requests verbatim to Express BFF
+  if (reqUrl.startsWith('/api/') || reqUrl === '/health') {
     const proxyReq = http.request(
       {
         host: '127.0.0.1',
         port: BFF_PORT,
-        path: req.url,
+        path: reqUrl,
         method: req.method,
         headers: { ...req.headers, host: `127.0.0.1:${BFF_PORT}` },
       },
       (proxyRes) => {
-        res.writeHead(proxyRes.statusCode || 200, proxyRes.headers);
-        proxyRes.on('data', (chunk) => res.write(chunk));
-        proxyRes.on('end', () => res.end());
-      }
+        res.writeHead(proxyRes.statusCode ?? 502, proxyRes.headers);
+        proxyRes.pipe(res);
+      },
     );
     proxyReq.on('error', (err) => {
-      const safeMsg = String(err?.message || '').replace(/[\r\n]/g, '');
-      console.error('[Proxy Error] %s', safeMsg);
-      res.writeHead(502, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ error: 'Bad Gateway: Dashboard BFF unreachable' }));
+      const safeMsg = String(err && err.message ? err.message : err).replace(/[\r\n]/g, '');
+      console.error('[%s Proxy Error] %s', SERVER_LABEL, safeMsg);
+      if (!res.headersSent) {
+        res.writeHead(502, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: `Bad Gateway: ${SERVER_LABEL} BFF unreachable` }));
+      } else {
+        res.destroy();
+      }
     });
     if (req.method === 'GET' || req.method === 'HEAD') {
       proxyReq.end();
@@ -96,11 +131,11 @@ const server = http.createServer((req, res) => {
     return;
   }
 
-  const rawUrl = (req.url || '/').split('?')[0];
+  const rawPath = reqUrl.split('?')[0];
 
-  // 2. Serve deterministic E2E fixture assets (no external network dependencies in tests)
-  if (rawUrl.startsWith('/e2e-assets/')) {
-    const e2eResult = tryServeStaticFile(E2E_ASSETS_DIR, rawUrl.slice('/e2e-assets/'.length), res);
+  // 2. Serve optional E2E fixture assets when present without external network calls
+  if (rawPath.startsWith('/e2e-assets/')) {
+    const e2eResult = tryServeStaticFile(E2E_ASSETS_DIR, rawPath.slice('/e2e-assets/'.length), res);
     if (e2eResult === 'missing') {
       res.writeHead(404);
       res.end('Not found');
@@ -108,27 +143,29 @@ const server = http.createServer((req, res) => {
     return;
   }
 
-  // 3. Static File Resolution: resolve safe path within DIST_DIR
-  const distResult = tryServeStaticFile(DIST_DIR, rawUrl, res);
+  // 3. Static File Resolution within DIST_DIR
+  const distResult = tryServeStaticFile(DIST_DIR, rawPath, res);
   if (distResult === 'served' || distResult === 'forbidden') {
     return;
   }
 
-  // 4. SPA Fallback: return index.html for Angular client-side router navigation
+  // 4. SPA Fallback: return index.html for Angular client-side navigation
   const indexPath = path.join(DIST_DIR, 'index.html');
   try {
     const content = fs.readFileSync(indexPath);
     res.writeHead(200, {
       'Content-Type': 'text/html; charset=utf-8',
-      'Content-Length': content.length
+      'Content-Length': content.length,
     });
-    return res.end(content);
-  } catch (_err) {
+    res.end(content);
+  } catch {
     res.writeHead(404);
     res.end('Not found');
   }
 });
 
 server.listen(PORT, '127.0.0.1', () => {
-  console.log(`[SPA Server] Running on http://127.0.0.1:${PORT} (Proxying /api/ -> 127.0.0.1:${BFF_PORT})`);
+  console.log(
+    `[${SERVER_LABEL} SPA Server] Running on http://127.0.0.1:${PORT} (Proxying /api/ -> 127.0.0.1:${BFF_PORT})`,
+  );
 });

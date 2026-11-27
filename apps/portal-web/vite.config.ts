@@ -46,6 +46,11 @@ function portalHtmlPlugin(): Plugin {
         return renderFooter(activePortalConfig, dock === 'true');
       });
 
+      const staticSupportEmail = formatObfuscatedSupportEmail(
+        process.env['SUPPORT_CONTACT_EMAIL'],
+        { rejectPlaceholderDomains: process.env['NODE_ENV'] === 'production' },
+      );
+
       // Token replacements
       output = output
         .replace(/{{CHARACTER_NAME}}/g, activePortalConfig.characterName)
@@ -58,9 +63,18 @@ function portalHtmlPlugin(): Plugin {
         .replace(/{{X_HANDLE}}/g, activePortalConfig.social.xHandle)
         .replace(/{{DEFAULT_HASHTAG}}/g, activePortalConfig.defaultHashtag)
         .replace(/{{PIXAI_URL}}/g, activePortalConfig.social.pixaiUrl ?? '')
+        .replace(/{{SUPPORT_CONTACT_EMAIL_OBFUSCATED}}/g, staticSupportEmail)
         .replace(
-          /{{SUPPORT_CONTACT_EMAIL_OBFUSCATED}}/g,
-          formatObfuscatedSupportEmail(process.env['SUPPORT_CONTACT_EMAIL']),
+          /{{SUPPORT_EMAIL_TEXT_DISPLAY}}/g,
+          staticSupportEmail ? 'inline' : 'none',
+        )
+        .replace(
+          /{{SUPPORT_EMAIL_NOTE_DISPLAY}}/g,
+          staticSupportEmail ? 'block' : 'none',
+        )
+        .replace(
+          /{{SUPPORT_EMAIL_FALLBACK_DISPLAY}}/g,
+          staticSupportEmail ? 'none' : 'inline',
         );
 
       return output;
