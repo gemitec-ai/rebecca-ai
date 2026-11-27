@@ -614,7 +614,7 @@ Synthesized by `@rebecca/memory` (`DreamingConsolidationEngine`) and orchestrate
 
 ### 4.18 Isolated Private Lounge Collections (`lounge_*`)
 
-The **Gemitec Private Lounge** enforces a strict **1 X account = 1 Private Lounge account = 1 continuous conversation session** architecture inside ten dedicated collections completely isolated from the Public X Bot (`users`, `conversation_logs`, `rag_memories`, `processed_events`, `system/persona`, `timeline_history`) and Admin Dashboard (`admin_users`), guarded in application repositories via `createUserScopedLoungeDb(collections, uid)` and `assertLoungeRecordOwnedByUid`:
+The **Rebecca Private Lounge** enforces a strict **1 X account = 1 Private Lounge account = 1 continuous conversation session** architecture inside ten dedicated collections completely isolated from the Public X Bot (`users`, `conversation_logs`, `rag_memories`, `processed_events`, `system/persona`, `timeline_history`) and Admin Dashboard (`admin_users`), guarded in application repositories via `createUserScopedLoungeDb(collections, uid)` and `assertLoungeRecordOwnedByUid`:
 
 - **Two-Layer Cognitive Memory Architecture**:
   - *Independent Private Lounge Memory (`lounge_*`)*: Stores per-user Dreaming structured profiles (`lounge_users.coreProfile`), sliding episodic turns (`lounge_users.episodicBuffer`), vectorized episodic semantic memories (`lounge_rag_memories.embedding`), and raw turns (`lounge_messages`) completely separate from Public X.
@@ -644,8 +644,6 @@ Document ID = Firebase Auth `uid`. Unique index invariant: `xUserId` is 1:1 (dup
 | `coreProfile` | `UserCoreProfile \| undefined` | Structured user profile consolidated independently via Private Lounge Dreaming (server-only). |
 | `episodicBuffer` | `ConversationLogEntry[] \| undefined` | Recent private raw turn sliding buffer for Dreaming consolidation (server-only). |
 | `lastDreamedAt` | `Timestamp \| undefined` | Last completed Private Lounge Dreaming consolidation timestamp (server-only). |
-| `dailySearchCount` | `number \| undefined` | Server-only counter tracking daily Gemini 3 `search_web` invocations. |
-| `dailySearchResetDate` | `string \| undefined` | Local `YYYY-MM-DD` key anchoring `dailySearchCount` in the user's configured timezone. |
 | `createdAt` | `Timestamp` (ISO 8601) | Account registration timestamp. |
 | `updatedAt` | `Timestamp` (ISO 8601) | Last profile update timestamp. |
 | `lastLoginAt` | `Timestamp` (ISO 8601) | Most recent authenticated login timestamp. |
@@ -695,7 +693,7 @@ Document ID = Firebase Auth `uid` (each user owns one continuous conversation se
 | `archivedAt` | `Timestamp \| undefined` | Optional soft-archive timestamp. |
 
 #### `lounge_messages` (`COLLECTIONS.LOUNGE_MESSAGES`)
-Document ID = Message UUID. Composite indexes: `sessionId ASC, createdAt ASC` and `sessionId ASC, createdAt DESC`.
+Document ID = Message UUID. Composite index: `uid ASC, createdAt DESC`.
 
 | Field Name | Type | Description |
 | :--- | :--- | :--- |
@@ -720,7 +718,7 @@ Document ID = Memory UUID. Composite index: `uid ASC, updatedAt DESC`; Vector in
 | `sessionId` | `string` | Source Private Lounge session ID. |
 | `category` | `'EPISODE' \| 'PREFERENCE' \| 'PROMISE' \| 'NICKNAME'` | Private memory taxonomy category. |
 | `summary` | `string` | Consolidated private memory summary (never exported to Public X). |
-| `embedding` | `number[]` (Vector 768) | Dense vector embedding for semantic cosine similarity search. |
+| `embedding` | `VectorValue` (`number[]`, Vector 768) | Dense vector embedding (`FieldValue.vector`) for semantic cosine similarity search. |
 | `salienceScore` | `number` | Retrieval importance weight (`0.0 - 1.0`). |
 | `createdAt` | `Timestamp` (ISO 8601) | Creation timestamp. |
 | `updatedAt` | `Timestamp` (ISO 8601) | Last salience/summary update timestamp. |
@@ -751,7 +749,7 @@ Document ID = External Event ID / Stripe Webhook Event ID. Isolated idempotency 
 | `expireAt` | `Timestamp \| undefined` | Optional 90-day Firestore TTL automatic cleanup timestamp. |
 
 #### `lounge_credit_lots` (`COLLECTIONS.LOUNGE_CREDIT_LOTS`)
-Document ID = Stripe Checkout Session ID (`cs_...`) or `welcome_{uid}`. FIFO credit buckets consumed only after `dailyRemainingTurns` reaches zero. Composite indexes: `(uid ASC, status ASC, expiresAt ASC)` and `(uid ASC, stripePaymentIntentId ASC)`.
+Document ID = Stripe Checkout Session ID (`cs_...`) or `welcome_{uid}`. FIFO credit buckets consumed only after `dailyRemainingTurns` reaches zero. Composite indexes: `(uid ASC, status ASC, expiresAt ASC)` and `(uid ASC, stripePaymentIntentId ASC)`, plus single-field index on `stripePaymentIntentId`.
 
 | Field Name | Type | Description |
 | :--- | :--- | :--- |
@@ -811,18 +809,18 @@ Document ID = `HMAC-SHA256(secret[keyVersion], xUserId)`. Non-PII anti-fraud reg
    - `support_transactions`: `status` ASC + `createdAt` DESC (enables filtering transactions by status).
    - `support_transactions`: `tier` ASC + `createdAt` DESC (enables filtering transactions by reward tier).
    - `lounge_sessions`: `uid` ASC + `updatedAt` DESC (enables paginated owner session listings).
-   - `lounge_messages`: `sessionId` ASC + `createdAt` ASC (enables paginated chronological chat retrieval).
-   - `lounge_messages`: `sessionId` ASC + `createdAt` DESC (enables latest-turn context window fetches).
+   - `lounge_messages`: `uid` ASC + `createdAt` DESC (enables owner-scoped paginated chat & working-memory retrieval).
    - `lounge_rag_memories`: `uid` ASC + `updatedAt` DESC (enables ordered private RAG memory lookup).
    - `lounge_gallery`: `uid` ASC + `unlocked` DESC (enables unlocked-first paginated illustration gallery).
    - `lounge_credit_lots`: `uid` ASC + `status` ASC + `expiresAt` ASC (enables FIFO active credit lot deduction and lazy expiry scans).
-   - `lounge_credit_lots`: `uid` ASC + `stripePaymentIntentId` ASC (enables scoped order-to-lot joins without unscoped queries).
+   - `lounge_credit_lots`: `uid` ASC + `stripePaymentIntentId` ASC (enables scoped order-to-lot joins without unscoped queries) and single-field `stripePaymentIntentId` (enables charge/dispute lookup by PaymentIntent).
    - `lounge_quota_ledger`: `uid` ASC + `createdAt` DESC (enables ordered audit history per user).
 3. **TTL Policies**:
    - `conversation_logs.expireAt`: Enabled (5-year automatic expiration).
    - `timeline_history.expireAt`: Enabled (5-year automatic expiration).
    - `lounge_quota_ledger.expireAt`: Enabled (180-day automatic expiration).
    - `lounge_processed_events.expireAt`: Enabled (90-day automatic expiration).
+   - `lounge_trial_grants.retainUntil`: Enabled (3-year automatic expiration for non-PII HMAC anti-abuse grants).
 
 ---
 

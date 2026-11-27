@@ -1,5 +1,6 @@
 import * as crypto from 'node:crypto';
 import { expect, test } from '@playwright/test';
+import { completeSignUpAndOnboarding } from './lounge-e2e-helper';
 
 const WEBHOOK_SECRET = 'whsec_e2e_test_secret';
 
@@ -39,18 +40,7 @@ test.describe('Private Lounge CUJ 03: Signed Stripe Webhooks & Dispute Isolation
   }) => {
     test.setTimeout(120000);
     const uniqueXId = `e2e_hook_${Date.now()}`;
-
-    await page.goto(`/?emuXUser=${uniqueXId}`);
-    await page.locator('#btn-switch-to-signup').click();
-    await page.locator('#disclaimer-scroll-box').evaluate((el) => {
-      el.scrollTop = el.scrollHeight;
-      el.dispatchEvent(new Event('scroll'));
-    });
-    await page.locator('#checkbox-disclaimer-consent').check();
-    await page.locator('#btn-x-signup').click();
-    await expect(page.locator('#onboarding-preferences-card')).toBeVisible({ timeout: 20000 });
-    await page.locator('#btn-start-lounge').click();
-    await expect(page.locator('#topbar-turns-value')).toHaveText(/25\s*\/\s*5/, { timeout: 15000 });
+    await completeSignUpAndOnboarding(page, uniqueXId);
 
     // Purchase Charge Ticket (+100) and subscribe to Standard Monthly (+100 daily)
     await page.locator('#btn-topbar-billing').click();
@@ -114,7 +104,9 @@ test.describe('Private Lounge CUJ 03: Signed Stripe Webhooks & Dispute Isolation
       cancel_at_period_end: true,
     });
     await page.locator('#billing-tab-subscription').click();
-    await expect(page.locator('#sub-status-value')).toHaveText('CANCELING', { timeout: 15000 });
+    await expect(page.locator('#sub-status-value')).toHaveAttribute('data-status', 'CANCELING', {
+      timeout: 15000,
+    });
     await expect(page.locator('#billing-canceling-notice')).toBeVisible();
 
     // 2. invoice.payment_failed -> PAST_DUE banner & daily quota drops to 5
@@ -144,7 +136,6 @@ test.describe('Private Lounge CUJ 03: Signed Stripe Webhooks & Dispute Isolation
       charge: 'ch_disp_1',
     });
     await page.reload();
-    // Suspended user is rejected from session restore and returns cleanly to Auth view
     await expect(page.locator('#btn-x-login')).toBeVisible({ timeout: 15000 });
 
     const grantDocs = await queryEmulatorCollection('lounge_trial_grants');

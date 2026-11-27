@@ -9,9 +9,10 @@ This file defines repository-wide invariants for AI coding agents and contributo
   - `apps/bot-backend`: Autonomous AI engine, webhook/worker pipelines, RAG memory consolidation, external integrations (**Google Gemini API**, **X API** via `@xdevplatform/xdk`, **Stripe** checkout/webhooks, Cloud Tasks/Storage).
   - `apps/dashboard-backend`: Express 5 Backend-for-Frontend (BFF) REST API secured by Firebase Auth, Helmet, CORS allowlisting, and rate limiting.
   - `apps/dashboard-frontend`: Angular 22 Zoneless administration SPA (**Hexagonal ports/adapters**, **Atomic Design** UI hierarchy, Signals).
-  - `apps/lounge-backend`: Isolated Private Lounge Express 5 BFF skeleton (`lounge_*` collections, read-only Public X memory port).
-  - `apps/lounge-frontend`: Gemitec Private Lounge Angular 22 Zoneless SPA skeleton (scroll-gated X sign-up + onboarding, singleton chat HUD, slide-over sidebar, visual Bot artwork gallery, 8-language/timezone options & multi-step withdrawal).
-  - `apps/dashboard-e2e`: Playwright end-to-end test suite against local emulators and services.
+  - `apps/lounge-backend`: Isolated Rebecca Private Lounge Express 5 BFF (`lounge_*` collections, read-only Public X memory port, ReAct web search & structured LLM emotion classification, Stripe SAQ-A billing, Phase 1 EEA geo-blocking).
+  - `apps/lounge-frontend`: Rebecca Private Lounge Angular 22 Zoneless SPA (scroll-gated X sign-up + onboarding, singleton chat HUD, slide-over sidebar, artwork gallery, 3-tab Billing Hub, pre-checkout disclosure dialog, 8-language/timezone options & multi-step withdrawal).
+  - `apps/dashboard-e2e`: Playwright end-to-end test suite for Dashboard against local emulators and services.
+  - `apps/lounge-e2e`: Playwright end-to-end test suite for Rebecca Private Lounge against local emulators and services.
   - `apps/functions`: Firebase Cloud Functions (Gen 2) asynchronous event and auth-blocking triggers.
   - `packages/types` (`@rebecca/types`), `packages/db` (`@rebecca/db`), `packages/logger` (`@rebecca/logger`), `packages/persona` (`@rebecca/persona`), `packages/memory` (`@rebecca/memory`), `packages/prompt` (`@rebecca/prompt`), `packages/tools` (`@rebecca/tools`).
 - **Unidirectional Dependency Law**:

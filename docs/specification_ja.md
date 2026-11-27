@@ -371,31 +371,31 @@ Cloud Functions用 Eventarc イベント重複実行防止ログ。
    - ワンクリックでキャンペーンの一時停止（Pause）と再開（Resume）を実行可能。
    - 過去の好評だったキャンペーンを翌年以降の日程にスライド複製（Clone）し、スロット実行状態を自動リセットして再利用可能。
 
-## 8. Gemitec Private Lounge ＆ Stripe課金アーキテクチャ
+## 8. Rebecca Private Lounge ＆ Stripe課金アーキテクチャ
 
-管理ダッシュボードおよび公開X投稿パイプラインから物理的に分離された 1対1 会員制ラウンジ仕様（`apps/lounge-backend`: ポート `8083`、`apps/lounge-frontend`: ポート `4300`）。
+管理ダッシュボードおよび公開X投稿パイプラインから物理的に分離された 1対1 会員制ラウンジ仕様（`apps/lounge-backend`: ポート `8083`、`apps/lounge-frontend`: ポート `4300`、E2E検証: `apps/lounge-e2e`）。
 
 ### 8.1 データ分離と 10コレクション構成
 Private Lounge の永続化データはすべて専用の `lounge_*` 10コレクションに隔離する：
 - `lounge_users`, `lounge_sessions`, `lounge_messages`, `lounge_rag_memories`, `lounge_gallery`
-- `lounge_subscriptions`, `lounge_credit_lots`, `lounge_quota_ledger`（TTL 180日）, `lounge_processed_events`（TTL 90日）, `lounge_trial_grants`（非PII HMAC 3年保持）
+- `lounge_subscriptions`, `lounge_credit_lots`, `lounge_quota_ledger`（TTL 180日）, `lounge_processed_events`（TTL 90日）, `lounge_trial_grants`（非PII HMAC `retainUntil` 3年保持）
 
 ### 8.2 ハイブリッド残回数エンジン ＆ 不正対策不変条件
 1. **日次繰り越しなし基本枠**: `FREE` は 1日 `5` 回、`STANDARD` サブスクリプション有効中は 1日 `100` 回。日次リセット不正（タイムゾーン連続変更）を防ぐため、ユーザーのタイムゾーン変更時のみ 24時間クールダウン（クランプ）を適用する。
 2. **180日有効 FIFO チャージロット**: 初回特典 `WELCOME_BONUS_20`（20回）および購入ロットは資金決済法の自家型前払式支払手段の届出要件に抵触しないよう有効期限 `180` 日（`LOUNGE_CREDIT_LOT_VALIDITY_DAYS`）を設定。日次枠を消費し切った後に、有効期限が最も近いロットから FIFO 順で消費する。
-3. **非PII HMAC による再登録対策**: `lounge_trial_grants` には X ユーザー ID のバージョン付き HMAC-SHA256 ハッシュのみを `3` 年間保存し、PII を保持せずに退会・再登録時の `WELCOME_BONUS_20`・`TRIAL_TICKET_100` 二重取得およびチャージバック履歴者の不正利用を遮断する。
+3. **非PII HMAC による再登録対策**: `lounge_trial_grants` には X ユーザー ID のバージョン付き HMAC-SHA256 ハッシュのみを 3年間（`retainUntil`）保存し、PII を保持せずに退会・再登録時の `WELCOME_BONUS_20`・`TRIAL_TICKET_100` 二重取得およびチャージバック履歴者の不正利用を遮断する。
 
-### 8.3 Stripe SAQ-A 課金・Geo通貨固定・Webhook 仕様
+### 8.3 Stripe SAQ-A 課金・Geo通貨固定・Phase 1 地域制限・Webhook 仕様
 - **カード情報非保持（SAQ-A）**: 決済およびサブスクリプション解約・カード変更は Stripe Checkout / Stripe Customer Portal へ完全委譲する（リダイレクト先は `isAllowedStripeRedirectUrl` で検証し、`NODE_ENV !== 'production'` 環境では本番キー `sk_live_` / `rk_live_` / `pk_live_` で起動時フェイルファスト）。
-- **サーバー側Geo通貨固定**: CDN/LB の Geo-IP ヘッダ（`x-client-country` / `cf-ipcountry`）から日本居住は `JPY`、その他は `USD` として初回購入時に通貨ロック。EEA/UK/CH 居住者は `LOUNGE_PHASE2_EEA_ENABLED=true` まで購入不可（`GEO_BLOCKED` HTTP `403`）。
+- **サーバー側Geo通貨固定と Phase 1 EEA 制限**: CDN/LB の Geo-IP ヘッダ（`x-client-country` -> `cf-ipcountry` -> `x-appengine-country`）から日本居住は `JPY`、その他は `USD` として初回購入時に通貨ロックする。ローカルエミュレータ以外（`ALLOW_GEO_FALLBACK_COUNTRY !== 'true'`）で Geo ヘッダ欠落時は `403 GEO_UNAVAILABLE` でフェイルクローズする。EEA/UK/CH 居住者は `LOUNGE_PHASE2_EEA_ENABLED=true` まで `signup` / `login` / `sendMessage` / `createCheckout` すべてで `GEO_BLOCKED`（HTTP `403`）を返し、同意UIでも第4チェックボックス（`agreedToNonEeaEligibility`）を必須化する。
 - **商品カタログ**:
   - `TRIAL_TICKET_100`: `¥200`（税込）/ `$1.50` — 100回分（有効期限 180日、1 Xアカウント 1回限り）
   - `CHARGE_TICKET_100`: `¥500`（税込）/ `$3.50` — 100回分（有効期限 180日、プロモーションコード可）
   - `STANDARD_MONTHLY`: `¥1,400`（税込）/ `$9.50` — 月額サブスクリプション（毎日 100回）
-- **Webhook ＆ 購入前確認**: `/api/v1/lounge/webhooks/stripe` は生リクエストボディに対して `stripe-signature` を検証する。フロントエンドはネイティブ `<dialog>` による `PreCheckoutModalComponent` にて `/tos.html`・`/privacy.html`・`/tokushoho.html` の事前確認を必須化する。
+- **Webhook ＆ 購入前確認**: `/api/v1/lounge/webhooks/stripe` は生リクエストボディに対して `stripe-signature` を検証する。フロントエンドはネイティブ `<dialog>` による `PreCheckoutModalComponent` にて `/api/v1/lounge/config` が返す動的 `legalUrls`（`/tos`・`/privacy`・`/legal`）の事前確認を必須化する。
 
-### 8.4 Gemini 3 Flash-Lite・検索グラウンディング・ドリーミング・退会処理
-- 応答生成には `gemini-3.1-flash-lite`（出力上限 `450` トークン、入力 `1500` 文字制限、Google検索グラウンディング日次上限 `FREE: 2` 回 / `PAID_OR_STANDARD: 3` 回）、RAG 検索には `gemini-embedding-2` を使用。
+### 8.4 Gemini 3 Flash-Lite・自律ツール呼び出し・ドリーミング・退会処理
+- 応答生成には `gemini-3.1-flash-lite`（出力上限 `450` トークン、入力 `1500` 文字制限）を使用し、`@rebecca/tools`（`runToolDialogueLoop`）による自律的な ReAct Web検索呼び出し（日次上限 `FREE: 2` 回 / `PAID_OR_STANDARD: 3` 回）、応答後 LLM JSON 感情分類、`gemini-embedding-2` プライベート RAG 検索、および 3段階 LLM 画像マッチング（推論→ベクトル検索→判定）を実行する。決定論的合成テキスト（`LocalEmulatorLoungeAiAdapter`）は `isLocalEmulatorMode` のみに制限する。
 - グローバル日次サーキットブレーカーは既定で `LOUNGE_GLOBAL_DAILY_SIGNUP_CAP=2000`、`LOUNGE_GLOBAL_DAILY_TURN_CAP=50000`。
 - コンテクスト圧縮（ドリーミング）は対話中の世界観維持のため非同期の夜間バッチ（`/api/v1/lounge/batch`）で実行する。
-- 2段階退会ではローカルデータ消去前に Stripe サブスク解約・Customer 削除を実行し、Stripe 側削除失敗時は `502 STRIPE_CANCELLATION_FAILED` を返却してローカルデータの不整合削除を防止する。
+- 2段階退会ではローカルデータ消去前に Stripe サブスク解約・Customer 削除および Firebase Auth ユーザー削除を実行し、Stripe 側削除失敗時は `502 STRIPE_CANCELLATION_FAILED` を返却してローカルデータの不整合削除を防止する。
