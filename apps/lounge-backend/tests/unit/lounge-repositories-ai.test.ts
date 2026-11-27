@@ -17,7 +17,7 @@ import { LoungeAccountRepository } from '../../src/features/account/repositories
 import {
   createFirebaseIdentityClient,
   FirebaseLoungeAuthVerifier,
-} from '../../src/features/auth/adapters/firebaseLoungeAuth.verifier';
+} from '../../src/features/auth/adapters/firebaseLoungeAuthVerifier.adapter';
 import { LoungeAuthRepository } from '../../src/features/auth/repositories/loungeAuth.repository';
 import {
   createLoungeBatchRouter,
@@ -30,7 +30,7 @@ import { FirestorePublicXMemoryReadAdapter } from '../../src/features/sessions/a
 import {
   GeminiLoungeAiAdapter,
   parseAndNormalizeCoreProfile,
-} from '../../src/features/sessions/adapters/geminiLoungeAi.adapters';
+} from '../../src/features/sessions/adapters/geminiLoungeAi.adapter';
 import {
   buildDeterministicTestEmbedding,
   LocalEmulatorLoungeAiAdapter,

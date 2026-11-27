@@ -1,5 +1,5 @@
 import type { LoungeEmotionState } from '@rebecca/types';
-import type { LoungeEnvironment } from './environment.model';
+import type { LoungeEnvironment } from './environment.types';
 
 const DEFAULT_EMOTION_AVATARS: Record<LoungeEmotionState, string> = {
   NEUTRAL: 'assets/avatars/persona_neutral.png',

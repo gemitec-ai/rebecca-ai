@@ -29,7 +29,7 @@ import { createLoungeBatchAuthMiddleware } from './middleware/loungeBatchAuth';
 import {
   createFirebaseIdentityClient,
   FirebaseLoungeAuthVerifier,
-} from './features/auth/adapters/firebaseLoungeAuth.verifier';
+} from './features/auth/adapters/firebaseLoungeAuthVerifier.adapter';
 import { LoungeAuthController } from './features/auth/controllers/loungeAuth.controller';
 import { createLoungeAuthRouter } from './features/auth/routers/loungeAuth.router';
 import {
@@ -52,7 +52,7 @@ import {
 } from './features/account/usecases/loungeAccount.usecase';
 import { FirestoreBotImageVectorSearchAdapter } from './features/sessions/adapters/firestoreBotImageVectorSearch.adapter';
 import { FirestorePublicXMemoryReadAdapter } from './features/sessions/adapters/firestorePublicXMemoryRead.adapter';
-import { GeminiLoungeAiAdapter } from './features/sessions/adapters/geminiLoungeAi.adapters';
+import { GeminiLoungeAiAdapter } from './features/sessions/adapters/geminiLoungeAi.adapter';
 import { LocalEmulatorLoungeAiAdapter } from './features/sessions/adapters/localEmulatorLoungeAi.adapter';
 import { LoungeIllustrationMatcherService } from './features/sessions/domain/loungeIllustrationMatcher.service';
 import type {

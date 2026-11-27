@@ -17,7 +17,7 @@ export {
   detectInitialLoungeLanguage,
   detectInitialLoungeTimezone,
   formatLoungeCopy,
-} from './lounge-locale.util';
+} from './lounge-locale.utils';
 
 /**
  * Full 8-language dictionary covering UI controls, legal disclaimers, options, and error messages.

@@ -7,7 +7,7 @@ import type {
   LoungeSession,
 } from '@rebecca/types';
 import { LoungeSessionPort } from '../../core/ports/lounge-session.port';
-import { LoungeHttpClientHelper } from './lounge-http-client.helper';
+import { LoungeHttpClientHelper } from './lounge-http-client.helpers';
 
 /**
  * Thin HTTP transport adapter implementing `LoungeSessionPort`.

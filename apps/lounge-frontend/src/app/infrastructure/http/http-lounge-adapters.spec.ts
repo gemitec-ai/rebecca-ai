@@ -26,7 +26,7 @@ import { HttpLoungeBillingAdapter } from './http-lounge-billing.adapter';
 import { HttpLoungeConfigAdapter } from './http-lounge-config.adapter';
 import { HttpLoungeGalleryAdapter } from './http-lounge-gallery.adapter';
 import { HttpLoungeSessionAdapter } from './http-lounge-session.adapter';
-import { LoungeHttpClientHelper } from './lounge-http-client.helper';
+import { LoungeHttpClientHelper } from './lounge-http-client.helpers';
 
 describe('Thin HTTP Lounge Port Adapters', () => {
   let configAdapter: HttpLoungeConfigAdapter;

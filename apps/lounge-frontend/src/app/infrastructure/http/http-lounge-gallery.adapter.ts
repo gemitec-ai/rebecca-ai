@@ -1,7 +1,7 @@
 import { Injectable, inject } from '@angular/core';
 import type { LoungeGalleryListResponseDto, LoungePaginationQueryDto } from '@rebecca/types';
 import { LoungeGalleryPort } from '../../core/ports/lounge-gallery.port';
-import { LoungeHttpClientHelper } from './lounge-http-client.helper';
+import { LoungeHttpClientHelper } from './lounge-http-client.helpers';
 
 /**
  * Thin HTTP transport adapter implementing `LoungeGalleryPort`.

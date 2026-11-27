@@ -15,7 +15,7 @@ import type {
   LoungeVerifyCheckoutResponseDto,
 } from '@rebecca/types';
 import { LoungeBillingPort } from '../../core/ports/lounge-billing.port';
-import { LoungeHttpClientHelper } from './lounge-http-client.helper';
+import { LoungeHttpClientHelper } from './lounge-http-client.helpers';
 
 /**
  * Thin HTTP transport adapter implementing `LoungeBillingPort`.

@@ -1,4 +1,4 @@
-import { isSameTrustedOrigin } from './trusted-origin.util';
+import { isSameTrustedOrigin } from './trusted-origin.utils';
 
 /**
  * Allowlisted Stripe hosted web origins permitted for client-side Checkout, Customer Portal,

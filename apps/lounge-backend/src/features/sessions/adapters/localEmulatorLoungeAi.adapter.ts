@@ -13,7 +13,7 @@ import type {
   LoungeChatPipelineInput,
   LoungeChatPipelineOutput,
 } from '../ports/loungeAi.port';
-import { parseAndNormalizeCoreProfile } from './geminiLoungeAi.adapters';
+import { parseAndNormalizeCoreProfile } from './geminiLoungeAi.adapter';
 
 const EMBEDDING_DIMENSIONS = 768;
 

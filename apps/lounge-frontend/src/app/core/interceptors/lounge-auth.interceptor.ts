@@ -3,7 +3,7 @@ import { inject } from '@angular/core';
 import { from, switchMap } from 'rxjs';
 import { environment } from '../../../environments/environment';
 import { LoungeAuthService } from '../services/lounge-auth.service';
-import { isSameTrustedOrigin } from '../utils/trusted-origin.util';
+import { isSameTrustedOrigin } from '../utils/trusted-origin.utils';
 
 function resolveApiBaseDetails(apiBaseUrl: string): {
   readonly valid: boolean;

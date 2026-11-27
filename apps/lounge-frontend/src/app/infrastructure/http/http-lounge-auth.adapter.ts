@@ -5,7 +5,7 @@ import type {
   LoungeSignUpRequestDto,
 } from '@rebecca/types';
 import { LoungeAuthPort } from '../../core/ports/lounge-auth.port';
-import { LoungeHttpClientHelper } from './lounge-http-client.helper';
+import { LoungeHttpClientHelper } from './lounge-http-client.helpers';
 
 /**
  * Thin HTTP transport adapter implementing `LoungeAuthPort` without Firebase SDK orchestration

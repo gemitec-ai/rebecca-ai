@@ -7,7 +7,7 @@ import type {
   LoungeRuntimeConfigDto,
 } from '@rebecca/types';
 import { LoungeConfigPort } from '../../core/ports/lounge-config.port';
-import { LoungeHttpClientHelper } from './lounge-http-client.helper';
+import { LoungeHttpClientHelper } from './lounge-http-client.helpers';
 
 function isValidEmotionAvatarMap(raw: unknown): raw is Record<LoungeEmotionState, string> {
   if (!raw || typeof raw !== 'object') {
