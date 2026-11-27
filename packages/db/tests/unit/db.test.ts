@@ -2,7 +2,10 @@ import { Timestamp } from '@google-cloud/firestore';
 import {
   COLLECTIONS,
   assertLoungeRecordOwnedByUid,
+  createUserScopedLoungeAccountDb,
   createUserScopedLoungeDb,
+  createUserScopedLoungeGalleryDb,
+  createUserScopedLoungeSessionDb,
   getCollections,
   userConverter,
   conversationLogConverter,
@@ -15,6 +18,7 @@ import {
   personaConverter,
   xApiStateConverter,
   campaignDocConverter,
+  adminUserConverter,
   loungeUserConverter,
   loungeSubscriptionConverter,
   loungeSessionConverter,
@@ -46,6 +50,7 @@ import {
   LoungeQuotaLedgerDoc,
   LoungeTrialGrantDoc,
   toPublicLoungeCreditLot,
+  toPublicLoungeMessage,
   toPublicLoungeSubscription,
 } from '@rebecca/types';
 
@@ -349,6 +354,44 @@ describe('@rebecca/db Unit Tests', () => {
       const img = imageDocConverter.fromFirestore(mockSnapshot);
       expect(img.lastUsedAt).toBe(d.toISOString());
       expect(img.useCount).toBe(0);
+      expect(img.createdAt).toBeUndefined();
+
+      const withCreatedAt = imageDocConverter.fromFirestore({
+        data: () => ({
+          url: 'https://img.jpg',
+          caption: 'caption',
+          embedding: [0.1],
+          createdAt: Timestamp.fromDate(d),
+        }),
+      } as any);
+      expect(withCreatedAt.createdAt).toBe(d.toISOString());
+    });
+  });
+
+  describe('adminUserConverter', () => {
+    it('serializes and deserializes AdminUser fail-fast on invalid RBAC fields', () => {
+      const admin = {
+        uid: 'adm_1',
+        email: 'admin@example.com',
+        role: 'ADMIN' as const,
+        status: 'ACTIVE' as const,
+        createdAt: '2026-11-22T12:00:00.000Z',
+      };
+      const raw = adminUserConverter.toFirestore(admin);
+      expect(raw['createdAt']).toBeInstanceOf(Timestamp);
+      expect(adminUserConverter.fromFirestore({ id: 'adm_1', data: () => raw } as any)).toEqual(admin);
+      expect(
+        adminUserConverter.fromFirestore({
+          id: 'adm_fallback_uid',
+          data: () => ({ email: 'a@example.com', role: 'ADMIN', status: 'REVOKED', createdAt: '2026-11-22T12:00:00.000Z' }),
+        } as any).uid,
+      ).toBe('adm_fallback_uid');
+      expect(() =>
+        adminUserConverter.fromFirestore({
+          id: 'bad_role',
+          data: () => ({ email: 'a@example.com', role: 'USER', status: 'ACTIVE', createdAt: '2026-11-22T12:00:00.000Z' }),
+        } as any),
+      ).toThrow(/Invalid enum value "USER" for "role"/);
     });
   });
 
@@ -621,6 +664,7 @@ describe('@rebecca/db Unit Tests', () => {
       expect(mockCollection).toHaveBeenCalledWith(COLLECTIONS.LOUNGE_TRIAL_GRANTS);
 
       expect(collections.users).toEqual({ converter: userConverter });
+      expect(collections.adminUsers).toEqual({ converter: adminUserConverter });
       expect(collections.loungeUsers).toEqual({ converter: loungeUserConverter });
       expect(collections.loungeSubscriptions).toEqual({ converter: loungeSubscriptionConverter });
       expect(collections.loungeSessions).toEqual({ converter: loungeSessionConverter });
@@ -788,17 +832,23 @@ describe('@rebecca/db Unit Tests', () => {
         } as any),
       ).toThrow(/Invalid enum value "fr" for "language"/);
 
-      const legacyRaw = { ...raw };
-      delete legacyRaw['language'];
-      delete legacyRaw['timezone'];
-      delete legacyRaw['onboardingCompleted'];
-      const legacyRoundTrip = loungeUserConverter.fromFirestore({
-        id: 'uid_legacy',
-        data: () => legacyRaw,
-      } as any);
-      expect(legacyRoundTrip.language).toBe('ja');
-      expect(legacyRoundTrip.timezone).toBe('Asia/Tokyo');
-      expect(legacyRoundTrip.onboardingCompleted).toBe(true);
+      const incompleteUserRaw = { ...raw };
+      delete incompleteUserRaw['onboardingCompleted'];
+      expect(() =>
+        loungeUserConverter.fromFirestore({
+          id: 'uid_missing_onboarding',
+          data: () => incompleteUserRaw,
+        } as any),
+      ).toThrow(/Invalid or missing boolean field "onboardingCompleted"/);
+
+      const missingLangRaw = { ...raw };
+      delete missingLangRaw['language'];
+      expect(() =>
+        loungeUserConverter.fromFirestore({
+          id: 'uid_missing_lang',
+          data: () => missingLangRaw,
+        } as any),
+      ).toThrow(/Invalid or missing string field "language"/);
 
       expect(() =>
         loungeUserConverter.fromFirestore({
@@ -870,23 +920,29 @@ describe('@rebecca/db Unit Tests', () => {
       expect('todaysConsumedDailyTurns' in publicProjection).toBe(false);
       expect(publicProjection.remainingChatTurns).toBe(105);
 
-      const migratedLegacy = loungeSubscriptionConverter.fromFirestore({
-        id: 'uid_legacy_001',
-        data: () => ({
-          tier: 'SUPPORTER',
-          status: 'ACTIVE',
-          dailyTurnQuota: 30,
-          remainingChatTurns: 24,
-          quotaResetAt: '2026-11-23T00:00:00.000Z',
-          currentPeriodEnd: '2026-12-22T12:00:00.000Z',
-          updatedAt: '2026-11-22T12:05:00.000Z',
-        }),
-      } as any);
-      expect(migratedLegacy.tier).toBe('STANDARD');
-      expect(migratedLegacy.nextDailyResetAt).toBe('2026-11-23T00:00:00.000Z');
-      expect(migratedLegacy.dailyRemainingTurns).toBe(24);
-      expect(migratedLegacy.purchasedRemainingTurns).toBe(0);
-      expect(migratedLegacy.todaysConsumedDailyTurns).toBe(6);
+      expect(() =>
+        loungeSubscriptionConverter.fromFirestore({
+          id: 'uid_legacy_001',
+          data: () => ({
+            tier: 'SUPPORTER',
+            status: 'ACTIVE',
+            dailyTurnQuota: 30,
+            remainingChatTurns: 24,
+            quotaResetAt: '2026-11-23T00:00:00.000Z',
+            currentPeriodEnd: '2026-12-22T12:00:00.000Z',
+            updatedAt: '2026-11-22T12:05:00.000Z',
+          }),
+        } as any),
+      ).toThrow(/Invalid enum value "SUPPORTER" for "tier"/);
+
+      const missingQuotaFieldRaw = { ...rawWithoutStripe };
+      delete missingQuotaFieldRaw['trialTicketUsed'];
+      expect(() =>
+        loungeSubscriptionConverter.fromFirestore({
+          id: 'uid_missing_trial_flag',
+          data: () => missingQuotaFieldRaw,
+        } as any),
+      ).toThrow(/Invalid or missing boolean field "trialTicketUsed"/);
 
       expect(() =>
         loungeSubscriptionConverter.fromFirestore({
@@ -921,6 +977,7 @@ describe('@rebecca/db Unit Tests', () => {
         uid: 'uid_lounge_001',
         role: 'ASSISTANT',
         content: 'こんにちは',
+        thought: 'Internal reasoning context',
         emotion: 'HAPPY',
         imageAssetId: 'img_asset_01',
         imageUrl: 'assets/gallery_morning.webp',
@@ -928,9 +985,15 @@ describe('@rebecca/db Unit Tests', () => {
         createdAt: '2026-11-22T12:02:00.000Z',
       };
       const rawMsg = loungeMessageConverter.toFirestore(message);
-      expect(
-        loungeMessageConverter.fromFirestore({ id: 'msg_001', data: () => rawMsg } as any),
-      ).toEqual(message);
+      expect(rawMsg['thought']).toBe('Internal reasoning context');
+      const roundTripMessage = loungeMessageConverter.fromFirestore({
+        id: 'msg_001',
+        data: () => rawMsg,
+      } as any);
+      expect(roundTripMessage).toEqual(message);
+      const publicMsg = toPublicLoungeMessage(roundTripMessage);
+      expect('thought' in publicMsg).toBe(false);
+      expect(publicMsg.content).toBe('こんにちは');
 
       const minimalMsg: LoungeMessageDoc = {
         id: 'msg_002',
@@ -961,9 +1024,12 @@ describe('@rebecca/db Unit Tests', () => {
         updatedAt: '2026-11-22T12:03:00.000Z',
       };
       const rawRag = loungeRagMemoryConverter.toFirestore(rag);
+      expect(typeof (rawRag['embedding'] as { toArray?: unknown }).toArray).toBe('function');
       expect(
         loungeRagMemoryConverter.fromFirestore({ id: 'mem_001', data: () => rawRag } as any),
       ).toEqual(rag);
+      const emptyRagRaw = loungeRagMemoryConverter.toFirestore({ ...rag, embedding: [] });
+      expect(emptyRagRaw['embedding']).toEqual([]);
 
       // VectorValue with toArray() and empty embedding fallback are decoded cleanly
       expect(
@@ -1305,6 +1371,25 @@ describe('@rebecca/db Unit Tests', () => {
       expect(() =>
         assertLoungeRecordOwnedByUid({ uid: 'uid_owner_01' }, '', COLLECTIONS.LOUNGE_USERS),
       ).toThrow(/must not be empty/);
+
+      // Minimal per-slice scoped builders enforce matching isolation without unrelated collection requirements
+      const accountScoped = createUserScopedLoungeAccountDb(scopedCollections, 'uid_owner_01');
+      expect(accountScoped.subscriptionDoc()).toEqual({ docId: 'uid_owner_01' });
+      expect(accountScoped.creditLotDoc('cs_02')).toEqual({ docId: 'cs_02' });
+      expect(accountScoped.assertOwned(ownedRecord, COLLECTIONS.LOUNGE_SUBSCRIPTIONS)).toBe(
+        ownedRecord,
+      );
+
+      const galleryScoped = createUserScopedLoungeGalleryDb(scopedCollections, 'uid_owner_01');
+      expect(galleryScoped.userDoc()).toEqual({ docId: 'uid_owner_01' });
+      expect(galleryScoped.galleryDoc('img_02')).toEqual({ docId: 'uid_owner_01_img_02' });
+
+      const sessionScoped = createUserScopedLoungeSessionDb(scopedCollections, 'uid_owner_01');
+      expect(sessionScoped.userDoc()).toEqual({ docId: 'uid_owner_01' });
+      expect(sessionScoped.sessionDoc()).toEqual({ docId: 'uid_owner_01' });
+      expect(() => createUserScopedLoungeAccountDb(scopedCollections, '')).toThrow(/empty uid/);
+      expect(() => createUserScopedLoungeGalleryDb(scopedCollections, ' ')).toThrow(/empty uid/);
+      expect(() => createUserScopedLoungeSessionDb(scopedCollections, '')).toThrow(/empty uid/);
     });
   });
 });

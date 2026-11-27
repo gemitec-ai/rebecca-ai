@@ -175,21 +175,7 @@
       "queryScope": "COLLECTION",
       "fields": [
         {
-          "fieldPath": "sessionId",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "createdAt",
-          "order": "ASCENDING"
-        }
-      ]
-    },
-    {
-      "collectionGroup": "lounge_messages",
-      "queryScope": "COLLECTION",
-      "fields": [
-        {
-          "fieldPath": "sessionId",
+          "fieldPath": "uid",
           "order": "ASCENDING"
         },
         {
@@ -312,6 +298,12 @@
     {
       "collectionGroup": "lounge_processed_events",
       "fieldPath": "expireAt",
+      "ttl": true,
+      "indexes": []
+    },
+    {
+      "collectionGroup": "lounge_trial_grants",
+      "fieldPath": "retainUntil",
       "ttl": true,
       "indexes": []
     }

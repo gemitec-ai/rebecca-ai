@@ -122,10 +122,10 @@ export abstract class BasePersona implements IPersonaDefinition {
   abstract readonly metadata: PersonaMetadata;
 
   /** Complete list of situational behavioral patterns defined for this persona. */
-  abstract readonly patterns: PersonaPattern[];
+  abstract readonly patterns: readonly PersonaPattern[];
 
   /** Precomputed semantic embedding vectors corresponding to each pattern in `patterns`. */
-  abstract readonly patternVectors: PersonaPatternWithVector[];
+  abstract readonly patternVectors: readonly PersonaPatternWithVector[];
 
   /**
    * Generates the pure Layer 0 core identity system prompt synthesized directly from structured `metadata`
@@ -286,7 +286,7 @@ ${stanceRulesJa}${quotesSectionJa}`;
    * @param topK - Maximum number of patterns to return (defaults to 3).
    * @returns Array of matching PersonaPattern instances ranked by similarity.
    */
-  findTopPatterns(queryVector: number[], topK = 3): PersonaPattern[] {
+  findTopPatterns(queryVector: readonly number[], topK = 3): PersonaPattern[] {
     const normalizedTopK = Number.isFinite(topK) ? Math.trunc(topK) : 0;
     if (normalizedTopK <= 0) {
       return [];
@@ -304,7 +304,7 @@ ${stanceRulesJa}${quotesSectionJa}`;
    * @param lang - Target language for the prompt ('ja' or 'en'). Defaults to 'ja'.
    * @returns Formatted prompt section string.
    */
-  buildFewShotPrompt(patterns: PersonaPattern[], lang: Language = 'ja'): string {
+  buildFewShotPrompt(patterns: readonly PersonaPattern[], lang: Language = 'ja'): string {
     return formatPersonaFewShotPrompt(patterns, lang);
   }
 

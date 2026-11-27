@@ -17,12 +17,20 @@
 
 import {
   Firestore,
+  FieldValue,
   Timestamp,
   FirestoreDataConverter,
   DocumentData,
   QueryDocumentSnapshot,
 } from '@google-cloud/firestore';
 
+import {
+  LOUNGE_SUPPORTED_LANGUAGES,
+  type AdminRole,
+  type AdminUser,
+  type AdminUserStatus,
+  type ProcessedEvent,
+} from '@rebecca/types';
 import {
   COLLECTIONS,
   type ConversationLogEntry,
@@ -51,7 +59,6 @@ import {
   type LoungeCurrency,
   type LoungeEmotionState,
   type LoungeGalleryItemDoc,
-  type LoungeLanguage,
   type LoungeMemoryCategory,
   type LoungeMessageDoc,
   type LoungeProcessedEventDoc,
@@ -107,13 +114,13 @@ const userConverter: FirestoreDataConverter<FirestoreUser> = {
     const data = snapshot.data();
     return {
       id: snapshot.id,
-      name: data['name'] || '',
-      username: data['username'] || '',
-      avatarUrl: data['avatarUrl'] || '',
+      name: data['name'] ?? '',
+      username: data['username'] ?? '',
+      avatarUrl: data['avatarUrl'] ?? '',
       status: data['status'],
-      firstSeen: toIsoString(data['firstSeen'] ?? data['first_seen']) || '',
-      lastSeen: toIsoString(data['lastSeen'] ?? data['last_seen'] ?? data['last_reply_date']) || '',
-      lastDreamedAt: toIsoString(data['lastDreamedAt'] ?? data['last_dreamed_at']) || undefined,
+      firstSeen: toIsoString(data['firstSeen'] ?? data['first_seen']) ?? '',
+      lastSeen: toIsoString(data['lastSeen'] ?? data['last_seen'] ?? data['last_reply_date']) ?? '',
+      lastDreamedAt: toIsoString(data['lastDreamedAt'] ?? data['last_dreamed_at']) ?? undefined,
       coreProfile: data['coreProfile'] ?? {},
       working_memory: data['working_memory'],
       episodicBuffer: data['episodicBuffer'] ?? [],
@@ -246,7 +253,7 @@ const imageDocConverter: FirestoreDataConverter<ImageDoc> = {
       lastUsedAt: toIsoString(data['lastUsedAt']),
       useCount: data['useCount'] ?? 0,
       status: data['status'],
-      createdAt: data['createdAt'] || null,
+      createdAt: toIsoString(data['createdAt']) ?? undefined,
     };
   },
 };
@@ -307,6 +314,43 @@ function makePassThroughConverter<T extends DocumentData>(): FirestoreDataConver
     fromFirestore: (snapshot: QueryDocumentSnapshot) => snapshot.data() as T,
   };
 }
+
+const ADMIN_ROLES: readonly AdminRole[] = ['ADMIN'];
+const ADMIN_USER_STATUSES: readonly AdminUserStatus[] = ['ACTIVE', 'REVOKED'];
+
+/**
+ * Validated converter for the `admin_users` RBAC authorization collection.
+ * Rejects malformed or missing role/status/email/createdAt fields fail-fast.
+ */
+const adminUserConverter: FirestoreDataConverter<AdminUser> = {
+  toFirestore(admin: AdminUser): DocumentData {
+    return {
+      ...(admin.uid !== undefined ? { uid: admin.uid } : {}),
+      email: admin.email,
+      role: admin.role,
+      status: admin.status,
+      createdAt: toRequiredFirestoreTimestamp(admin.createdAt, 'createdAt'),
+    };
+  },
+  fromFirestore(snapshot: QueryDocumentSnapshot): AdminUser {
+    const data = snapshot.data();
+    const id = snapshot.id;
+    const uid = toOptionalString(data['uid'], COLLECTIONS.ADMIN_USERS, id, 'uid');
+    return {
+      uid: uid ?? id,
+      email: toRequiredString(data['email'], COLLECTIONS.ADMIN_USERS, id, 'email'),
+      role: toRequiredEnum(data['role'], ADMIN_ROLES, COLLECTIONS.ADMIN_USERS, id, 'role'),
+      status: toRequiredEnum(
+        data['status'],
+        ADMIN_USER_STATUSES,
+        COLLECTIONS.ADMIN_USERS,
+        id,
+        'status',
+      ),
+      createdAt: toRequiredLoungeIso(data['createdAt'], COLLECTIONS.ADMIN_USERS, id, 'createdAt'),
+    };
+  },
+};
 
 export const rateLimitConverter = makePassThroughConverter<RateLimitDoc>();
 export const personaConverter = makePassThroughConverter<PersonaDoc>();
@@ -477,7 +521,6 @@ const campaignDocConverter: FirestoreDataConverter<CampaignDoc> = {
 // ---------------------------------------------------------------------------
 
 const LOUNGE_ACCOUNT_STATUSES: readonly LoungeAccountStatus[] = ['ACTIVE', 'SUSPENDED', 'DELETING'];
-const LOUNGE_LANGUAGES: readonly LoungeLanguage[] = ['ja', 'en', 'de', 'pt', 'es', 'zh-HK', 'vi', 'th'];
 const LOUNGE_SUBSCRIPTION_TIERS: readonly LoungeSubscriptionTier[] = ['FREE', 'STANDARD'];
 const LOUNGE_SUBSCRIPTION_STATUSES: readonly LoungeSubscriptionStatus[] = [
   'NONE',
@@ -740,6 +783,12 @@ function parseDisclaimerConsent(
     throw new Error(`Missing "disclaimerConsent" object in lounge_users doc "${docId}"`);
   }
   const consent = raw as Record<string, unknown>;
+  const agreedToNonEeaEligibility = toOptionalBoolean(
+    consent['agreedToNonEeaEligibility'],
+    COLLECTIONS.LOUNGE_USERS,
+    docId,
+    'disclaimerConsent.agreedToNonEeaEligibility',
+  );
   return {
     disclaimerVersion: toPositiveInteger(
       consent['disclaimerVersion'],
@@ -750,6 +799,7 @@ function parseDisclaimerConsent(
     agreedToGeminiTrainingUsage: toRequiredBoolean(consent['agreedToGeminiTrainingUsage'], COLLECTIONS.LOUNGE_USERS, docId, 'disclaimerConsent.agreedToGeminiTrainingUsage'),
     agreedToZeroPiiProhibition: toRequiredBoolean(consent['agreedToZeroPiiProhibition'], COLLECTIONS.LOUNGE_USERS, docId, 'disclaimerConsent.agreedToZeroPiiProhibition'),
     agreedToOneWayMemoryIsolation: toRequiredBoolean(consent['agreedToOneWayMemoryIsolation'], COLLECTIONS.LOUNGE_USERS, docId, 'disclaimerConsent.agreedToOneWayMemoryIsolation'),
+    ...(agreedToNonEeaEligibility !== undefined ? { agreedToNonEeaEligibility } : {}),
     scrolledToBottomAt: toRequiredLoungeIso(
       consent['scrolledToBottomAt'] as Timestamp | Date | string | null | undefined,
       COLLECTIONS.LOUNGE_USERS,
@@ -859,6 +909,9 @@ const loungeUserConverter: FirestoreDataConverter<LoungeUserDoc> = {
         agreedToGeminiTrainingUsage: user.disclaimerConsent.agreedToGeminiTrainingUsage,
         agreedToZeroPiiProhibition: user.disclaimerConsent.agreedToZeroPiiProhibition,
         agreedToOneWayMemoryIsolation: user.disclaimerConsent.agreedToOneWayMemoryIsolation,
+        ...(user.disclaimerConsent.agreedToNonEeaEligibility !== undefined
+          ? { agreedToNonEeaEligibility: user.disclaimerConsent.agreedToNonEeaEligibility }
+          : {}),
         scrolledToBottomAt: toRequiredFirestoreTimestamp(
           user.disclaimerConsent.scrolledToBottomAt,
           'disclaimerConsent.scrolledToBottomAt',
@@ -889,12 +942,6 @@ const loungeUserConverter: FirestoreDataConverter<LoungeUserDoc> = {
     }
     if (user.lastDreamedAt !== undefined) {
       data['lastDreamedAt'] = toRequiredFirestoreTimestamp(user.lastDreamedAt, 'lastDreamedAt');
-    }
-    if (user.dailySearchCount !== undefined) {
-      data['dailySearchCount'] = user.dailySearchCount;
-    }
-    if (user.dailySearchResetDate !== undefined) {
-      data['dailySearchResetDate'] = user.dailySearchResetDate;
     }
     return data;
   },
@@ -928,18 +975,6 @@ const loungeUserConverter: FirestoreDataConverter<LoungeUserDoc> = {
       id,
       'preferredCurrency',
     );
-    const dailySearchCount = toOptionalNumber(
-      data['dailySearchCount'],
-      COLLECTIONS.LOUNGE_USERS,
-      id,
-      'dailySearchCount',
-    );
-    const dailySearchResetDate = toOptionalString(
-      data['dailySearchResetDate'],
-      COLLECTIONS.LOUNGE_USERS,
-      id,
-      'dailySearchResetDate',
-    );
     return {
       uid: id,
       xUserId: toRequiredString(data['xUserId'], COLLECTIONS.LOUNGE_USERS, id, 'xUserId'),
@@ -947,27 +982,20 @@ const loungeUserConverter: FirestoreDataConverter<LoungeUserDoc> = {
       displayName: toRequiredString(data['displayName'], COLLECTIONS.LOUNGE_USERS, id, 'displayName'),
       avatarUrl: toValidatedString(data['avatarUrl'], COLLECTIONS.LOUNGE_USERS, id, 'avatarUrl'),
       status: toRequiredEnum(data['status'], LOUNGE_ACCOUNT_STATUSES, COLLECTIONS.LOUNGE_USERS, id, 'status'),
-      language:
-        data['language'] === undefined
-          ? 'ja'
-          : toRequiredEnum(data['language'], LOUNGE_LANGUAGES, COLLECTIONS.LOUNGE_USERS, id, 'language'),
-      timezone:
-        data['timezone'] === undefined
-          ? 'Asia/Tokyo'
-          : toRequiredString(data['timezone'], COLLECTIONS.LOUNGE_USERS, id, 'timezone'),
-      onboardingCompleted:
-        data['onboardingCompleted'] === undefined
-          ? true
-          : toRequiredBoolean(data['onboardingCompleted'], COLLECTIONS.LOUNGE_USERS, id, 'onboardingCompleted'),
-      allowServiceImprovementAnalytics:
-        data['allowServiceImprovementAnalytics'] === undefined
-          ? true
-          : toRequiredBoolean(
-              data['allowServiceImprovementAnalytics'],
-              COLLECTIONS.LOUNGE_USERS,
-              id,
-              'allowServiceImprovementAnalytics',
-            ),
+      language: toRequiredEnum(data['language'], LOUNGE_SUPPORTED_LANGUAGES, COLLECTIONS.LOUNGE_USERS, id, 'language'),
+      timezone: toRequiredString(data['timezone'], COLLECTIONS.LOUNGE_USERS, id, 'timezone'),
+      onboardingCompleted: toRequiredBoolean(
+        data['onboardingCompleted'],
+        COLLECTIONS.LOUNGE_USERS,
+        id,
+        'onboardingCompleted',
+      ),
+      allowServiceImprovementAnalytics: toRequiredBoolean(
+        data['allowServiceImprovementAnalytics'],
+        COLLECTIONS.LOUNGE_USERS,
+        id,
+        'allowServiceImprovementAnalytics',
+      ),
       ...(countryCode !== undefined ? { countryCode } : {}),
       ...(isEeaResident !== undefined ? { isEeaResident } : {}),
       ...(preferredCurrency !== undefined ? { preferredCurrency } : {}),
@@ -975,8 +1003,6 @@ const loungeUserConverter: FirestoreDataConverter<LoungeUserDoc> = {
       ...(coreProfile !== undefined ? { coreProfile } : {}),
       ...(episodicBuffer !== undefined ? { episodicBuffer } : {}),
       ...(lastDreamedAt !== undefined ? { lastDreamedAt } : {}),
-      ...(dailySearchCount !== undefined ? { dailySearchCount } : {}),
-      ...(dailySearchResetDate !== undefined ? { dailySearchResetDate } : {}),
       createdAt: toRequiredLoungeIso(data['createdAt'], COLLECTIONS.LOUNGE_USERS, id, 'createdAt'),
       updatedAt: toRequiredLoungeIso(data['updatedAt'], COLLECTIONS.LOUNGE_USERS, id, 'updatedAt'),
       lastLoginAt: toRequiredLoungeIso(data['lastLoginAt'], COLLECTIONS.LOUNGE_USERS, id, 'lastLoginAt'),
@@ -986,7 +1012,7 @@ const loungeUserConverter: FirestoreDataConverter<LoungeUserDoc> = {
 
 /**
  * Converter for isolated `lounge_subscriptions` tier, Stripe reference, and hybrid quota documents.
- * Supports backward-compatible reads from legacy `'SUPPORTER' | 'VIP'` / `quotaResetAt` skeleton records.
+ * Enforces strict required fields on all greenfield reads without silent coercion.
  */
 const loungeSubscriptionConverter: FirestoreDataConverter<LoungeSubscriptionDoc> = {
   toFirestore(sub: LoungeSubscriptionDoc): DocumentData {
@@ -1033,11 +1059,13 @@ const loungeSubscriptionConverter: FirestoreDataConverter<LoungeSubscriptionDoc>
   fromFirestore(snapshot: QueryDocumentSnapshot): LoungeSubscriptionDoc {
     const data = snapshot.data();
     const id = snapshot.id;
-    const rawTier = data['tier'];
-    const tier: LoungeSubscriptionTier =
-      rawTier === 'SUPPORTER' || rawTier === 'VIP'
-        ? 'STANDARD'
-        : toRequiredEnum(rawTier, LOUNGE_SUBSCRIPTION_TIERS, COLLECTIONS.LOUNGE_SUBSCRIPTIONS, id, 'tier');
+    const tier = toRequiredEnum(
+      data['tier'],
+      LOUNGE_SUBSCRIPTION_TIERS,
+      COLLECTIONS.LOUNGE_SUBSCRIPTIONS,
+      id,
+      'tier',
+    );
     const status = toRequiredEnum(
       data['status'],
       LOUNGE_SUBSCRIPTION_STATUSES,
@@ -1063,82 +1091,60 @@ const loungeSubscriptionConverter: FirestoreDataConverter<LoungeSubscriptionDoc>
       id,
       'remainingChatTurns',
     );
-    const dailyRemainingTurns =
-      data['dailyRemainingTurns'] !== undefined
-        ? toRequiredNumber(
-            data['dailyRemainingTurns'],
-            COLLECTIONS.LOUNGE_SUBSCRIPTIONS,
-            id,
-            'dailyRemainingTurns',
-          )
-        : remainingChatTurns;
-    const purchasedRemainingTurns =
-      data['purchasedRemainingTurns'] !== undefined
-        ? toRequiredNumber(
-            data['purchasedRemainingTurns'],
-            COLLECTIONS.LOUNGE_SUBSCRIPTIONS,
-            id,
-            'purchasedRemainingTurns',
-          )
-        : 0;
-    const rawReset = data['nextDailyResetAt'] ?? data['quotaResetAt'];
+    const dailyRemainingTurns = toRequiredNumber(
+      data['dailyRemainingTurns'],
+      COLLECTIONS.LOUNGE_SUBSCRIPTIONS,
+      id,
+      'dailyRemainingTurns',
+    );
+    const purchasedRemainingTurns = toRequiredNumber(
+      data['purchasedRemainingTurns'],
+      COLLECTIONS.LOUNGE_SUBSCRIPTIONS,
+      id,
+      'purchasedRemainingTurns',
+    );
     const nextDailyResetAt = toRequiredLoungeIso(
-      rawReset as Timestamp | Date | string | null | undefined,
+      data['nextDailyResetAt'] as Timestamp | Date | string | null | undefined,
       COLLECTIONS.LOUNGE_SUBSCRIPTIONS,
       id,
       'nextDailyResetAt',
     );
-    const lastDailyResetAt =
-      data['lastDailyResetAt'] !== undefined
-        ? toRequiredLoungeIso(
-            data['lastDailyResetAt'] as Timestamp | Date | string | null | undefined,
-            COLLECTIONS.LOUNGE_SUBSCRIPTIONS,
-            id,
-            'lastDailyResetAt',
-          )
-        : updatedAt;
-    const lastQuotaResetTimezone =
-      data['lastQuotaResetTimezone'] !== undefined
-        ? toRequiredString(
-            data['lastQuotaResetTimezone'],
-            COLLECTIONS.LOUNGE_SUBSCRIPTIONS,
-            id,
-            'lastQuotaResetTimezone',
-          )
-        : 'UTC';
+    const lastDailyResetAt = toRequiredLoungeIso(
+      data['lastDailyResetAt'] as Timestamp | Date | string | null | undefined,
+      COLLECTIONS.LOUNGE_SUBSCRIPTIONS,
+      id,
+      'lastDailyResetAt',
+    );
+    const lastQuotaResetTimezone = toRequiredString(
+      data['lastQuotaResetTimezone'],
+      COLLECTIONS.LOUNGE_SUBSCRIPTIONS,
+      id,
+      'lastQuotaResetTimezone',
+    );
     const earliestLotExpiresAt = toNullableLoungeIso(
       data['earliestLotExpiresAt'] as Timestamp | Date | string | null | undefined,
       COLLECTIONS.LOUNGE_SUBSCRIPTIONS,
       id,
       'earliestLotExpiresAt',
     );
-    const trialTicketUsed =
-      data['trialTicketUsed'] !== undefined
-        ? toRequiredBoolean(
-            data['trialTicketUsed'],
-            COLLECTIONS.LOUNGE_SUBSCRIPTIONS,
-            id,
-            'trialTicketUsed',
-          )
-        : false;
-    const cancelAtPeriodEnd =
-      data['cancelAtPeriodEnd'] !== undefined
-        ? toRequiredBoolean(
-            data['cancelAtPeriodEnd'],
-            COLLECTIONS.LOUNGE_SUBSCRIPTIONS,
-            id,
-            'cancelAtPeriodEnd',
-          )
-        : status === 'CANCELING';
-    const todaysConsumedDailyTurns =
-      data['todaysConsumedDailyTurns'] !== undefined
-        ? toRequiredNumber(
-            data['todaysConsumedDailyTurns'],
-            COLLECTIONS.LOUNGE_SUBSCRIPTIONS,
-            id,
-            'todaysConsumedDailyTurns',
-          )
-        : Math.max(0, dailyTurnQuota - dailyRemainingTurns);
+    const trialTicketUsed = toRequiredBoolean(
+      data['trialTicketUsed'],
+      COLLECTIONS.LOUNGE_SUBSCRIPTIONS,
+      id,
+      'trialTicketUsed',
+    );
+    const cancelAtPeriodEnd = toRequiredBoolean(
+      data['cancelAtPeriodEnd'],
+      COLLECTIONS.LOUNGE_SUBSCRIPTIONS,
+      id,
+      'cancelAtPeriodEnd',
+    );
+    const todaysConsumedDailyTurns = toRequiredNumber(
+      data['todaysConsumedDailyTurns'],
+      COLLECTIONS.LOUNGE_SUBSCRIPTIONS,
+      id,
+      'todaysConsumedDailyTurns',
+    );
     const billingCurrency = toOptionalEnum(
       data['billingCurrency'],
       LOUNGE_CURRENCIES,
@@ -1276,6 +1282,9 @@ const loungeMessageConverter: FirestoreDataConverter<LoungeMessageDoc> = {
     if (message.tokenUsage !== undefined) {
       data['tokenUsage'] = message.tokenUsage;
     }
+    if (message.thought !== undefined) {
+      data['thought'] = message.thought;
+    }
     return data;
   },
   fromFirestore(snapshot: QueryDocumentSnapshot): LoungeMessageDoc {
@@ -1296,6 +1305,7 @@ const loungeMessageConverter: FirestoreDataConverter<LoungeMessageDoc> = {
         totalTokens: toRequiredNumber(u['totalTokens'], COLLECTIONS.LOUNGE_MESSAGES, id, 'tokenUsage.totalTokens'),
       };
     }
+    const thought = toOptionalString(data['thought'], COLLECTIONS.LOUNGE_MESSAGES, id, 'thought');
     return {
       id,
       sessionId: toRequiredString(data['sessionId'], COLLECTIONS.LOUNGE_MESSAGES, id, 'sessionId'),
@@ -1306,6 +1316,7 @@ const loungeMessageConverter: FirestoreDataConverter<LoungeMessageDoc> = {
       imageAssetId: toOptionalString(data['imageAssetId'], COLLECTIONS.LOUNGE_MESSAGES, id, 'imageAssetId'),
       imageUrl: toOptionalString(data['imageUrl'], COLLECTIONS.LOUNGE_MESSAGES, id, 'imageUrl'),
       tokenUsage,
+      ...(thought !== undefined ? { thought } : {}),
       createdAt: toRequiredLoungeIso(data['createdAt'], COLLECTIONS.LOUNGE_MESSAGES, id, 'createdAt'),
     };
   },
@@ -1321,7 +1332,8 @@ const loungeRagMemoryConverter: FirestoreDataConverter<LoungeRagMemoryDoc> = {
       sessionId: memory.sessionId,
       category: memory.category,
       summary: memory.summary,
-      embedding: memory.embedding,
+      embedding:
+        memory.embedding.length > 0 ? FieldValue.vector(memory.embedding) : [],
       salienceScore: memory.salienceScore,
       createdAt: toRequiredFirestoreTimestamp(memory.createdAt, 'createdAt'),
       updatedAt: toRequiredFirestoreTimestamp(memory.updatedAt, 'updatedAt'),
@@ -1760,7 +1772,7 @@ export function getCollections(db: Firestore) {
      */
     systemStats: db
       .collection(COLLECTIONS.SYSTEM_STATS)
-      .withConverter(makePassThroughConverter()),
+      .withConverter(makePassThroughConverter<Record<string, unknown>>()),
 
     /**
      * Pass-through processed-mention idempotency documents.
@@ -1768,15 +1780,15 @@ export function getCollections(db: Firestore) {
      */
     processedMentions: db
       .collection(COLLECTIONS.PROCESSED_MENTIONS)
-      .withConverter(makePassThroughConverter()),
+      .withConverter(makePassThroughConverter<Record<string, unknown>>()),
 
     /**
-     * Pass-through admin users documents for RBAC.
+     * Validated admin users documents for RBAC.
      * Doc ID = Firebase Auth UID.
      */
     adminUsers: db
       .collection(COLLECTIONS.ADMIN_USERS)
-      .withConverter(makePassThroughConverter()),
+      .withConverter(adminUserConverter),
 
     /**
      * Pass-through processed Eventarc events idempotency documents.
@@ -1784,7 +1796,7 @@ export function getCollections(db: Firestore) {
      */
     processedEvents: db
       .collection(COLLECTIONS.PROCESSED_EVENTS)
-      .withConverter(makePassThroughConverter()),
+      .withConverter(makePassThroughConverter<ProcessedEvent>()),
 
     /**
      * Typed campaign narrative event documents.
@@ -1802,11 +1814,7 @@ export function getCollections(db: Firestore) {
       .collection(COLLECTIONS.REWARD_IMAGES)
       .withConverter(makePassThroughConverter<RewardImageDoc>()),
 
-    /**
-     * Pass-through support transaction documents.
-     * Doc ID = transaction UUID.
-     */
-    /** Typed support & tipping transaction documents. */
+    /** Typed support & tipping transaction documents (`support_transactions`). */
     supportTransactions: db
       .collection(COLLECTIONS.SUPPORT_TRANSACTIONS)
       .withConverter(makePassThroughConverter<SupportTransactionDoc>()),
@@ -1886,6 +1894,82 @@ export function assertLoungeRecordOwnedByUid<T extends { uid: string }>(
   return record;
 }
 
+function normalizeScopedLoungeUid(uid: string): string {
+  const scopedUid = uid.trim();
+  if (!scopedUid) {
+    throw new Error('Cannot construct user-scoped Lounge DB accessor with empty uid');
+  }
+  return scopedUid;
+}
+
+/**
+ * Creates a strictly tenant-scoped accessor for Private Lounge Account billing/quota collections.
+ *
+ * @throws Error When `uid` is empty or whitespace.
+ */
+export function createUserScopedLoungeAccountDb(
+  collections: Pick<
+    DbCollections,
+    'loungeSubscriptions' | 'loungeCreditLots' | 'loungeQuotaLedger'
+  >,
+  uid: string,
+) {
+  const scopedUid = normalizeScopedLoungeUid(uid);
+  return {
+    uid: scopedUid,
+    subscriptionDoc: () => collections.loungeSubscriptions.doc(scopedUid),
+    creditLotDoc: (lotId: string) => collections.loungeCreditLots.doc(lotId),
+    creditLotsQuery: () => collections.loungeCreditLots.where('uid', '==', scopedUid),
+    quotaLedgerQuery: () => collections.loungeQuotaLedger.where('uid', '==', scopedUid),
+    assertOwned: <T extends { uid: string }>(record: T, collectionName: string): T =>
+      assertLoungeRecordOwnedByUid(record, scopedUid, collectionName),
+  };
+}
+
+/**
+ * Creates a strictly tenant-scoped accessor for Private Lounge Gallery collections.
+ *
+ * @throws Error When `uid` is empty or whitespace.
+ */
+export function createUserScopedLoungeGalleryDb(
+  collections: Pick<DbCollections, 'loungeUsers' | 'loungeGallery'>,
+  uid: string,
+) {
+  const scopedUid = normalizeScopedLoungeUid(uid);
+  return {
+    uid: scopedUid,
+    userDoc: () => collections.loungeUsers.doc(scopedUid),
+    galleryDoc: (assetId: string) => collections.loungeGallery.doc(`${scopedUid}_${assetId}`),
+    galleryQuery: () => collections.loungeGallery.where('uid', '==', scopedUid),
+    assertOwned: <T extends { uid: string }>(record: T, collectionName: string): T =>
+      assertLoungeRecordOwnedByUid(record, scopedUid, collectionName),
+  };
+}
+
+/**
+ * Creates a strictly tenant-scoped accessor for Private Lounge Session/Message/RAG collections.
+ *
+ * @throws Error When `uid` is empty or whitespace.
+ */
+export function createUserScopedLoungeSessionDb(
+  collections: Pick<
+    DbCollections,
+    'loungeUsers' | 'loungeSessions' | 'loungeMessages' | 'loungeRagMemories'
+  >,
+  uid: string,
+) {
+  const scopedUid = normalizeScopedLoungeUid(uid);
+  return {
+    uid: scopedUid,
+    userDoc: () => collections.loungeUsers.doc(scopedUid),
+    sessionDoc: () => collections.loungeSessions.doc(scopedUid),
+    messagesQuery: () => collections.loungeMessages.where('uid', '==', scopedUid),
+    ragMemoriesQuery: () => collections.loungeRagMemories.where('uid', '==', scopedUid),
+    assertOwned: <T extends { uid: string }>(record: T, collectionName: string): T =>
+      assertLoungeRecordOwnedByUid(record, scopedUid, collectionName),
+  };
+}
+
 /**
  * Creates a strictly tenant-scoped accessor over isolated `lounge_*` collections so repositories
  * cannot execute unscoped queries or access another user's records accidentally.
@@ -1906,22 +1990,22 @@ export function createUserScopedLoungeDb(
   >,
   uid: string,
 ) {
-  const scopedUid = uid.trim();
-  if (!scopedUid) {
-    throw new Error('Cannot construct user-scoped Lounge DB accessor with empty uid');
-  }
+  const scopedUid = normalizeScopedLoungeUid(uid);
+  const account = createUserScopedLoungeAccountDb(collections, scopedUid);
+  const gallery = createUserScopedLoungeGalleryDb(collections, scopedUid);
+  const session = createUserScopedLoungeSessionDb(collections, scopedUid);
   return {
     uid: scopedUid,
     userDoc: () => collections.loungeUsers.doc(scopedUid),
-    subscriptionDoc: () => collections.loungeSubscriptions.doc(scopedUid),
-    sessionDoc: () => collections.loungeSessions.doc(scopedUid),
-    galleryDoc: (assetId: string) => collections.loungeGallery.doc(`${scopedUid}_${assetId}`),
-    creditLotDoc: (lotId: string) => collections.loungeCreditLots.doc(lotId),
-    messagesQuery: () => collections.loungeMessages.where('uid', '==', scopedUid),
-    ragMemoriesQuery: () => collections.loungeRagMemories.where('uid', '==', scopedUid),
-    galleryQuery: () => collections.loungeGallery.where('uid', '==', scopedUid),
-    creditLotsQuery: () => collections.loungeCreditLots.where('uid', '==', scopedUid),
-    quotaLedgerQuery: () => collections.loungeQuotaLedger.where('uid', '==', scopedUid),
+    subscriptionDoc: account.subscriptionDoc,
+    sessionDoc: session.sessionDoc,
+    galleryDoc: gallery.galleryDoc,
+    creditLotDoc: account.creditLotDoc,
+    messagesQuery: session.messagesQuery,
+    ragMemoriesQuery: session.ragMemoriesQuery,
+    galleryQuery: gallery.galleryQuery,
+    creditLotsQuery: account.creditLotsQuery,
+    quotaLedgerQuery: account.quotaLedgerQuery,
     assertOwned: <T extends { uid: string }>(record: T, collectionName: string): T =>
       assertLoungeRecordOwnedByUid(record, scopedUid, collectionName),
   };
@@ -1937,6 +2021,7 @@ export {
   processedFollowerConverter,
   listInteractionConverter,
   campaignDocConverter,
+  adminUserConverter,
   loungeUserConverter,
   loungeSubscriptionConverter,
   loungeSessionConverter,

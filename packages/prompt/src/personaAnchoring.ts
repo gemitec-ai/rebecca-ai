@@ -35,7 +35,7 @@ export const resolveSituationalPersonaAnchors = async (
   const resolvePatterns =
     findTopPatterns ??
     (persona && !patternVectors
-      ? (qv: number[], _pv: typeof resolvedVectors, k: number) => persona.findTopPatterns(qv, k)
+      ? (qv: readonly number[], _pv: typeof resolvedVectors, k: number) => persona.findTopPatterns(qv, k)
       : findTopPersonaPatterns);
   const formatFewShot =
     buildFewShotPrompt ??

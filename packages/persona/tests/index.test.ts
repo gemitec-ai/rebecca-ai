@@ -3,6 +3,7 @@ import {
   precomputedPersonaPatternEmbeddings,
   REBECCA_METADATA,
   rebeccaPersona,
+  parsePersonaPatterns,
   cosineSimilarity,
   findTopPersonaPatterns,
   buildPersonaFewShotPrompt,
@@ -158,6 +159,12 @@ describe('persona package exports verification', () => {
       expect(enCore).toContain('Never do anything that makes Master sad');
       expect(enCore).not.toContain('[Context Precedence Rule]');
       expect(enCore).not.toContain('GitHub');
+
+      expect(REBECCA_METADATA.lounge.brandName).toBe('Rebecca Private Lounge');
+      expect(REBECCA_METADATA.lounge.portalOrigin).toBe('https://rebecca-ai.net');
+      expect(REBECCA_METADATA.lounge.emotionAvatarPaths.NEUTRAL).toBe(
+        'assets/avatars/persona_neutral.png',
+      );
       expect(enCore).not.toContain('MIT License');
       expect(enCore).not.toContain('[Context:');
     });
@@ -446,6 +453,15 @@ describe('persona package exports verification', () => {
         reply: '返事\u001b[0m',
         suggestionChips: ['次へ'],
       });
+    });
+
+    test('parsePersonaPatterns validates pattern dataset structure fail-fast', () => {
+      expect(() => parsePersonaPatterns('not-an-array')).toThrow(/must be an array/);
+      expect(() => parsePersonaPatterns([null])).toThrow(/must be an object/);
+      expect(() => parsePersonaPatterns([{ id: 0 }])).toThrow(/positive integer/);
+      expect(() =>
+        parsePersonaPatterns([{ id: 1, category: ' ', trigger: 't', internal_thought: 'i', behavior: 'b', sample_response: 's' }]),
+      ).toThrow(/category must be a non-empty string/);
     });
   });
 });

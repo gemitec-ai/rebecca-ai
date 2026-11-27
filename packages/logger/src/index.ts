@@ -1,3 +1,74 @@
+const SENSITIVE_LOG_KEY_PATTERNS: readonly RegExp[] = [
+  /authorization/i,
+  /^cookie$/i,
+  /set-cookie/i,
+  /password/i,
+  /secret/i,
+  /token/i,
+  /api[-_]?key/i,
+  /private[-_]?key/i,
+  /^headers$/i,
+  /^config$/i,
+  /stripe-signature/i,
+];
+
+function isSensitiveLogKey(key: string): boolean {
+  return SENSITIVE_LOG_KEY_PATTERNS.some((pattern) => pattern.test(key));
+}
+
+function sanitizeLogValue(
+  value: unknown,
+  seen: WeakSet<object>,
+  maxStringLen: number,
+  depth = 0,
+): unknown {
+  if (typeof value === 'string') {
+    const singleLine = value.replace(/[\r\n]+/g, ' ');
+    return singleLine.length > maxStringLen
+      ? `${singleLine.slice(0, maxStringLen)}...[truncated]`
+      : singleLine;
+  }
+  if (value === null || typeof value !== 'object') {
+    return value;
+  }
+  if (seen.has(value)) {
+    return '[Circular]';
+  }
+  if (depth >= 6) {
+    return '[MaxDepth]';
+  }
+  seen.add(value);
+  if (Array.isArray(value)) {
+    return value.slice(0, 50).map((item) => sanitizeLogValue(item, seen, maxStringLen, depth + 1));
+  }
+  const sanitizedObj: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(value)) {
+    if (isSensitiveLogKey(k)) {
+      sanitizedObj[k] = '[REDACTED]';
+    } else {
+      sanitizedObj[k] = sanitizeLogValue(v, seen, maxStringLen, depth + 1);
+    }
+  }
+  return sanitizedObj;
+}
+
+/**
+ * Safely serializes an unknown non-Error payload into a single-line string with circular-reference
+ * protection, sensitive-key redaction, and length truncation.
+ */
+export function safeSerializeUnknown(value: unknown, maxLength = 2048): string {
+  const sanitized = sanitizeLogValue(value, new WeakSet<object>(), 512);
+  let serialized: string;
+  try {
+    serialized = JSON.stringify(sanitized) ?? String(sanitized);
+  } catch {
+    serialized = '[UnserializableObject]';
+  }
+  return serialized.length > maxLength
+    ? `${serialized.slice(0, maxLength)}...[truncated]`
+    : serialized;
+}
+
 /**
  * Structured logger for Google Cloud Run, Cloud Logging, and Cloud Error Reporting.
  *
@@ -163,7 +234,18 @@ export class Logger {
       message: sanitizedMessage,
     };
 
-    const serialized = JSON.stringify(entry);
+    let serialized: string;
+    try {
+      serialized = JSON.stringify(entry);
+    } catch {
+      const safeContext = entry.context
+        ? (sanitizeLogValue(entry.context, new WeakSet<object>(), 512) as Record<string, unknown>)
+        : undefined;
+      serialized = JSON.stringify({
+        ...entry,
+        ...(safeContext ? { context: safeContext } : {}),
+      });
+    }
     if (payload.severity === 'ERROR' || payload.severity === 'CRITICAL') {
       process.stderr.write(serialized + '\n');
     } else {
@@ -235,7 +317,7 @@ export class Logger {
     } else if (err && typeof err === 'object') {
       errorObj = {
         name: 'NonErrorObject',
-        message: JSON.stringify(err),
+        message: safeSerializeUnknown(err),
       };
     } else if (err !== undefined) {
       errorObj = {

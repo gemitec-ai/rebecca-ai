@@ -332,9 +332,67 @@ export const REBECCA_METADATA: PersonaMetadata = {
       },
     ],
   },
+  lounge: {
+    brandName: 'Rebecca Private Lounge',
+    portalOrigin: 'https://rebecca-ai.net',
+    avatarPath: 'assets/persona_cutout.webp',
+    chatIconPath: 'assets/avatars/persona_icon.png',
+    emotionAvatarPaths: {
+      NEUTRAL: 'assets/avatars/persona_neutral.png',
+      HAPPY: 'assets/avatars/persona_happy.png',
+      TEASING: 'assets/avatars/persona_teasing.png',
+      SHY: 'assets/avatars/persona_shy.png',
+      EXCITED: 'assets/avatars/persona_excited.png',
+      THOUGHTFUL: 'assets/avatars/persona_thoughtful.png',
+      SURPRISED: 'assets/avatars/persona_surprised.png',
+    },
+  },
 };
 
-const parsedPatterns = rawPatterns as PersonaPattern[];
+/**
+ * Validates raw pattern JSON entries at module load time so malformed datasets fail fast
+ * instead of silently propagating invalid structure through type assertions.
+ *
+ * @throws Error When the pattern catalog is not an array or any entry omits required fields.
+ */
+export function parsePersonaPatterns(raw: unknown): readonly PersonaPattern[] {
+  if (!Array.isArray(raw)) {
+    throw new Error('personaPatterns dataset must be an array');
+  }
+  return raw.map((entry, idx): PersonaPattern => {
+    if (typeof entry !== 'object' || entry === null) {
+      throw new Error(`personaPatterns[${idx}] must be an object`);
+    }
+    const item = entry as Record<string, unknown>;
+    const id = item['id'];
+    if (typeof id !== 'number' || !Number.isInteger(id) || id < 1) {
+      throw new Error(`personaPatterns[${idx}].id must be a positive integer`);
+    }
+    const requiredTextFields = [
+      'category',
+      'trigger',
+      'internal_thought',
+      'behavior',
+      'sample_response',
+    ] as const;
+    for (const field of requiredTextFields) {
+      const value = item[field];
+      if (typeof value !== 'string' || value.trim().length === 0) {
+        throw new Error(`personaPatterns[${idx}].${field} must be a non-empty string`);
+      }
+    }
+    return {
+      id,
+      category: item['category'] as string,
+      trigger: item['trigger'] as string,
+      internal_thought: item['internal_thought'] as string,
+      behavior: item['behavior'] as string,
+      sample_response: item['sample_response'] as string,
+    };
+  });
+}
+
+const parsedPatterns: readonly PersonaPattern[] = parsePersonaPatterns(rawPatterns);
 
 /**
  * Concrete implementation of BasePersona for Rebecca.
@@ -343,8 +401,8 @@ const parsedPatterns = rawPatterns as PersonaPattern[];
  */
 export class RebeccaPersona extends BasePersona {
   readonly metadata: PersonaMetadata = REBECCA_METADATA;
-  readonly patterns: PersonaPattern[] = parsedPatterns;
-  readonly patternVectors: PersonaPatternWithVector[] = precomputedPersonaPatternEmbeddings;
+  readonly patterns: readonly PersonaPattern[] = parsedPatterns;
+  readonly patternVectors: readonly PersonaPatternWithVector[] = precomputedPersonaPatternEmbeddings;
 
   getDreamingPrompt(): string {
     return `

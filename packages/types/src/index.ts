@@ -2,8 +2,9 @@
  * @rebecca/types
  *
  * Shared data model type definitions for the Rebecca AI monorepo.
- * These types are framework-agnostic and safe to use in both the
- * bot-backend (Node.js) and dashboard-frontend (Angular) applications.
+ * These types are framework-agnostic and safe to use across all workspace applications
+ * (`bot-backend`, `dashboard-backend`, `dashboard-frontend`, `lounge-backend`, `lounge-frontend`,
+ * `portal-web`, and `functions`).
  *
  * DESIGN NOTE: Firestore-specific types (e.g., Timestamp) are intentionally
  * excluded here. Backend code that needs Timestamp should cast to/from
@@ -1033,7 +1034,7 @@ export function parseUpstreamApiError(error: unknown): UpstreamApiError | null {
 }
 
 // ============================================================================
-// Gemitec Private Lounge Domain & BFF Contracts (Isolated from Public Bot/Admin)
+// Rebecca Private Lounge Domain & BFF Contracts (Isolated from Public Bot/Admin)
 // ============================================================================
 
 /**
@@ -1084,9 +1085,23 @@ export type LoungeOrderStatus =
 export type LoungePortalFlow = 'default' | 'payment_method_update' | 'subscription_cancel';
 
 /**
- * Supported UI and conversational response languages in the Gemitec Private Lounge.
+ * Supported UI and conversational response languages in the Rebecca Private Lounge.
  */
 export type LoungeLanguage = 'ja' | 'en' | 'de' | 'pt' | 'es' | 'zh-HK' | 'vi' | 'th';
+
+/**
+ * Single Source of Truth list of Private Lounge supported BCP-47 language codes.
+ */
+export const LOUNGE_SUPPORTED_LANGUAGES: readonly LoungeLanguage[] = [
+  'ja',
+  'en',
+  'de',
+  'pt',
+  'es',
+  'zh-HK',
+  'vi',
+  'th',
+] as const;
 
 /**
  * AI persona emotional state surfaced as icon expressions on chat turns.
@@ -1144,6 +1159,8 @@ export interface LoungeUserDisclaimerConsent {
   agreedToZeroPiiProhibition: boolean;
   /** Confirms user acknowledged strict isolation from public social timeline posts. */
   agreedToOneWayMemoryIsolation: boolean;
+  /** Confirms user represents non-EEA/UK/Switzerland location/residency while Phase 2 EEA is disabled. */
+  agreedToNonEeaEligibility?: boolean;
   /** ISO 8601 timestamp recorded when disclaimer box reached 100% scroll depth. */
   scrolledToBottomAt: string;
   /** ISO 8601 timestamp recorded when the sign-up or re-consent checkbox was submitted. */
@@ -1233,10 +1250,6 @@ export interface LoungeUserDoc extends LoungeUser {
   episodicBuffer?: ConversationLogEntry[];
   /** ISO 8601 datetime of the last completed Private Lounge Dreaming consolidation. */
   lastDreamedAt?: string;
-  /** Server-only counter of Gemini 3 search_web executions during `dailySearchResetDate`. */
-  dailySearchCount?: number;
-  /** Local YYYY-MM-DD key anchoring `dailySearchCount` in the user's configured timezone. */
-  dailySearchResetDate?: string;
 }
 
 /**
@@ -1362,7 +1375,28 @@ export interface LoungeMessage {
 /**
  * Persisted Firestore schema shape for `lounge_messages` documents.
  */
-export type LoungeMessageDoc = LoungeMessage;
+export interface LoungeMessageDoc extends LoungeMessage {
+  /** Optional internal persona inner monologue stored for working-memory continuity (stripped from public DTOs). */
+  thought?: string;
+}
+
+/**
+ * Projects an internal `LoungeMessageDoc` into a public `LoungeMessage` DTO without exposing internal thoughts.
+ */
+export function toPublicLoungeMessage(doc: LoungeMessageDoc): LoungeMessage {
+  return {
+    id: doc.id,
+    sessionId: doc.sessionId,
+    uid: doc.uid,
+    role: doc.role,
+    content: doc.content,
+    emotion: doc.emotion,
+    ...(doc.imageAssetId !== undefined ? { imageAssetId: doc.imageAssetId } : {}),
+    ...(doc.imageUrl !== undefined ? { imageUrl: doc.imageUrl } : {}),
+    ...(doc.tokenUsage !== undefined ? { tokenUsage: doc.tokenUsage } : {}),
+    createdAt: doc.createdAt,
+  };
+}
 
 /**
  * Domain model for private RAG memories in `lounge_rag_memories` (never written to Public X).
@@ -1389,9 +1423,11 @@ export type LoungeRagMemoryDoc = LoungeRagMemory;
  */
 export interface LoungePrivateMemorySnapshot {
   readonly coreProfile: UserCoreProfile;
-  readonly recentRawMessages: readonly LoungeMessage[];
+  readonly recentRawMessages: readonly LoungeMessageDoc[];
   readonly vectorMemories: readonly LoungeRagMemory[];
   readonly lastDreamedAt?: string;
+  /** Timestamp of the user's most recent completed assistant reply in Private Lounge (for absence detection). */
+  readonly lastReplyAt?: string;
 }
 
 /**
@@ -1400,6 +1436,9 @@ export interface LoungePrivateMemorySnapshot {
  */
 export interface LoungePublicXMemorySnapshot {
   readonly xUserId: string;
+  readonly xDisplayName?: string;
+  readonly xUsername?: string;
+  readonly lastPublicReplyAt?: string;
   readonly userStructuredProfile: UserCoreProfile | null;
   readonly userRecentTurns: readonly ConversationLogEntry[];
   readonly userVectorMemories: readonly string[];
@@ -1432,7 +1471,7 @@ export type LoungeGalleryItemDoc = LoungeGalleryItem;
  */
 export interface LoungeSignUpRequestDto {
   idToken: string;
-  xOAuthCode: string;
+  xOAuthCode?: string;
   disclaimerConsent: LoungeUserDisclaimerConsent;
   language?: LoungeLanguage;
   timezone?: string;
@@ -1468,6 +1507,15 @@ export interface LoungePersonaBranding {
 }
 
 /**
+ * Authoritative portal URLs hosting static legal disclosures linked from Private Lounge UI.
+ */
+export interface LoungeLegalUrlsDto {
+  tosUrl: string;
+  privacyUrl: string;
+  legalUrl: string;
+}
+
+/**
  * Public Firebase Web SDK bootstrap configuration returned by `/api/v1/lounge/config`.
  */
 export interface LoungeFirebaseWebConfig {
@@ -1485,10 +1533,15 @@ export interface LoungeRuntimeConfigDto {
   appVersion: string;
   disclaimerVersion: number;
   persona: LoungePersonaBranding;
+  legalUrls?: LoungeLegalUrlsDto;
   firebase?: LoungeFirebaseWebConfig;
   useEmulators?: boolean;
   production?: boolean;
   phase2EeaEnabled?: boolean;
+  /** True when at least one Stripe product Price ID and Stripe gateway are configured on the server. */
+  billingEnabled?: boolean;
+  /** Obfuscated support contact email (`[at mark]`) mirroring Portal Web `/api/v1/support/plans`, or `null` when unset. */
+  contactEmail?: string | null;
 }
 
 /**
@@ -1599,7 +1652,8 @@ export interface LoungeCreditLot {
 
 /**
  * Full Firestore-persisted document in `lounge_credit_lots`.
- * Indexed by `(uid, status, expiresAt)` for FIFO consumption and `(uid, stripePaymentIntentId)` for webhook lookup.
+ * Indexed by composite `(uid, status, expiresAt)` for FIFO consumption/expiry, composite `(uid, stripePaymentIntentId)`
+ * for owner-scoped order joins, and single-field `stripePaymentIntentId` for Stripe refund/dispute webhook attribution.
  */
 export interface LoungeCreditLotDoc extends LoungeCreditLot {
   stripePaymentIntentId?: string;
@@ -1671,8 +1725,14 @@ export interface LoungeBillingProductDto {
   validityDays: number | null;
   taxInclusive: boolean;
   promotionCodesAllowed: boolean;
+  /** True when a Stripe Price ID and Stripe gateway are configured for this product & currency on the server. */
+  available: boolean;
   eligible: boolean;
-  ineligibleReason?: 'TRIAL_ALREADY_USED' | 'SUBSCRIPTION_ALREADY_ACTIVE' | 'GEO_BLOCKED';
+  ineligibleReason?:
+    | 'COMING_SOON'
+    | 'TRIAL_ALREADY_USED'
+    | 'SUBSCRIPTION_ALREADY_ACTIVE'
+    | 'GEO_BLOCKED';
 }
 
 /**
@@ -1781,14 +1841,15 @@ export interface LoungeEuWithdrawalRequestDto {
 }
 
 /**
- * Response DTO confirming Phase 2 EEA withdrawal execution, refund, and transactional confirmation dispatch.
+ * Response DTO confirming Phase 2 EEA withdrawal execution, Stripe refund, and in-app/Stripe confirmation channel.
  */
 export interface LoungeEuWithdrawalResponseDto {
   withdrawnAt: string;
+  refundId: string;
   refundedAmountMinor: number;
   currency: LoungeCurrency;
   revokedTurns: number;
-  receiptEmailDispatched: boolean;
+  confirmationChannel: 'STRIPE_RECEIPT_AND_IN_APP';
   subscription: LoungeSubscription;
 }
 
