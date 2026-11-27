@@ -1,20 +1,24 @@
 import { PublicSupportPlansResponse } from '@rebecca/types';
+import { formatObfuscatedSupportEmail } from '../utils/contactEmail';
 
-/** Loads configured support contact email dynamically from backend */
+/**
+ * Progressively enhances the static build-time contact email on `/legal`
+ * if the backend support config returns an authoritative address.
+ */
 export async function loadLegalContactEmail(): Promise<void> {
   try {
     const res = await fetch('/api/v1/support/plans');
     if (!res.ok) return;
 
     const data: PublicSupportPlansResponse = await res.json();
-    if (data && data.contactEmail) {
+    const formattedEmail = data && data.contactEmail ? formatObfuscatedSupportEmail(data.contactEmail) : '';
+    if (formattedEmail) {
       const emailText = document.getElementById('contact-email-text');
       const emailNote = document.getElementById('contact-email-note');
       const emailFallback = document.getElementById('contact-email-fallback');
 
       if (emailText) {
-        const safeEmail = data.contactEmail.replace(/@/g, ' [at mark] ');
-        emailText.textContent = safeEmail;
+        emailText.textContent = formattedEmail;
         emailText.style.display = 'inline';
       }
       if (emailNote) emailNote.style.display = 'block';

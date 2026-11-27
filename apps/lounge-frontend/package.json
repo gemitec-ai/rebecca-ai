@@ -1,0 +1,45 @@
+{
+  "name": "lounge-frontend",
+  "version": "1.45.2",
+  "description": "Rebecca Private Lounge Angular 22 Zoneless SPA",
+  "license": "MIT",
+  "scripts": {
+    "build": "ng build",
+    "dev": "ng serve --port 4300",
+    "lint": "ng lint",
+    "test": "jest --runInBand --coverage",
+    "ng": "ng",
+    "start": "ng serve --port 4300",
+    "watch": "ng build --watch --configuration development",
+    "license-check": "license-checker --summary --onlyAllow \"MIT;ISC;Apache-2.0;BSD-2-Clause;BSD-3-Clause;CC-BY-4.0;BlueOak-1.0.0;CC-BY-3.0;CC0-1.0;Unlicense;0BSD\"",
+    "secret-check": "secretlint \"**/*\"",
+    "audit:fix": "npm audit fix"
+  },
+  "dependencies": {
+    "@angular/common": "^22.3.0",
+    "@angular/compiler": "^22.3.0",
+    "@angular/core": "^22.3.0",
+    "@angular/forms": "^22.3.0",
+    "@angular/platform-browser": "^22.3.0",
+    "@rebecca/types": "*",
+    "firebase": "^13.4.0",
+    "rxjs": "~7.8.0",
+    "tslib": "^2.9.1"
+  },
+  "devDependencies": {
+    "@angular-eslint/builder": "^22.8.0",
+    "@angular/build": "^22.3.0",
+    "@angular/cli": "^22.3.0",
+    "@angular/compiler-cli": "^22.3.0",
+    "@eslint/js": "^10.0.1",
+    "@types/jest": "^30.0.0",
+    "angular-eslint": "^22.8.0",
+    "eslint": "^10.15.0",
+    "jest": "^30.5.2",
+    "jest-environment-jsdom": "^30.5.2",
+    "jest-preset-angular": "^17.0.3",
+    "ts-jest": "^29.4.15",
+    "typescript": "~6.0.3",
+    "typescript-eslint": "^8.73.0"
+  }
+}

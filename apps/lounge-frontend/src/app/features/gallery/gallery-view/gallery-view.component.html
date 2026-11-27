@@ -1,0 +1,79 @@
+<section id="gallery-view" class="subview-container gallery-view">
+  <header class="view-header">
+    <div class="view-title-group">
+      <span class="material-icons view-title-icon" aria-hidden="true">photo_library</span>
+      <div>
+        <h1 class="view-title">{{ facade.t('galleryTitle') }}</h1>
+        <p class="view-subtitle">{{ facade.t('gallerySubtitle') }}</p>
+      </div>
+    </div>
+
+    <div class="view-header-actions">
+      <span class="gallery-count-pill">
+        {{ unlockedGalleryCount() }} / {{ totalGalleryCount() }}
+        {{ facade.t('galleryUnlockedLabel') }}
+      </span>
+      <button
+        id="btn-back-to-chat"
+        type="button"
+        class="back-btn"
+        (click)="facade.navigateTo('CHAT')"
+      >
+        <span class="material-icons" aria-hidden="true">arrow_back</span>
+        <span>{{ facade.t('backToChat') }}</span>
+      </button>
+    </div>
+  </header>
+
+  @if (facade.galleryItems().length === 0 && !facade.isLoadingGalleryPage()) {
+    <div id="gallery-empty-state" class="lounge-empty-state">
+      <span class="material-icons lounge-empty-icon" aria-hidden="true">collections</span>
+      <h2 class="lounge-empty-title">{{ facade.t('galleryEmptyTitle') }}</h2>
+      <p class="lounge-empty-body">{{ facade.t('galleryEmptyBody') }}</p>
+    </div>
+  } @else {
+    <div
+      class="gallery-grid"
+      [attr.aria-busy]="facade.isLoadingGalleryPage() ? 'true' : null"
+    >
+      @for (item of facade.galleryItems(); track item.id) {
+        @if (item.unlocked && item.imageUrl) {
+          <button
+            [id]="'gallery-card-' + item.id"
+            type="button"
+            class="gallery-tile unlocked"
+            [attr.aria-label]="facade.t('viewFullImageAria')"
+            (click)="imagePreviewRequested.emit({ imageUrl: item.imageUrl, event: $event })"
+          >
+            <img
+              class="gallery-tile-img"
+              [src]="item.imageUrl"
+              [alt]="facade.personaDisplayName()"
+              loading="lazy"
+            />
+            <span class="gallery-zoom-badge" aria-hidden="true">
+              <span class="material-icons">zoom_in</span>
+            </span>
+          </button>
+        }
+      }
+    </div>
+  }
+
+  @if (facade.galleryTotalPages() > 1 || facade.galleryTotalItems() > 0) {
+    <app-lounge-pagination
+      id="gallery-pagination"
+      [currentPage]="facade.galleryCurrentPage()"
+      [totalPages]="facade.galleryTotalPages()"
+      [totalItems]="facade.galleryTotalItems()"
+      [pageSize]="galleryPageSize()"
+      [loading]="facade.isLoadingGalleryPage()"
+      [showingLabel]="facade.t('paginationShowingLabel')"
+      [pageLabel]="facade.t('paginationPageLabel')"
+      [itemsUnit]="facade.t('paginationItemsUnit')"
+      [prevAriaLabel]="facade.t('paginationPrevAria')"
+      [nextAriaLabel]="facade.t('paginationNextAria')"
+      (pageChange)="pageChange.emit($event)"
+    />
+  }
+</section>

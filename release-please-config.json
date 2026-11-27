@@ -23,6 +23,16 @@
         },
         {
           "type": "json",
+          "path": "apps/lounge-backend/package.json",
+          "jsonpath": "$.version"
+        },
+        {
+          "type": "json",
+          "path": "apps/lounge-frontend/package.json",
+          "jsonpath": "$.version"
+        },
+        {
+          "type": "json",
           "path": "apps/functions/package.json",
           "jsonpath": "$.version"
         },

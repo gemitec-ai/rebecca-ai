@@ -2,7 +2,13 @@ export * from './types';
 export * from './basePersona';
 export * from './structuredResponse';
 export { precomputedPersonaPatternEmbeddings, PersonaPatternWithVector } from './personaPatternVectors';
-export { rebeccaPersona, RebeccaPersona, REBECCA_METADATA, REBECCA_PORTAL_CONFIG } from './personas/rebecca';
+export {
+  rebeccaPersona,
+  RebeccaPersona,
+  REBECCA_METADATA,
+  REBECCA_PORTAL_CONFIG,
+  parsePersonaPatterns,
+} from './personas/rebecca';
 
 import { formatPersonaFewShotPrompt, rankPersonaPatternVectors } from './basePersona';
 import { rebeccaPersona } from './personas/rebecca';
@@ -29,7 +35,7 @@ export function getActivePersona(id?: string): IPersonaDefinition {
 /**
  * Default patterns (from Rebecca persona)
  */
-export const personaPatterns: PersonaPattern[] = rebeccaPersona.patterns;
+export const personaPatterns: readonly PersonaPattern[] = rebeccaPersona.patterns;
 
 /**
  * Finds top-K matching persona patterns based on cosine similarity against the supplied pattern vectors.

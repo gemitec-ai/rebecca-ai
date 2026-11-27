@@ -2,8 +2,9 @@
  * @rebecca/types
  *
  * Shared data model type definitions for the Rebecca AI monorepo.
- * These types are framework-agnostic and safe to use in both the
- * bot-backend (Node.js) and dashboard-frontend (Angular) applications.
+ * These types are framework-agnostic and safe to use across all workspace applications
+ * (`bot-backend`, `dashboard-backend`, `dashboard-frontend`, `lounge-backend`, `lounge-frontend`,
+ * `portal-web`, and `functions`).
  *
  * DESIGN NOTE: Firestore-specific types (e.g., Timestamp) are intentionally
  * excluded here. Backend code that needs Timestamp should cast to/from
@@ -1032,4 +1033,856 @@ export function parseUpstreamApiError(error: unknown): UpstreamApiError | null {
   return new UpstreamApiError(resolvedMessage, code, { cause: error });
 }
 
+// ============================================================================
+// Rebecca Private Lounge Domain & BFF Contracts (Isolated from Public Bot/Admin)
+// ============================================================================
 
+/**
+ * Subscription plan tier governing daily turn quotas in the Private Lounge.
+ */
+export type LoungeSubscriptionTier = 'FREE' | 'STANDARD';
+
+/**
+ * Lifecycle state of a user's Private Lounge subscription.
+ */
+export type LoungeSubscriptionStatus = 'NONE' | 'ACTIVE' | 'CANCELING' | 'PAST_DUE' | 'CANCELED';
+
+/**
+ * Account status for Private Lounge users.
+ */
+export type LoungeAccountStatus = 'ACTIVE' | 'SUSPENDED' | 'DELETING';
+/** Billing currency resolved by server Geo-IP or locked at initial Checkout. */
+export type LoungeCurrency = 'JPY' | 'USD';
+/** Currency recorded on a credit lot ('NONE' for promotional welcome grant). */
+export type LoungeCreditCurrency = 'NONE' | LoungeCurrency;
+/** Billing product catalog identifiers supported by Private Lounge. */
+export type LoungeProductId =
+  | 'WELCOME_BONUS_20'
+  | 'TRIAL_TICKET_100'
+  | 'CHARGE_TICKET_100'
+  | 'STANDARD_MONTHLY';
+/** Lifecycle status of an individual promotional or paid credit lot. */
+export type LoungeCreditLotStatus = 'ACTIVE' | 'EXHAUSTED' | 'EXPIRED' | 'REVOKED';
+/** Quota ledger mutation classification for operational and audit traceability. */
+export type LoungeQuotaDeltaType =
+  | 'RESERVE_DAILY'
+  | 'RESERVE_LOT'
+  | 'COMPENSATION_REFUND'
+  | 'GRANT_WELCOME'
+  | 'GRANT_LOT'
+  | 'DAILY_RESET'
+  | 'REFUND_CLAWBACK'
+  | 'UPGRADE_TOPUP';
+/** Normalized order status derived directly from Stripe Charge / Refund / Dispute state. */
+export type LoungeOrderStatus =
+  | 'COMPLETED'
+  | 'PARTIAL_REFUNDED'
+  | 'REFUNDED'
+  | 'DISPUTED'
+  | 'FAILED'
+  | 'PENDING';
+/** Deep-link flow parameter supported when creating a Stripe Customer Portal session. */
+export type LoungePortalFlow = 'default' | 'payment_method_update' | 'subscription_cancel';
+
+/**
+ * Supported UI and conversational response languages in the Rebecca Private Lounge.
+ */
+export type LoungeLanguage = 'ja' | 'en' | 'de' | 'pt' | 'es' | 'zh-HK' | 'vi' | 'th';
+
+/**
+ * Single Source of Truth list of Private Lounge supported BCP-47 language codes.
+ */
+export const LOUNGE_SUPPORTED_LANGUAGES: readonly LoungeLanguage[] = [
+  'ja',
+  'en',
+  'de',
+  'pt',
+  'es',
+  'zh-HK',
+  'vi',
+  'th',
+] as const;
+
+/**
+ * AI persona emotional state surfaced as icon expressions on chat turns.
+ */
+export type LoungeEmotionState =
+  | 'NEUTRAL'
+  | 'HAPPY'
+  | 'TEASING'
+  | 'SHY'
+  | 'EXCITED'
+  | 'THOUGHTFUL'
+  | 'SURPRISED';
+
+/**
+ * Turn author role inside a Private Lounge chat session.
+ */
+export type LoungeSenderRole = 'USER' | 'ASSISTANT' | 'SYSTEM';
+
+/**
+ * Memory category for isolated Private Lounge episodic RAG memories.
+ */
+export type LoungeMemoryCategory = 'EPISODE' | 'PREFERENCE' | 'PROMISE' | 'NICKNAME';
+
+/**
+ * Current canonical positive integer version of the Private Lounge legal/privacy disclaimer.
+ * Increment whenever material clauses change to trigger mandatory user re-consent on login/resume.
+ */
+export const CURRENT_LOUNGE_DISCLAIMER_VERSION = 1;
+
+/**
+ * Machine-readable API error code emitted when a user must accept an updated disclaimer before chatting.
+ */
+export const LOUNGE_ERROR_CODE_DISCLAIMER_RECONSENT_REQUIRED =
+  'DISCLAIMER_RECONSENT_REQUIRED' as const;
+
+/**
+ * Structured error payload returned by Private Lounge BFF endpoints.
+ */
+export interface LoungeApiErrorDto {
+  error: string;
+  code?: string;
+  requiredDisclaimerVersion?: number;
+  acceptedDisclaimerVersion?: number;
+}
+
+/**
+ * Scroll-verified consent audit record captured during Private Lounge Sign-Up or Re-Consent.
+ */
+export interface LoungeUserDisclaimerConsent {
+  /** Positive integer version (`>= 1`) of the accepted legal/privacy disclaimer. */
+  disclaimerVersion: number;
+  /** Confirms user read and accepted Gemini API learning/improvement terms. */
+  agreedToGeminiTrainingUsage: boolean;
+  /** Confirms user agreed not to transmit PII, credentials, or sensitive data. */
+  agreedToZeroPiiProhibition: boolean;
+  /** Confirms user acknowledged strict isolation from public social timeline posts. */
+  agreedToOneWayMemoryIsolation: boolean;
+  /** Confirms user represents non-EEA/UK/Switzerland location/residency while Phase 2 EEA is disabled. */
+  agreedToNonEeaEligibility?: boolean;
+  /** ISO 8601 timestamp recorded when disclaimer box reached 100% scroll depth. */
+  scrolledToBottomAt: string;
+  /** ISO 8601 timestamp recorded when the sign-up or re-consent checkbox was submitted. */
+  consentedAt: string;
+}
+
+/**
+ * Public HTTP profile projection for an isolated Private Lounge end user (`lounge_users`).
+ * Internal Dreaming fields (`coreProfile`, `episodicBuffer`, `lastDreamedAt`) remain server-only on `LoungeUserDoc`.
+ */
+export interface LoungeUser {
+  uid: string;
+  xUserId: string;
+  xHandle: string;
+  displayName: string;
+  avatarUrl: string;
+  status: LoungeAccountStatus;
+  language: LoungeLanguage;
+  timezone: string;
+  /** Indicates whether post-X-link Language & Timezone onboarding confirmation has completed. */
+  onboardingCompleted: boolean;
+  disclaimerConsent: LoungeUserDisclaimerConsent;
+  /** Opt-out preference allowing anonymized/service-improvement analytics outside EEA Paid Tier. */
+  allowServiceImprovementAnalytics: boolean;
+  /** Server-determined ISO 3166-1 alpha-2 country code (e.g. Geo-IP or Stripe Checkout). */
+  countryCode?: string;
+  /** True when Geo-IP / billing origin is in EEA, UK, or Switzerland (Phase 2 gate). */
+  isEeaResident?: boolean;
+  /** Server-locked billing currency ('JPY' for JP, 'USD' otherwise; never driven by UI language). */
+  preferredCurrency?: LoungeCurrency;
+  createdAt: string;
+  updatedAt: string;
+  lastLoginAt: string;
+}
+
+/**
+ * Request DTO confirming irreversible account deletion and no refund for unused paid turns.
+ */
+export interface LoungeDeleteAccountRequestDto {
+  confirmedIrreversibleDeletion: boolean;
+  confirmedNoRefundForRemainingTurns: boolean;
+}
+
+/**
+ * Request DTO updating Private Lounge language, timezone preferences, and onboarding completion status.
+ */
+export interface LoungeUpdatePreferencesRequestDto {
+  language?: LoungeLanguage;
+  timezone?: string;
+  completeOnboarding?: boolean;
+  allowServiceImprovementAnalytics?: boolean;
+}
+
+/**
+ * Request DTO submitting scroll-verified user acceptance of an updated disclaimer version.
+ */
+export interface LoungeUpdateDisclaimerConsentRequestDto {
+  disclaimerConsent: LoungeUserDisclaimerConsent;
+}
+
+/**
+ * Isolated webhook / background event idempotency record (`lounge_processed_events`).
+ */
+export interface LoungeProcessedEvent {
+  eventId: string;
+  eventType: string;
+  uid?: string;
+  /** Deterministic resource target identifier (`cs_...`, `in_...`, or `cus_...`). */
+  targetId?: string;
+  processedAt: string;
+  /** ISO 8601 expiration timestamp backing the 90-day Firestore TTL policy. */
+  expireAt?: string;
+}
+
+/**
+ * Persisted Firestore schema shape for `lounge_processed_events` documents.
+ */
+export type LoungeProcessedEventDoc = LoungeProcessedEvent;
+
+/**
+ * Persisted Firestore schema shape for `lounge_users` documents including internal Dreaming memory fields.
+ */
+export interface LoungeUserDoc extends LoungeUser {
+  /** Structured long-term user profile consolidated via independent Private Lounge Dreaming. */
+  coreProfile?: UserCoreProfile;
+  /** Sliding window of raw conversation entries pending Private Lounge Dreaming consolidation. */
+  episodicBuffer?: ConversationLogEntry[];
+  /** ISO 8601 datetime of the last completed Private Lounge Dreaming consolidation. */
+  lastDreamedAt?: string;
+}
+
+/**
+ * Public client-facing subscription and hybrid quota projection (`lounge_subscriptions`).
+ * Strips Stripe internal identifiers and server-only daily counters before serialization.
+ */
+export interface LoungeSubscription {
+  uid: string;
+  tier: LoungeSubscriptionTier;
+  status: LoungeSubscriptionStatus;
+  /** Locked checkout billing currency (assigned at Geo-IP resolution or initial Checkout). */
+  billingCurrency?: LoungeCurrency;
+  /** Configured daily allowance: `5` for FREE/PAST_DUE/CANCELED, `100` for STANDARD ACTIVE/CANCELING. */
+  dailyTurnQuota: number;
+  /** Remaining turns from today's non-rollover daily allowance (`0..dailyTurnQuota`). */
+  dailyRemainingTurns: number;
+  /** Materialized sum of `remainingTurns` across non-expired `ACTIVE` credit lots. */
+  purchasedRemainingTurns: number;
+  /** Unified remaining turns presented to the user (`dailyRemainingTurns + purchasedRemainingTurns`). */
+  remainingChatTurns: number;
+  /** Earliest expiration ISO 8601 timestamp across `ACTIVE` credit lots, or `null` when none exist. */
+  earliestLotExpiresAt: string | null;
+  /** ISO 8601 timestamp when daily quota was last reset. */
+  lastDailyResetAt: string;
+  /** IANA timezone string active during the last daily quota reset (for TZ-change clamping). */
+  lastQuotaResetTimezone: string;
+  /** Monotonic ISO 8601 timestamp for the next local-midnight daily quota reset. */
+  nextDailyResetAt: string;
+  /** Subscription billing period end derived from `subscription.items.data[0].current_period_end`. */
+  currentPeriodEnd: string;
+  /** Cached one-time trial ticket eligibility flag (`true` once consumed or blocked). */
+  trialTicketUsed: boolean;
+  /** True when the active Stripe subscription is scheduled to cancel at `currentPeriodEnd`. */
+  cancelAtPeriodEnd: boolean;
+  updatedAt: string;
+}
+
+/**
+ * Full Firestore-persisted Private Lounge subscription & quota document (`lounge_subscriptions`).
+ */
+export interface LoungeSubscriptionDoc extends LoungeSubscription {
+  stripeCustomerId?: string;
+  stripeSubscriptionId?: string;
+  stripeScheduleId?: string;
+  /** Last processed Stripe invoice ID (`in_...`) guarding against stale invoice replay. */
+  lastProcessedInvoiceId?: string;
+  /** Server-only daily turns consumed during the current quota day (`0..dailyTurnQuota`). */
+  todaysConsumedDailyTurns: number;
+  /** Server-only search_web turns consumed during the current quota day. */
+  todaysSearchCount?: number;
+}
+
+/**
+ * Projects a server-side `LoungeSubscriptionDoc` into a browser-safe `LoungeSubscription` DTO.
+ */
+export function toPublicLoungeSubscription(doc: LoungeSubscriptionDoc): LoungeSubscription {
+  return {
+    uid: doc.uid,
+    tier: doc.tier,
+    status: doc.status,
+    ...(doc.billingCurrency !== undefined ? { billingCurrency: doc.billingCurrency } : {}),
+    dailyTurnQuota: doc.dailyTurnQuota,
+    dailyRemainingTurns: doc.dailyRemainingTurns,
+    purchasedRemainingTurns: doc.purchasedRemainingTurns,
+    remainingChatTurns: doc.remainingChatTurns,
+    earliestLotExpiresAt: doc.earliestLotExpiresAt,
+    lastDailyResetAt: doc.lastDailyResetAt,
+    lastQuotaResetTimezone: doc.lastQuotaResetTimezone,
+    nextDailyResetAt: doc.nextDailyResetAt,
+    currentPeriodEnd: doc.currentPeriodEnd,
+    trialTicketUsed: doc.trialTicketUsed,
+    cancelAtPeriodEnd: doc.cancelAtPeriodEnd,
+    updatedAt: doc.updatedAt,
+  };
+}
+
+/**
+ * Domain model for an isolated Private Lounge conversation thread (`lounge_sessions`).
+ */
+export interface LoungeSession {
+  id: string;
+  uid: string;
+  title: string;
+  messageCount: number;
+  currentEmotion: LoungeEmotionState;
+  publicXMemorySyncedAt: string;
+  lastMessagePreview: string;
+  createdAt: string;
+  updatedAt: string;
+  archivedAt?: string;
+}
+
+/**
+ * Persisted Firestore schema shape for `lounge_sessions` documents.
+ */
+export type LoungeSessionDoc = LoungeSession;
+
+/**
+ * Token metering snapshot stored on assistant replies in Private Lounge sessions.
+ */
+export interface LoungeTokenUsage {
+  promptTokens: number;
+  candidatesTokens: number;
+  totalTokens: number;
+}
+
+/**
+ * Domain model for an individual chat message in `lounge_messages`.
+ */
+export interface LoungeMessage {
+  id: string;
+  sessionId: string;
+  uid: string;
+  role: LoungeSenderRole;
+  content: string;
+  emotion: LoungeEmotionState;
+  imageAssetId?: string;
+  imageUrl?: string;
+  tokenUsage?: LoungeTokenUsage;
+  createdAt: string;
+}
+
+/**
+ * Persisted Firestore schema shape for `lounge_messages` documents.
+ */
+export interface LoungeMessageDoc extends LoungeMessage {
+  /** Optional internal persona inner monologue stored for working-memory continuity (stripped from public DTOs). */
+  thought?: string;
+}
+
+/**
+ * Projects an internal `LoungeMessageDoc` into a public `LoungeMessage` DTO without exposing internal thoughts.
+ */
+export function toPublicLoungeMessage(doc: LoungeMessageDoc): LoungeMessage {
+  return {
+    id: doc.id,
+    sessionId: doc.sessionId,
+    uid: doc.uid,
+    role: doc.role,
+    content: doc.content,
+    emotion: doc.emotion,
+    ...(doc.imageAssetId !== undefined ? { imageAssetId: doc.imageAssetId } : {}),
+    ...(doc.imageUrl !== undefined ? { imageUrl: doc.imageUrl } : {}),
+    ...(doc.tokenUsage !== undefined ? { tokenUsage: doc.tokenUsage } : {}),
+    createdAt: doc.createdAt,
+  };
+}
+
+/**
+ * Domain model for private RAG memories in `lounge_rag_memories` (never written to Public X).
+ */
+export interface LoungeRagMemory {
+  id: string;
+  uid: string;
+  sessionId: string;
+  category: LoungeMemoryCategory;
+  summary: string;
+  embedding: number[];
+  salienceScore: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
+ * Persisted Firestore schema shape for `lounge_rag_memories` documents.
+ */
+export type LoungeRagMemoryDoc = LoungeRagMemory;
+
+/**
+ * Independent Private Lounge memory snapshot for a single user (`lounge_*` collections only).
+ */
+export interface LoungePrivateMemorySnapshot {
+  readonly coreProfile: UserCoreProfile;
+  readonly recentRawMessages: readonly LoungeMessageDoc[];
+  readonly vectorMemories: readonly LoungeRagMemory[];
+  readonly lastDreamedAt?: string;
+  /** Timestamp of the user's most recent completed assistant reply in Private Lounge (for absence detection). */
+  readonly lastReplyAt?: string;
+}
+
+/**
+ * Read-only Public X Bot memory snapshot injected into Private Lounge prompts without reverse write-back.
+ * Combines the user's Public X history/profile with Rebecca's Layer 1/2/3 self-post memories.
+ */
+export interface LoungePublicXMemorySnapshot {
+  readonly xUserId: string;
+  readonly xDisplayName?: string;
+  readonly xUsername?: string;
+  readonly lastPublicReplyAt?: string;
+  readonly userStructuredProfile: UserCoreProfile | null;
+  readonly userRecentTurns: readonly ConversationLogEntry[];
+  readonly userVectorMemories: readonly string[];
+  readonly personaLayer1ExtendedPrompt: string;
+  readonly personaLayer2TimelineSummary: string;
+  readonly personaLayer3RecentPosts: readonly string[];
+  readonly syncedAt: string;
+}
+
+/**
+ * Domain model for an unlocked Bot illustration displayed in a session and saved to Gallery (`lounge_gallery`).
+ */
+export interface LoungeGalleryItem {
+  id: string;
+  uid: string;
+  assetId: string;
+  imageUrl: string;
+  unlocked: boolean;
+  unlockedAt?: string;
+  sourceSessionId?: string;
+}
+
+/**
+ * Persisted Firestore schema shape for `lounge_gallery` documents.
+ */
+export type LoungeGalleryItemDoc = LoungeGalleryItem;
+
+/**
+ * Request DTO submitted when onboarding a new X-linked user with scroll-gated disclaimer consent.
+ */
+export interface LoungeSignUpRequestDto {
+  idToken: string;
+  xOAuthCode?: string;
+  disclaimerConsent: LoungeUserDisclaimerConsent;
+  language?: LoungeLanguage;
+  timezone?: string;
+}
+
+/**
+ * Request DTO submitted when signing in an existing Private Lounge user.
+ */
+export interface LoungeLoginRequestDto {
+  idToken: string;
+  xOAuthCode?: string;
+}
+
+/**
+ * Authenticated Private Lounge session state returned by `/api/v1/lounge/auth/*`.
+ */
+export interface LoungeAuthSessionDto {
+  user: LoungeUser;
+  appVersion: string;
+  issuedAt: string;
+}
+
+/**
+ * Persona display branding and emotion-reactive chat avatar paths surfaced dynamically from `@rebecca/persona`.
+ */
+export interface LoungePersonaBranding {
+  displayName: string;
+  englishName: string;
+  brandName: string;
+  avatarPath: string;
+  chatIconPath: string;
+  emotionAvatarPaths: Record<LoungeEmotionState, string>;
+}
+
+/**
+ * Authoritative portal URLs hosting static legal disclosures linked from Private Lounge UI.
+ */
+export interface LoungeLegalUrlsDto {
+  tosUrl: string;
+  privacyUrl: string;
+  legalUrl: string;
+}
+
+/**
+ * Public Firebase Web SDK bootstrap configuration returned by `/api/v1/lounge/config`.
+ */
+export interface LoungeFirebaseWebConfig {
+  apiKey: string;
+  authDomain: string;
+  projectId: string;
+  appId: string;
+  tenantId?: string;
+}
+
+/**
+ * Runtime shell configuration payload returned by `GET /api/v1/lounge/config`.
+ */
+export interface LoungeRuntimeConfigDto {
+  appVersion: string;
+  disclaimerVersion: number;
+  persona: LoungePersonaBranding;
+  legalUrls?: LoungeLegalUrlsDto;
+  firebase?: LoungeFirebaseWebConfig;
+  useEmulators?: boolean;
+  production?: boolean;
+  phase2EeaEnabled?: boolean;
+  /** True when at least one Stripe product Price ID and Stripe gateway are configured on the server. */
+  billingEnabled?: boolean;
+  /** Obfuscated support contact email (`[at mark]`) mirroring Portal Web `/api/v1/support/plans`, or `null` when unset. */
+  contactEmail?: string | null;
+}
+
+/**
+ * Summary payload combining profile, subscription tier, remaining turns, and gallery progress.
+ */
+export interface LoungeAccountSummaryDto {
+  user: LoungeUser;
+  subscription: LoungeSubscription;
+  persona?: LoungePersonaBranding;
+  unlockedGalleryCount: number;
+  totalGalleryCount: number;
+  appVersion: string;
+}
+
+/**
+ * Request DTO for sending a user message in the user's persistent Private Lounge session.
+ */
+export interface LoungeSendMessageRequestDto {
+  content: string;
+}
+
+/**
+ * Response DTO returning persisted user prompt, assistant reply (with optional illustration), and quota state.
+ */
+export interface LoungeSendMessageResponseDto {
+  session: LoungeSession;
+  userMessage: LoungeMessage;
+  assistantMessage: LoungeMessage;
+  remainingChatTurns: number;
+  subscription?: LoungeSubscription;
+  unlockedGalleryItem?: LoungeGalleryItem;
+}
+
+/**
+ * Shared bounded pagination query contract used across Private Lounge list endpoints
+ * (`GET /api/v1/lounge/session/messages` and `GET /api/v1/lounge/gallery`).
+ */
+export interface LoungePaginationQueryDto {
+  /** 1-based page number (`>= 1`, defaults to `1`). */
+  page?: number;
+  /** Maximum items per page clamped to `[1, 100]`. */
+  limit?: number;
+  /** Optional opaque document cursor (e.g., oldest loaded message ID for backward chat paging). */
+  cursor?: string;
+}
+
+/**
+ * Standardized Private Lounge pagination metadata extending the repository `PaginationMeta` contract.
+ */
+export interface LoungePaginationMeta extends PaginationMeta {
+  /** Cursor for fetching the next page when available, or `null` at the boundary. */
+  nextCursor: string | null;
+  /** Indicates whether additional pages remain beyond `currentPage`. */
+  hasMore: boolean;
+}
+
+/**
+ * Unified Private Lounge paginated response envelope shared across Chat history and Gallery APIs.
+ */
+export interface LoungePaginatedResponseDto<T> extends PaginatedResponse<T> {
+  data: T[];
+  meta: LoungePaginationMeta;
+}
+
+/**
+ * Paginated list response for `/api/v1/lounge/session/messages`.
+ * Each page paginates backward from newest turns while returning `data` ordered chronologically (`[oldest..newest]`).
+ */
+export type LoungeMessageListResponseDto = LoungePaginatedResponseDto<LoungeMessage>;
+
+/**
+ * Collection-wide unlock counters included alongside paginated Gallery items.
+ */
+export interface LoungeGallerySummaryDto {
+  unlockedCount: number;
+  totalCount: number;
+}
+
+/**
+ * Paginated list response for `/api/v1/lounge/gallery`, extending the shared `LoungePaginatedResponseDto`.
+ */
+export interface LoungeGalleryListResponseDto extends LoungePaginatedResponseDto<LoungeGalleryItem> {
+  summary: LoungeGallerySummaryDto;
+}
+
+
+
+/**
+ * Public client-facing representation of a non-zero or historical credit lot.
+ * Excludes server-only Stripe PaymentIntent identifiers.
+ */
+export interface LoungeCreditLot {
+  id: string;
+  uid: string;
+  productId: Extract<LoungeProductId, 'WELCOME_BONUS_20' | 'TRIAL_TICKET_100' | 'CHARGE_TICKET_100'>;
+  isPaid: boolean;
+  initialTurns: number;
+  remainingTurns: number;
+  currency: LoungeCreditCurrency;
+  /** Price paid in minor currency units (`0` for welcome bonus, integer yen for JPY, cents for USD). */
+  unitAmount: number;
+  status: LoungeCreditLotStatus;
+  /** Anchored strictly to Stripe `PaymentIntent.created` (ISO 8601), or grant time for free lots. */
+  purchasedAt: string;
+  /** Expiration timestamp (`purchasedAt + 180 days`) in ISO 8601. */
+  expiresAt: string;
+}
+
+/**
+ * Full Firestore-persisted document in `lounge_credit_lots`.
+ * Indexed by composite `(uid, status, expiresAt)` for FIFO consumption/expiry, composite `(uid, stripePaymentIntentId)`
+ * for owner-scoped order joins, and single-field `stripePaymentIntentId` for Stripe refund/dispute webhook attribution.
+ */
+export interface LoungeCreditLotDoc extends LoungeCreditLot {
+  stripePaymentIntentId?: string;
+}
+
+/**
+ * Projects a server `LoungeCreditLotDoc` to a safe client `LoungeCreditLot`.
+ */
+export function toPublicLoungeCreditLot(doc: LoungeCreditLotDoc): LoungeCreditLot {
+  return {
+    id: doc.id,
+    uid: doc.uid,
+    productId: doc.productId,
+    isPaid: doc.isPaid,
+    initialTurns: doc.initialTurns,
+    remainingTurns: doc.remainingTurns,
+    currency: doc.currency,
+    unitAmount: doc.unitAmount,
+    status: doc.status,
+    purchasedAt: doc.purchasedAt,
+    expiresAt: doc.expiresAt,
+  };
+}
+
+/**
+ * Operational quota audit ledger record persisted in `lounge_quota_ledger` with a 180-day Firestore TTL.
+ */
+export interface LoungeQuotaLedgerDoc {
+  id: string;
+  uid: string;
+  deltaType: LoungeQuotaDeltaType;
+  deltaDaily: number;
+  deltaPurchased: number;
+  balanceTotalAfter: number;
+  lotId?: string;
+  referenceId: string;
+  createdAt: string;
+  /** ISO 8601 expiration timestamp backing the 180-day Firestore TTL policy. */
+  expireAt: string;
+}
+
+/**
+ * Non-PII anti-fraud grant tracker persisted in `lounge_trial_grants`.
+ * Never stores `uid`, X handles, or Stripe session/customer IDs so deleted users remain anonymized.
+ */
+export interface LoungeTrialGrantDoc {
+  /** Keyed by `HMAC-SHA256(secret[keyVersion], xUserId)`. */
+  xUserIdHash: string;
+  /** Keyring version (`>= 1`) used to compute `xUserIdHash`. */
+  keyVersion: number;
+  riskStatus: 'OK' | 'DISPUTE_BLOCKED';
+  welcomeBonusGrantedAt?: string;
+  trialTicketGrantedAt?: string;
+  /** ISO 8601 retention limit (e.g. 3 years anti-abuse retention). */
+  retainUntil: string;
+}
+
+/**
+ * Purchaser-selectable product catalog entry rendered in Billing Tab 1.
+ */
+export interface LoungeBillingProductDto {
+  productId: Exclude<LoungeProductId, 'WELCOME_BONUS_20'>;
+  mode: 'payment' | 'subscription';
+  currency: LoungeCurrency;
+  unitAmountMinor: number;
+  formattedPrice: string;
+  grantedTurns: number;
+  /** Lot validity in days (`180` for one-time tickets; `null` for daily-resetting subscription). */
+  validityDays: number | null;
+  taxInclusive: boolean;
+  promotionCodesAllowed: boolean;
+  /** True when a Stripe Price ID and Stripe gateway are configured for this product & currency on the server. */
+  available: boolean;
+  eligible: boolean;
+  ineligibleReason?:
+    | 'COMING_SOON'
+    | 'TRIAL_ALREADY_USED'
+    | 'SUBSCRIPTION_ALREADY_ACTIVE'
+    | 'GEO_BLOCKED';
+}
+
+/**
+ * Catalog and eligibility payload returned by `GET /api/v1/lounge/billing/catalog`.
+ */
+export interface LoungeBillingCatalogDto {
+  currency: LoungeCurrency;
+  currencyLocked: boolean;
+  countryCode: string;
+  isEeaResident: boolean;
+  phase2EeaEnabled: boolean;
+  trialEligible: boolean;
+  subscriptionStatus: LoungeSubscriptionStatus;
+  products: LoungeBillingProductDto[];
+}
+
+/**
+ * Request DTO creating a Stripe Checkout Session (`POST /api/v1/lounge/billing/checkout`).
+ * All ASCT disclosure checkboxes default to unchecked client-side and must be `true`.
+ */
+export interface LoungeCreateCheckoutRequestDto {
+  productId: Exclude<LoungeProductId, 'WELCOME_BONUS_20'>;
+  acceptedPurchaseDisclosure: boolean;
+  acceptedAutoRenewalOptIn: boolean;
+  confirmedAdultOrParentalConsent: boolean;
+  euDigitalWaiverAccepted?: boolean;
+}
+
+/**
+ * Response DTO returning the hosted Stripe Checkout redirect URL and masked session ID.
+ */
+export interface LoungeCreateCheckoutResponseDto {
+  checkoutUrl: string;
+  sessionIdMasked: string;
+}
+
+/**
+ * Request DTO for immediate post-Checkout verification (`POST /api/v1/lounge/billing/checkout/verify`).
+ */
+export interface LoungeVerifyCheckoutRequestDto {
+  sessionId: string;
+}
+
+/**
+ * Response DTO returning updated quota projection after synchronous Checkout verification.
+ */
+export interface LoungeVerifyCheckoutResponseDto {
+  subscription: LoungeSubscription;
+  verified: boolean;
+  autoRefundedConflict?: boolean;
+}
+
+/**
+ * Request DTO generating a deep-linked Stripe Customer Portal URL (`POST /api/v1/lounge/billing/portal`).
+ */
+export interface LoungeCreatePortalRequestDto {
+  flow: LoungePortalFlow;
+}
+
+/**
+ * Response DTO containing the single-use Stripe Customer Portal URL.
+ */
+export interface LoungeCreatePortalResponseDto {
+  portalUrl: string;
+}
+
+/**
+ * Detailed turn-bucket breakdown rendered inside Billing Tab 2 (`Subscription Management`).
+ */
+export interface LoungeQuotaBreakdownDto {
+  dailyTurnQuota: number;
+  dailyRemainingTurns: number;
+  purchasedRemainingTurns: number;
+  remainingChatTurns: number;
+  activeLots: LoungeCreditLot[];
+  nextDailyResetAt: string;
+  consumptionOrder: readonly ['DAILY', 'LOT_FIFO'];
+  phase2EuWithdrawalEligible?: boolean;
+}
+
+/**
+ * Proactive non-intrusive reminder when an active ticket lot expires within 14 days.
+ */
+export interface LoungeExpiringLotWarningDto {
+  hoursRemaining: number;
+  expiringTurns: number;
+  expiresAt: string;
+}
+
+/**
+ * Detailed subscription and quota breakdown payload returned by `GET /api/v1/lounge/billing/subscription`.
+ */
+export interface LoungeSubscriptionDetailResponseDto {
+  subscription: LoungeSubscription;
+  quotaBreakdown: LoungeQuotaBreakdownDto;
+  expiringSoonWarning?: LoungeExpiringLotWarningDto;
+}
+
+/**
+ * Request DTO for Phase 2 EEA statutory 14-day electronic withdrawal (`POST /api/v1/lounge/billing/eu-withdrawal`).
+ */
+export interface LoungeEuWithdrawalRequestDto {
+  targetType: 'SUBSCRIPTION' | 'CREDIT_LOT';
+  targetId: string;
+  confirmedWithdrawal: boolean;
+}
+
+/**
+ * Response DTO confirming Phase 2 EEA withdrawal execution, Stripe refund, and in-app/Stripe confirmation channel.
+ */
+export interface LoungeEuWithdrawalResponseDto {
+  withdrawnAt: string;
+  refundId: string;
+  refundedAmountMinor: number;
+  currency: LoungeCurrency;
+  revokedTurns: number;
+  confirmationChannel: 'STRIPE_RECEIPT_AND_IN_APP';
+  subscription: LoungeSubscription;
+}
+
+/**
+ * Normalized Stripe Charge order record serialized by `GET /api/v1/lounge/billing/orders`.
+ */
+export interface LoungeBillingOrderItemDto {
+  chargeId: string;
+  productId: Exclude<LoungeProductId, 'WELCOME_BONUS_20'> | 'UNKNOWN';
+  status: LoungeOrderStatus;
+  amountMinor: number;
+  refundedAmountMinor: number;
+  currency: LoungeCurrency;
+  createdAt: string;
+  receiptAvailable: boolean;
+  remainingTurns?: number;
+  initialTurns?: number;
+  lotStatus?: LoungeCreditLotStatus;
+  expiresAt?: string;
+}
+
+/**
+ * Cursor-paginated purchase history response returned by `GET /api/v1/lounge/billing/orders`.
+ */
+export interface LoungeBillingOrdersResponseDto {
+  orders: LoungeBillingOrderItemDto[];
+  nextCursor: string | null;
+  hasMore: boolean;
+}
+
+/**
+ * Response DTO returning an ownership-verified Stripe hosted receipt URL.
+ */
+export interface LoungeBillingReceiptResponseDto {
+  receiptUrl: string;
+}

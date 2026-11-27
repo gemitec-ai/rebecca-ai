@@ -1,0 +1,112 @@
+<section id="options-view" class="subview-container options-view">
+  <header class="view-header">
+    <div class="view-title-group">
+      <span class="material-icons view-title-icon" aria-hidden="true">tune</span>
+      <div>
+        <h1 class="view-title">{{ facade.t('optionsTitle') }}</h1>
+        <p class="view-subtitle">{{ facade.t('optionsSubtitle') }}</p>
+      </div>
+    </div>
+
+    <button
+      id="btn-options-back-to-chat"
+      type="button"
+      class="back-btn"
+      (click)="facade.navigateTo('CHAT')"
+    >
+      <span class="material-icons" aria-hidden="true">arrow_back</span>
+      <span>{{ facade.t('backToChat') }}</span>
+    </button>
+  </header>
+
+  <div class="options-stack">
+    <div class="options-card">
+      <div class="option-group">
+        <div class="option-label-row">
+          <span class="material-icons option-label-icon" aria-hidden="true">language</span>
+          <span class="option-label-text">{{ facade.t('optionsLanguageLabel') }}</span>
+        </div>
+        <app-lounge-dropdown
+          id="options-lang-dropdown"
+          [leadingIcon]="'language'"
+          [options]="languageOptions()"
+          [selectedValue]="facade.lang()"
+          [ariaLabel]="facade.t('optionsLanguageLabel')"
+          (valueChange)="languageChange.emit($event)"
+        />
+        <p class="option-hint">{{ facade.t('optionsLanguageHint') }}</p>
+      </div>
+
+      <div class="options-divider" aria-hidden="true"></div>
+
+      <div class="option-group">
+        <div class="option-label-row">
+          <span class="material-icons option-label-icon" aria-hidden="true">schedule</span>
+          <span class="option-label-text">{{ facade.t('optionsTimezoneLabel') }}</span>
+        </div>
+        <app-lounge-dropdown
+          id="options-timezone-dropdown"
+          [leadingIcon]="'schedule'"
+          [options]="timezoneOptions()"
+          [selectedValue]="facade.timezone()"
+          [ariaLabel]="facade.t('optionsTimezoneLabel')"
+          (valueChange)="timezoneChange.emit($event)"
+        />
+        <p class="option-hint">{{ facade.t('optionsTimezoneHint') }}</p>
+      </div>
+
+      <div class="options-divider" aria-hidden="true"></div>
+
+      <div class="option-group">
+        <div class="analytics-toggle-row">
+          <input
+            id="chk-analytics-optin"
+            type="checkbox"
+            class="consent-checkbox"
+            [checked]="facade.accountSummary()?.user?.allowServiceImprovementAnalytics ?? true"
+            (change)="onAnalyticsOptInChange($event)"
+          />
+          <label for="chk-analytics-optin" class="option-label-text">
+            {{ facade.t('optionsAnalyticsLabel') }}
+          </label>
+        </div>
+        <p class="option-hint">{{ facade.t('optionsAnalyticsHint') }}</p>
+      </div>
+
+      @if (facade.optionsSavedNotice(); as savedMsg) {
+        <div
+          id="options-saved-banner"
+          class="options-saved-pill"
+          role="status"
+          aria-live="polite"
+        >
+          <span class="material-icons" aria-hidden="true">check_circle</span>
+          <span>{{ savedMsg }}</span>
+        </div>
+      }
+    </div>
+
+    <!-- Account Withdrawal / Cascade Data Reset Section -->
+    <div class="danger-zone-card">
+      <div class="danger-zone-header">
+        <span class="material-icons danger-zone-icon" aria-hidden="true">warning_amber</span>
+        <div>
+          <h2 class="danger-zone-title">{{ facade.t('deleteAccountSectionTitle') }}</h2>
+          <p class="danger-zone-desc">{{ facade.t('deleteAccountSectionDesc') }}</p>
+        </div>
+      </div>
+
+      <button
+        #openDeleteAccountButton
+        id="btn-open-delete-account"
+        type="button"
+        class="danger-open-btn"
+        [disabled]="facade.isLoading()"
+        (click)="facade.openDeleteAccountModal()"
+      >
+        <span class="material-icons" aria-hidden="true">delete_forever</span>
+        <span>{{ facade.t('deleteAccountOpenBtn') }}</span>
+      </button>
+    </div>
+  </div>
+</section>

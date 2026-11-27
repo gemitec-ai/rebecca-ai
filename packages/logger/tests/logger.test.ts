@@ -231,6 +231,24 @@ describe('packages/logger', () => {
       const noErrorOutput = JSON.parse(stderrWriteSpy.mock.calls[0][0]);
       expect(noErrorOutput.error).toBeUndefined();
       expect(noErrorOutput.context).toEqual({ attempt: 3 });
+
+      // Redacts sensitive keys, handles circular references, and truncates huge non-Error payloads
+      stderrWriteSpy.mockClear();
+      const circular: Record<string, unknown> = {
+        headers: { authorization: 'Bearer top-secret-jwt' },
+        apiKey: 'secret-api-key',
+        nested: ['ok', 'x'.repeat(700)],
+      };
+      circular.self = circular;
+      logger.error('Sanitized object error', circular, { circularRef: circular });
+      const sanitizedOutput = JSON.parse(stderrWriteSpy.mock.calls[0][0]);
+      expect(sanitizedOutput.error?.name).toBe('NonErrorObject');
+      expect(sanitizedOutput.error?.message).toContain('[REDACTED]');
+      expect(sanitizedOutput.error?.message).toContain('[Circular]');
+      expect(sanitizedOutput.error?.message).toContain('...[truncated]');
+      expect(sanitizedOutput.error?.message).not.toContain('top-secret-jwt');
+      expect(sanitizedOutput.error?.message).not.toContain('secret-api-key');
+      expect(sanitizedOutput.context).toBeDefined();
     });
   });
 });

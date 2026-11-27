@@ -1,0 +1,348 @@
+<main
+  class="auth-shell"
+  [attr.inert]="facade.isReconsentRequired() || facade.deleteAccountStep() > 0 ? '' : null"
+>
+  <div class="ambient-bg" aria-hidden="true">
+    <div class="ambient-orb orb-purple"></div>
+    <div class="ambient-orb orb-pink"></div>
+    <div class="ambient-grid"></div>
+  </div>
+
+  <div class="auth-layout">
+    <!-- Left Stage: Pluggable Private Lounge Companion Showcase -->
+    <section class="hero-panel">
+      <div class="brand-pill">
+        <img src="assets/gemitec_icon.svg" alt="" class="brand-crest-icon" aria-hidden="true" />
+        <span>{{ facade.personaBranding().brandName }}</span>
+      </div>
+
+      <h1 class="hero-title">
+        <span class="hero-title-lead">{{ facade.t('heroLead') }}</span>
+        <span class="hero-title-accent">{{ facade.t('heroHighlight') }}</span>
+      </h1>
+
+      <p class="hero-body">{{ facade.t('heroBody') }}</p>
+
+      <div class="hero-character-stage">
+        <div class="character-halo" aria-hidden="true"></div>
+        <img
+          [src]="facade.personaBranding().avatarPath"
+          [alt]="facade.personaDisplayName()"
+          class="hero-cutout"
+        />
+        <div class="hero-nameplate">
+          <span class="material-icons nameplate-icon" aria-hidden="true">chat_bubble</span>
+          <span>{{ facade.personaDisplayName() }}</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- Right Stage: Auth Card OR Post-X-Link Locale/Timezone Onboarding Card -->
+    @if (facade.activeView() === 'AUTH') {
+      <section class="auth-card" [attr.aria-label]="facade.t('authHeadingSrOnly')">
+        <header class="auth-card-header">
+          <div
+            class="auth-tabs"
+            role="tablist"
+            [attr.focusgroup]="'tablist nomemory'"
+            [attr.aria-label]="facade.t('authHeadingSrOnly')"
+          >
+            <button
+              #authTabBtn
+              id="tab-login"
+              type="button"
+              role="tab"
+              class="auth-tab"
+              [class.active]="facade.authMode() === 'LOGIN'"
+              [attr.aria-selected]="facade.authMode() === 'LOGIN'"
+              [attr.tabindex]="facade.authMode() === 'LOGIN' ? 0 : -1"
+              [attr.focusgroupstart]="facade.authMode() === 'LOGIN' ? '' : null"
+              (click)="facade.setAuthMode('LOGIN')"
+              (keydown)="onAuthTabKeydown($event, 0)"
+            >
+              {{ facade.t('tabLogin') }}
+            </button>
+            <button
+              #authTabBtn
+              id="tab-signup"
+              type="button"
+              role="tab"
+              class="auth-tab"
+              [class.active]="facade.authMode() === 'SIGNUP'"
+              [attr.aria-selected]="facade.authMode() === 'SIGNUP'"
+              [attr.tabindex]="facade.authMode() === 'SIGNUP' ? 0 : -1"
+              [attr.focusgroupstart]="facade.authMode() === 'SIGNUP' ? '' : null"
+              (click)="facade.setAuthMode('SIGNUP')"
+              (keydown)="onAuthTabKeydown($event, 1)"
+            >
+              {{ facade.t('tabSignUp') }}
+            </button>
+          </div>
+
+          <div class="auth-lang-wrap">
+            <app-lounge-dropdown
+              id="auth-lang-dropdown"
+              [compact]="true"
+              [align]="'right'"
+              [leadingIcon]="'language'"
+              [options]="languageOptions()"
+              [selectedValue]="facade.lang()"
+              [ariaLabel]="facade.t('languageSelectLabel')"
+              (valueChange)="languageChange.emit($event)"
+            />
+          </div>
+        </header>
+
+        @if (facade.authMode() === 'SIGNUP') {
+          <div class="auth-panel-body">
+            <div class="disclaimer-heading">
+              <span class="material-icons disclaimer-heading-icon" aria-hidden="true">gavel</span>
+              <span>{{ facade.t('disclaimerInstruction') }}</span>
+            </div>
+
+            <div
+              class="disclaimer-scroll-wrap"
+              [class.at-bottom]="facade.disclaimerScrolledToBottom()"
+            >
+              <div
+                #disclaimerBox
+                id="disclaimer-scroll-box"
+                class="disclaimer-scroll-box"
+                tabindex="0"
+                role="region"
+                [attr.aria-label]="facade.t('disclaimerRegionLabel')"
+                (scroll)="onDisclaimerScroll($event)"
+              >
+                <div class="disclaimer-clause">
+                  <h2>{{ facade.t('clause1Title') }}</h2>
+                  <p>{{ facade.t('clause1Body') }}</p>
+                </div>
+
+                <div class="disclaimer-clause">
+                  <h2>{{ facade.t('clause2Title') }}</h2>
+                  <p>{{ facade.t('clause2Body') }}</p>
+                </div>
+
+                <div class="disclaimer-clause">
+                  <h2>{{ facade.t('clause3Title') }}</h2>
+                  <p>{{ facade.t('clause3Body') }}</p>
+                </div>
+
+                @if (!facade.phase2EeaEnabled()) {
+                  <div class="disclaimer-clause">
+                    <h2>{{ facade.t('clause4Title') }}</h2>
+                    <p>{{ facade.t('clause4Body') }}</p>
+                  </div>
+                }
+              </div>
+            </div>
+
+            <div
+              class="scroll-status-bar"
+              [class.unlocked]="facade.disclaimerScrolledToBottom()"
+              aria-live="polite"
+            >
+              <div class="scroll-status-text">
+                <span class="material-icons scroll-status-icon" aria-hidden="true">
+                  {{ facade.disclaimerScrolledToBottom() ? 'check_circle' : 'arrow_downward' }}
+                </span>
+                <span>
+                  {{
+                    facade.disclaimerScrolledToBottom()
+                      ? facade.t('scrollUnlocked')
+                      : facade.t('scrollLocked')
+                  }}
+                </span>
+              </div>
+              <span class="scroll-progress-pct">{{ facade.disclaimerScrollProgress() }}%</span>
+            </div>
+
+            <div class="consent-check-stack">
+              <div
+                class="consent-label"
+                [class.consent-disabled]="!facade.disclaimerScrolledToBottom()"
+              >
+                <input
+                  id="checkbox-disclaimer-consent"
+                  type="checkbox"
+                  class="consent-checkbox"
+                  [disabled]="!facade.disclaimerScrolledToBottom()"
+                  [checked]="facade.disclaimerChecked()"
+                  (change)="onConsentChange($event)"
+                />
+                <label for="checkbox-disclaimer-consent" class="consent-label-text">
+                  {{ facade.t('consentLabel') }}
+                </label>
+              </div>
+
+              @if (!facade.phase2EeaEnabled()) {
+                <div
+                  class="consent-label"
+                  [class.consent-disabled]="!facade.disclaimerScrolledToBottom()"
+                >
+                  <input
+                    id="checkbox-non-eea-eligibility"
+                    type="checkbox"
+                    class="consent-checkbox"
+                    [disabled]="!facade.disclaimerScrolledToBottom()"
+                    [checked]="facade.nonEeaEligibilityChecked()"
+                    (change)="onNonEeaChange($event)"
+                  />
+                  <label for="checkbox-non-eea-eligibility" class="consent-label-text">
+                    {{ facade.t('nonEeaEligibilityLabel') }}
+                  </label>
+                </div>
+              }
+            </div>
+
+            <button
+              id="btn-x-signup"
+              type="button"
+              class="x-cta-btn"
+              [disabled]="!facade.canSubmitSignUp()"
+              (click)="facade.submitSignUpWithX()"
+            >
+              @if (facade.isLoading()) {
+                <span class="material-icons spin-icon" aria-hidden="true">autorenew</span>
+              } @else {
+                <svg class="x-brand-svg" viewBox="0 0 24 24" aria-hidden="true">
+                  <path
+                    fill="currentColor"
+                    d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"
+                  />
+                </svg>
+              }
+              <span>{{ facade.t('signUpCta') }}</span>
+            </button>
+          </div>
+        } @else {
+          <div class="auth-panel-body login-panel-body">
+            <div class="login-callout">
+              <div class="login-callout-badge" aria-hidden="true">
+                <span class="material-icons">bolt</span>
+              </div>
+              <h2 class="login-callout-title">{{ facade.t('loginCalloutTitle') }}</h2>
+              <p class="login-callout-body">{{ facade.t('loginCalloutBody') }}</p>
+            </div>
+
+            <button
+              id="btn-x-login"
+              type="button"
+              class="x-cta-btn"
+              [disabled]="facade.isLoading()"
+              (click)="facade.submitLoginWithX()"
+            >
+              @if (facade.isLoading()) {
+                <span class="material-icons spin-icon" aria-hidden="true">autorenew</span>
+              } @else {
+                <svg class="x-brand-svg" viewBox="0 0 24 24" aria-hidden="true">
+                  <path
+                    fill="currentColor"
+                    d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"
+                  />
+                </svg>
+              }
+              <span>{{ facade.t('loginCta') }}</span>
+            </button>
+
+            <div class="login-signup-bridge">
+              <span class="login-signup-prompt">{{ facade.t('loginNewUserPrompt') }}</span>
+              <button
+                id="btn-switch-to-signup"
+                type="button"
+                class="switch-signup-btn"
+                (click)="facade.setAuthMode('SIGNUP')"
+              >
+                <span class="material-icons" aria-hidden="true">person_add</span>
+                <span>{{ facade.t('loginSwitchToSignUpBtn') }}</span>
+              </button>
+            </div>
+          </div>
+        }
+
+        <footer class="auth-card-footer">
+          <span>{{ facade.personaBranding().brandName }} · {{ facade.t('disclaimerVersionLabel') }}</span>
+          <span class="version-chip">{{ formattedVersion() }}</span>
+        </footer>
+      </section>
+    } @else {
+      <section
+        id="onboarding-preferences-card"
+        class="auth-card onboarding-card"
+        [attr.aria-label]="facade.t('onboardingTitle')"
+      >
+        <div class="onboarding-linked-pill">
+          <span class="material-icons onboarding-linked-icon" aria-hidden="true">check_circle</span>
+          <span>{{ facade.t('onboardingXLinkedBadge') }}</span>
+          @if (facade.accountSummary()?.user?.xHandle; as handle) {
+            <span class="onboarding-x-handle">{{ handle }}</span>
+          }
+        </div>
+
+        <div class="onboarding-heading-group">
+          <h2 class="onboarding-title">{{ facade.t('onboardingTitle') }}</h2>
+          <p class="onboarding-subtitle">{{ facade.t('onboardingSubtitle') }}</p>
+        </div>
+
+        <div class="onboarding-fields">
+          <div class="option-group">
+            <div class="option-label-row">
+              <span class="material-icons option-label-icon" aria-hidden="true">language</span>
+              <span class="option-label-text">{{ facade.t('optionsLanguageLabel') }}</span>
+            </div>
+            <app-lounge-dropdown
+              id="onboarding-lang-dropdown"
+              [leadingIcon]="'language'"
+              [options]="languageOptions()"
+              [selectedValue]="facade.lang()"
+              [ariaLabel]="facade.t('optionsLanguageLabel')"
+              (valueChange)="languageChange.emit($event)"
+            />
+            <p class="option-hint">{{ facade.t('optionsLanguageHint') }}</p>
+          </div>
+
+          <div class="option-group">
+            <div class="option-label-row">
+              <span class="material-icons option-label-icon" aria-hidden="true">schedule</span>
+              <span class="option-label-text">{{ facade.t('optionsTimezoneLabel') }}</span>
+            </div>
+            <app-lounge-dropdown
+              id="onboarding-timezone-dropdown"
+              [leadingIcon]="'schedule'"
+              [options]="timezoneOptions()"
+              [selectedValue]="facade.timezone()"
+              [ariaLabel]="facade.t('optionsTimezoneLabel')"
+              (valueChange)="timezoneChange.emit($event)"
+            />
+            <p class="option-hint">{{ facade.t('optionsTimezoneHint') }}</p>
+          </div>
+        </div>
+
+        <div class="onboarding-note-box">
+          <span class="material-icons onboarding-note-icon" aria-hidden="true">info_outline</span>
+          <span>{{ facade.t('onboardingChangeLaterNote') }}</span>
+        </div>
+
+        <button
+          id="btn-start-lounge"
+          type="button"
+          class="x-cta-btn"
+          [disabled]="facade.isLoading()"
+          (click)="facade.completeOnboarding()"
+        >
+          @if (facade.isLoading()) {
+            <span class="material-icons spin-icon" aria-hidden="true">autorenew</span>
+          } @else {
+            <span class="material-icons" aria-hidden="true">arrow_forward</span>
+          }
+          <span>{{ facade.t('onboardingStartCta') }}</span>
+        </button>
+
+        <footer class="auth-card-footer">
+          <span>{{ facade.personaBranding().brandName }} · {{ facade.t('disclaimerVersionLabel') }}</span>
+          <span class="version-chip">{{ formattedVersion() }}</span>
+        </footer>
+      </section>
+    }
+  </div>
+</main>

@@ -1,0 +1,163 @@
+<dialog
+  #preCheckoutDialog
+  id="precheckout-dialog"
+  class="precheckout-dialog"
+  aria-labelledby="precheckout-modal-title"
+  (cancel)="onDialogCancel($event)"
+  (close)="onDialogClose()"
+>
+  @if (product(); as activeProduct) {
+    <div class="precheckout-surface">
+      <header class="precheckout-header">
+        <div class="precheckout-title-row">
+          <span class="material-icons precheckout-icon" aria-hidden="true">verified_user</span>
+          <div>
+            <h1 id="precheckout-modal-title" class="precheckout-title">
+              {{ facade.t('preCheckoutTitle') }}
+            </h1>
+            <p class="precheckout-subtitle">{{ facade.t('preCheckoutSubtitle') }}</p>
+          </div>
+        </div>
+      </header>
+
+      <dl class="precheckout-summary">
+        <div class="summary-row">
+          <dt>{{ facade.t('preCheckoutSummaryProductLabel') }}</dt>
+          <dd id="precheckout-product-name">{{ productTitle() }}</dd>
+        </div>
+        <div class="summary-row">
+          <dt>{{ facade.t('preCheckoutSummaryAmountLabel') }}</dt>
+          <dd id="precheckout-total-price" class="price-emphasis">{{ formattedTotalPrice() }}</dd>
+        </div>
+        <div class="summary-row">
+          <dt>{{ facade.t('preCheckoutSummaryQuantityLabel') }}</dt>
+          <dd>
+            +{{ activeProduct.grantedTurns }}
+            @if (activeProduct.validityDays !== null) {
+              ({{ facade.t('billingValidity180Days') }})
+            }
+          </dd>
+        </div>
+        <div class="summary-row">
+          <dt>{{ facade.t('preCheckoutSummaryTimingLabel') }}</dt>
+          <dd>
+            {{
+              activeProduct.mode === 'subscription'
+                ? facade.t('preCheckoutTimingMonthly')
+                : facade.t('preCheckoutTimingOneTime')
+            }}
+          </dd>
+        </div>
+        <div class="summary-row">
+          <dt>{{ facade.t('preCheckoutSummaryCancellationLabel') }}</dt>
+          <dd>
+            {{
+              activeProduct.mode === 'subscription'
+                ? facade.t('preCheckoutCancelMonthly')
+                : facade.t('preCheckoutCancelOneTime')
+            }}
+          </dd>
+        </div>
+      </dl>
+
+      <div class="precheckout-checks">
+        <div class="precheckout-check-row">
+          <input
+            id="chk-precheckout-disclosure"
+            type="checkbox"
+            class="precheckout-checkbox"
+            [checked]="checkedDisclosure()"
+            (change)="onDisclosureChange($event)"
+          />
+          <label for="chk-precheckout-disclosure" class="precheckout-check-label">
+            {{ facade.t('preCheckoutCheckDisclosure') }}
+          </label>
+        </div>
+
+        <div class="precheckout-check-row">
+          <input
+            id="chk-precheckout-autorenew"
+            type="checkbox"
+            class="precheckout-checkbox"
+            [checked]="checkedAutoRenew()"
+            (change)="onAutoRenewChange($event)"
+          />
+          <label for="chk-precheckout-autorenew" class="precheckout-check-label">
+            {{
+              activeProduct.mode === 'subscription'
+                ? facade.t('preCheckoutCheckAutoRenewMonthly')
+                : facade.t('preCheckoutCheckAutoRenewOneTime')
+            }}
+          </label>
+        </div>
+
+        <div class="precheckout-check-row">
+          <input
+            id="chk-precheckout-adult"
+            type="checkbox"
+            class="precheckout-checkbox"
+            [checked]="checkedAdultConsent()"
+            (change)="onAdultConsentChange($event)"
+          />
+          <label for="chk-precheckout-adult" class="precheckout-check-label">
+            {{ facade.t('preCheckoutCheckAdultConsent') }}
+          </label>
+        </div>
+
+        @if (needsEuWaiver()) {
+          <div class="precheckout-check-row">
+            <input
+              id="chk-precheckout-eu-waiver"
+              type="checkbox"
+              class="precheckout-checkbox"
+              [checked]="checkedEuWaiver()"
+              (change)="onEuWaiverChange($event)"
+            />
+            <label for="chk-precheckout-eu-waiver" class="precheckout-check-label">
+              {{ facade.t('preCheckoutCheckEuWaiver') }}
+            </label>
+          </div>
+        }
+      </div>
+
+      @if (facade.legalUrls(); as urls) {
+        <div class="precheckout-legal-links">
+          <span class="legal-links-heading">{{ facade.t('legalLinksHeading') }}</span>
+          <div class="legal-links-row">
+            <a [href]="urls.tosUrl" target="_blank" rel="noopener noreferrer">
+              {{ facade.t('legalTermsLink') }}
+            </a>
+            <a [href]="urls.privacyUrl" target="_blank" rel="noopener noreferrer">
+              {{ facade.t('legalPrivacyLink') }}
+            </a>
+            <a [href]="urls.legalUrl" target="_blank" rel="noopener noreferrer">
+              {{ facade.t('legalCommerceLink') }}
+            </a>
+          </div>
+        </div>
+      }
+
+      <div class="precheckout-actions">
+        <button
+          id="btn-precheckout-cancel"
+          type="button"
+          class="btn-secondary-modal"
+          autofocus
+          (click)="cancel()"
+        >
+          {{ facade.t('preCheckoutCancelBtn') }}
+        </button>
+        <button
+          id="btn-precheckout-proceed"
+          type="button"
+          class="btn-primary-modal"
+          [disabled]="!canProceed()"
+          (click)="proceed()"
+        >
+          <span class="material-icons" aria-hidden="true">lock</span>
+          <span>{{ facade.t('preCheckoutProceedBtn') }}</span>
+        </button>
+      </div>
+    </div>
+  }
+</dialog>

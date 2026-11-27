@@ -1,3 +1,4 @@
+import type { LoungeEmotionState } from '@rebecca/types';
 import { PersonaPatternWithVector } from './personaPatternVectors';
 
 /**
@@ -53,10 +54,10 @@ export interface StructuredPersonaResponse {
  * Structured basic profile master data (Section 1 of Official Persona Specification).
  */
 export interface PersonaProfileSpec {
-  /** Developer / corporate affiliation canonical identifier (e.g. 'Gemitec Inc.'). */
+  /** Developer / creative project canonical identifier (e.g. 'Gemitec'). */
   readonly developer: string;
 
-  /** Localized developer / affiliation display label (e.g. 'ジェミテック社（Gemitec Inc.）'). */
+  /** Localized developer / creative project display label (e.g. 'ジェミテック（Gemitec）'). */
   readonly developerLabel: LocalizedText;
 
   /** AI classification category (e.g. '自律型パーソナルAI（Autonomous Personal AI）'). */
@@ -248,6 +249,17 @@ export interface PersonaStanceSpec {
 }
 
 /**
+ * Private Lounge branding, legal portal origin, and emotion avatar assets for a persona.
+ */
+export interface PersonaLoungeSpec {
+  readonly brandName: string;
+  readonly portalOrigin: string;
+  readonly avatarPath: string;
+  readonly chatIconPath: string;
+  readonly emotionAvatarPaths: Readonly<Record<LoungeEmotionState, string>>;
+}
+
+/**
  * Immutable metadata characterizing a persona's identity, branding, platform presence,
  * and structured official master specifications.
  */
@@ -261,7 +273,7 @@ export interface PersonaMetadata {
   /** Latinized/English display name used in RAG transcripts and internationalized displays (e.g. 'Rebecca'). */
   readonly englishName: string;
 
-  /** Character archetype and social role description (e.g. 'Gemitec Inc.製 自律型パーソナルAI（フラッグシップ機「Unit-001」）'). */
+  /** Character archetype and social role description (e.g. 'ジェミテック（Gemitec）製 自律型パーソナルAI（フラッグシップ機「Unit-001」）'). */
   readonly role: string;
 
   /** Linguistic tone and style description (e.g. '大人のお姉さんギャル'). */
@@ -317,6 +329,9 @@ export interface PersonaMetadata {
 
   /** Structured personality, core values, and empathetic safety circuit specifications. */
   readonly stance: PersonaStanceSpec;
+
+  /** Private Lounge branding title, portal origin, and emotion avatar asset mappings. */
+  readonly lounge: PersonaLoungeSpec;
 }
 
 /**
@@ -355,10 +370,10 @@ export interface IPersonaDefinition {
   getDreamingPrompt(): string;
 
   /** Complete list of situational behavioral patterns defined for this persona. */
-  readonly patterns: PersonaPattern[];
+  readonly patterns: readonly PersonaPattern[];
 
   /** Precomputed semantic embedding vectors corresponding to each pattern in `patterns`. */
-  readonly patternVectors: PersonaPatternWithVector[];
+  readonly patternVectors: readonly PersonaPatternWithVector[];
 
   /**
    * Retrieves the top-K persona patterns closest to the given query embedding vector.
@@ -367,7 +382,7 @@ export interface IPersonaDefinition {
    * @param topK - Maximum number of patterns to return (defaults to 3).
    * @returns Array of matching PersonaPattern instances ranked by similarity.
    */
-  findTopPatterns(queryVector: number[], topK?: number): PersonaPattern[];
+  findTopPatterns(queryVector: readonly number[], topK?: number): PersonaPattern[];
 
   /**
    * Constructs dynamic few-shot prompt instructions from the selected persona patterns.
@@ -376,7 +391,7 @@ export interface IPersonaDefinition {
    * @param lang - Target language for the prompt ('ja' or 'en').
    * @returns Formatted prompt section string.
    */
-  buildFewShotPrompt(patterns: PersonaPattern[], lang?: Language): string;
+  buildFewShotPrompt(patterns: readonly PersonaPattern[], lang?: Language): string;
 
   /**
    * Formats all loaded persona patterns into a human-readable summary string.

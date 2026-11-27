@@ -71,10 +71,10 @@ export interface SituationalAnchorsOptions {
   readonly contextElements: readonly string[];
   /** Target persona used as fallback source for pattern vectors and matchers when not overridden. */
   readonly persona?: Pick<IPersonaDefinition, 'patternVectors' | 'findTopPatterns' | 'buildFewShotPrompt'>;
-  readonly patternVectors?: PersonaPatternWithVector[];
+  readonly patternVectors?: readonly PersonaPatternWithVector[];
   readonly findTopPatterns?: (
-    queryVector: number[],
-    patternVectors: PersonaPatternWithVector[],
+    queryVector: readonly number[],
+    patternVectors: readonly PersonaPatternWithVector[],
     topK: number,
   ) => ReturnType<IPersonaDefinition['findTopPatterns']>;
   readonly buildFewShotPrompt?: IPersonaDefinition['buildFewShotPrompt'];

@@ -1,0 +1,244 @@
+<div class="chat-layout">
+  <!-- PC Left Companion Showcase (hidden on Mobile to maximize conversation space) -->
+  <aside class="companion-panel">
+    <div class="companion-visual-stage">
+      <div class="companion-halo" aria-hidden="true"></div>
+      <img
+        [src]="facade.personaBranding().avatarPath"
+        [alt]="facade.personaDisplayName()"
+        class="companion-cutout"
+      />
+    </div>
+
+    <div class="companion-info">
+      <h2 class="companion-name">{{ facade.personaDisplayName() }}</h2>
+      <p class="companion-subtext">{{ facade.t('companionSubtext') }}</p>
+    </div>
+
+    <button
+      id="btn-companion-gallery"
+      type="button"
+      class="companion-gallery-btn"
+      (click)="facade.navigateTo('GALLERY')"
+    >
+      <span class="material-icons" aria-hidden="true">photo_library</span>
+      <span class="companion-gallery-label">{{ facade.t('openGalleryBtn') }}</span>
+      <span class="companion-gallery-count"
+        >{{ unlockedGalleryCount() }}/{{ totalGalleryCount() }}</span
+      >
+    </button>
+  </aside>
+
+  <!-- Primary Single-Session Chat Stream & Composer -->
+  <section class="chat-panel">
+    <div class="chat-stream-stage">
+      <div
+        #chatStream
+        id="chat-message-stream"
+        class="chat-stream"
+        aria-live="polite"
+        (scroll)="onChatScroll($event)"
+      >
+        @if (facade.isLoadingOlderMessages()) {
+          <div id="chat-history-loading" class="chat-history-status" role="status">
+            <span class="material-icons spin-icon" aria-hidden="true">autorenew</span>
+            <span>{{ facade.t('chatLoadingOlder') }}</span>
+          </div>
+        } @else if (facade.hasMoreMessages()) {
+          <div class="chat-history-status">
+            <button
+              id="btn-load-older-messages"
+              type="button"
+              class="chat-load-older-btn"
+              (click)="triggerLoadOlderMessages()"
+            >
+              <span class="material-icons" aria-hidden="true">history</span>
+              <span>{{ facade.t('chatLoadOlderBtn') }}</span>
+            </button>
+          </div>
+        } @else if (facade.messages().length > 0) {
+          <div id="chat-history-beginning" class="chat-history-beginning" role="status">
+            {{ facade.t('chatBeginningOfHistory') }}
+          </div>
+        } @else {
+          <div id="chat-empty-state" class="lounge-empty-state">
+            <span class="material-icons lounge-empty-icon" aria-hidden="true">forum</span>
+            <h2 class="lounge-empty-title">{{ facade.t('chatEmptyTitle') }}</h2>
+            <p class="lounge-empty-body">{{ facade.t('chatEmptyBody') }}</p>
+          </div>
+        }
+
+        @for (msg of facade.messages(); track msg.id) {
+          @if (msg.role === 'ASSISTANT') {
+            <article class="message-row from-assistant">
+              <img
+                class="ai-chat-avatar"
+                [src]="getEmotionAvatarPath(msg.emotion)"
+                [alt]="facade.personaDisplayName()"
+              />
+              <div class="message-bubble assistant-bubble">
+                <div class="message-meta">
+                  <span class="sender-name">{{ facade.personaDisplayName() }}</span>
+                  <time class="message-time" [attr.datetime]="msg.createdAt">
+                    {{ formatMessageTime(msg.createdAt) }}
+                  </time>
+                </div>
+                <p class="message-text">{{ msg.content }}</p>
+
+                @if (msg.imageUrl) {
+                  <button
+                    type="button"
+                    class="chat-inline-image-btn"
+                    [attr.aria-label]="facade.t('viewFullImageAria')"
+                    (click)="imagePreviewRequested.emit({ imageUrl: msg.imageUrl, event: $event })"
+                  >
+                    <img
+                      class="chat-inline-image"
+                      [src]="msg.imageUrl"
+                      [alt]="facade.personaDisplayName()"
+                      (load)="onInlineImageLoad()"
+                    />
+                    <span class="inline-image-zoom-hint" aria-hidden="true">
+                      <span class="material-icons">zoom_in</span>
+                    </span>
+                    @if (facade.isNewlyUnlockedAsset(msg.imageAssetId)) {
+                      <span class="inline-new-gallery-badge">
+                        <span class="material-icons" aria-hidden="true">photo_library</span>
+                        <span>{{ facade.t('newGalleryBadge') }}</span>
+                      </span>
+                    }
+                  </button>
+                }
+              </div>
+            </article>
+          } @else {
+            <article class="message-row from-user">
+              <div class="message-bubble user-bubble">
+                <div class="message-meta">
+                  <span class="sender-name">
+                    {{ facade.accountSummary()?.user?.xHandle ?? '@you' }}
+                  </span>
+                  <time class="message-time" [attr.datetime]="msg.createdAt">
+                    {{ formatMessageTime(msg.createdAt) }}
+                  </time>
+                </div>
+                <p class="message-text">{{ msg.content }}</p>
+              </div>
+            </article>
+          }
+        }
+      </div>
+
+      @if (showJumpToLatest()) {
+        <button
+          id="btn-jump-to-latest"
+          type="button"
+          class="chat-jump-latest-btn"
+          (click)="jumpToLatestMessage()"
+        >
+          <span class="material-icons" aria-hidden="true">arrow_downward</span>
+          <span>{{ facade.t('chatJumpToLatest') }}</span>
+        </button>
+      }
+    </div>
+
+    @if (facade.isPastDue()) {
+      <div id="chat-past-due-banner" class="past-due-banner" role="alert">
+        <span class="material-icons" aria-hidden="true">warning_amber</span>
+        <span class="hud-banner-text">{{ facade.t('pastDueBannerText') }}</span>
+        <button
+          id="btn-past-due-update-card"
+          type="button"
+          class="hud-banner-btn"
+          (click)="facade.openCustomerPortal('payment_method_update')"
+        >
+          {{ facade.t('pastDueUpdateCardBtn') }}
+        </button>
+      </div>
+    }
+
+    @if (facade.isLowQuotaNudge()) {
+      <div id="chat-low-quota-nudge" class="low-quota-banner" role="status">
+        <span class="material-icons" aria-hidden="true">bolt</span>
+        <span class="hud-banner-text">{{ facade.t('lowQuotaNudgeBanner') }}</span>
+        <button
+          id="btn-low-quota-view-plans"
+          type="button"
+          class="hud-banner-btn"
+          (click)="facade.openBilling('PLANS')"
+        >
+          {{ facade.t('lowQuotaBuyBtn') }}
+        </button>
+      </div>
+    }
+
+    @if (facade.accountSummary()?.subscription?.remainingChatTurns === 0) {
+      <div id="chat-quota-exhausted-banner" class="quota-exhausted-banner" role="status">
+        <span class="material-icons" aria-hidden="true">info_outline</span>
+        <div class="hud-banner-text">
+          <span>{{ facade.t('quotaExhaustedBanner') }}</span>
+          @if (
+            formatResetTimestamp(facade.accountSummary()?.subscription?.nextDailyResetAt);
+            as nextReset
+          ) {
+            <span class="quota-countdown-text">
+              ({{ facade.t('quotaCountdownHint') }} {{ nextReset }})
+            </span>
+          }
+        </div>
+        <button
+          id="btn-quota-exhausted-buy"
+          type="button"
+          class="hud-banner-btn"
+          (click)="facade.openBilling('PLANS')"
+        >
+          {{ facade.t('lowQuotaBuyBtn') }}
+        </button>
+      </div>
+    }
+
+    <form class="composer-bar" (submit)="onSendMessage($event)">
+      <textarea
+        #composerInput
+        id="chat-composer-input"
+        class="composer-input"
+        rows="1"
+        [attr.maxlength]="maxComposerLength"
+        [value]="facade.composerDraft()"
+        [placeholder]="facade.t('composerPlaceholder')"
+        [attr.aria-label]="facade.t('composerAria')"
+        [disabled]="
+          facade.isLoading() ||
+          (facade.accountSummary()?.subscription?.remainingChatTurns ?? 0) <= 0
+        "
+        (input)="onComposerInput($event)"
+        (keydown)="onComposerKeydown($event)"
+      ></textarea>
+
+      @if (facade.composerCharCount() >= 1200) {
+        <span id="composer-char-counter" class="composer-char-counter" aria-live="off">
+          {{ facade.composerCharCount() }}/{{ maxComposerLength }}
+        </span>
+      }
+
+      <button
+        id="btn-send-message"
+        type="submit"
+        class="send-btn"
+        [disabled]="
+          facade.isLoading() ||
+          !facade.composerDraft().trim() ||
+          (facade.accountSummary()?.subscription?.remainingChatTurns ?? 0) <= 0
+        "
+        [attr.aria-label]="facade.t('sendLabel')"
+      >
+        @if (facade.isLoading()) {
+          <span class="material-icons spin-icon" aria-hidden="true">autorenew</span>
+        } @else {
+          <span class="material-icons" aria-hidden="true">send</span>
+        }
+        <span class="send-label">{{ facade.t('sendLabel') }}</span>
+      </button>
+    </form>
+  </section>
+</div>

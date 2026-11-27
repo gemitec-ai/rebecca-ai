@@ -9,7 +9,10 @@ This file defines repository-wide invariants for AI coding agents and contributo
   - `apps/bot-backend`: Autonomous AI engine, webhook/worker pipelines, RAG memory consolidation, external integrations (**Google Gemini API**, **X API** via `@xdevplatform/xdk`, **Stripe** checkout/webhooks, Cloud Tasks/Storage).
   - `apps/dashboard-backend`: Express 5 Backend-for-Frontend (BFF) REST API secured by Firebase Auth, Helmet, CORS allowlisting, and rate limiting.
   - `apps/dashboard-frontend`: Angular 22 Zoneless administration SPA (**Hexagonal ports/adapters**, **Atomic Design** UI hierarchy, Signals).
-  - `apps/dashboard-e2e`: Playwright end-to-end test suite against local emulators and services.
+  - `apps/lounge-backend`: Isolated Rebecca Private Lounge Express 5 BFF (`lounge_*` collections, read-only Public X memory port, ReAct web search & structured LLM emotion classification, Stripe SAQ-A billing, Phase 1 EEA geo-blocking).
+  - `apps/lounge-frontend`: Rebecca Private Lounge Angular 22 Zoneless SPA (scroll-gated X sign-up + onboarding, singleton chat HUD, slide-over sidebar, artwork gallery, 3-tab Billing Hub, pre-checkout disclosure dialog, 8-language/timezone options & multi-step withdrawal).
+  - `apps/dashboard-e2e`: Playwright end-to-end test suite for Dashboard against local emulators and services.
+  - `apps/lounge-e2e`: Playwright end-to-end test suite for Rebecca Private Lounge against local emulators and services.
   - `apps/functions`: Firebase Cloud Functions (Gen 2) asynchronous event and auth-blocking triggers.
   - `packages/types` (`@rebecca/types`), `packages/db` (`@rebecca/db`), `packages/logger` (`@rebecca/logger`), `packages/persona` (`@rebecca/persona`), `packages/memory` (`@rebecca/memory`), `packages/prompt` (`@rebecca/prompt`), `packages/tools` (`@rebecca/tools`).
 - **Unidirectional Dependency Law**:
@@ -67,6 +70,11 @@ Run all verification commands from the repository root before opening or updatin
      - *Admin Routes (BFF)*: `verifyAuth` enforces valid Firebase ID token signatures, `email_verified === true`, real-time Firestore `admin_users` record verification, `status === 'ACTIVE'`, and `role === 'ADMIN'`.
      - *Internal Batch/Worker Routes (Bot)*: Strictly require verified Google Cloud OIDC tokens (`batchAuth`, `workerAuth`).
      - *Public Routes*: Enforce tiered IP rate limiting (`publicRateLimiter`), CORS allowlisting, and deterministic input sanitization.
+6. **File Naming & Role Suffix Conventions**:
+   - Preserve ecosystem base casing: **`camelCase`** for Node/TypeScript backends (`apps/*-backend`, `apps/functions`, `packages/*`) and **`kebab-case`** for Angular SPAs (`apps/dashboard-frontend`, `apps/lounge-frontend`).
+   - **Multi-definition utility/module collections (Plural Dot-Suffix)**: Always use `*.types.ts`, `*.utils.ts`, `*.helpers.ts`, `*.errors.ts`, and `*.constants.ts` (never use singular `.type.ts`, `.util.ts`, `.helper.ts`, `.error.ts`, `.constant.ts`, or `.model.ts`).
+   - **Architectural role modules (Singular Dot-Suffix)**: Always use `*.port.ts`, `*.adapter.ts`, `*.validator.ts`, `*.store.ts`, `*.service.ts`, `*.controller.ts`, `*.repository.ts`, `*.usecase.ts`, and `*.router.ts`—alongside Angular standard `*.component.ts`, `*.guard.ts`, `*.interceptor.ts`, and `*.pipe.ts` (never pluralize role suffixes such as `.adapters.ts` or `.ports.ts`).
+   - **Paired Unit/Integration Tests**: Append `.test.ts` (Backend/Packages) or `.spec.ts` (Angular Frontend) directly to the target source filename so tests stay 1:1 with their subject (e.g., `stripe-redirect-url.validator.ts` -> `stripe-redirect-url.validator.spec.ts`).
 
 ## 4. Testing Strategy & Behavioral Verification (Google SWE Standards)
 
@@ -137,6 +145,8 @@ Every change affecting external or cross-module contracts **MUST** update its au
   - `apps/bot-backend/AGENTS.md` — AI engine features, pipelines, auth middleware, and LLM/RAG rules.
   - `apps/dashboard-backend/AGENTS.md` — Express 5 BFF architecture and OpenAPI contract parity.
   - `apps/dashboard-frontend/AGENTS.md` — Angular 22 Zoneless, Signals, Hexagonal ports, and UI design rules.
+  - `apps/lounge-backend/AGENTS.md` — Isolated Private Lounge BFF invariants and OpenAPI contract parity.
+  - `apps/lounge-frontend/AGENTS.md` — Private Lounge Signals, scroll-gated consent, and drawer accessibility rules.
   - `apps/dashboard-e2e/AGENTS.md` — Playwright CUJ scope, web-first assertions, and deterministic transition testing.
   - `apps/functions/AGENTS.md` — Cloud Functions Gen 2 triggers and isolated lockfile synchronization.
   - `packages/AGENTS.md` — Shared workspace library boundaries, schema converters, and security rules.

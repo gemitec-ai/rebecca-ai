@@ -1,0 +1,388 @@
+@if (facade.errorMessage(); as errMsg) {
+  <div id="lounge-error-toast" class="error-toast" role="alert">
+    <span class="material-icons error-toast-icon" aria-hidden="true">error_outline</span>
+    <span class="error-toast-text">{{ errMsg }}</span>
+    <button
+      id="btn-dismiss-error"
+      type="button"
+      class="toast-close-btn"
+      [attr.aria-label]="facade.t('dismissErrorAria')"
+      (click)="facade.dismissError()"
+    >
+      <span class="material-icons" aria-hidden="true">close</span>
+    </button>
+  </div>
+}
+
+@if (facade.isBootstrapping()) {
+  <main id="lounge-boot-splash" class="boot-splash-shell" role="status" aria-live="polite">
+    <div class="ambient-bg" aria-hidden="true">
+      <div class="ambient-orb orb-purple"></div>
+      <div class="ambient-orb orb-pink"></div>
+    </div>
+    <div class="boot-splash-card">
+      <img src="assets/gemitec_icon.svg" alt="" class="boot-splash-crest" aria-hidden="true" />
+      <span class="material-icons spin-icon boot-splash-spinner" aria-hidden="true">autorenew</span>
+      <p class="boot-splash-label">{{ facade.t('bootstrappingLabel') }}</p>
+    </div>
+  </main>
+} @else if (facade.configLoadError(); as cfgErr) {
+  <main id="lounge-config-error" class="boot-splash-shell" role="alert">
+    <div class="ambient-bg" aria-hidden="true">
+      <div class="ambient-orb orb-purple"></div>
+      <div class="ambient-orb orb-pink"></div>
+    </div>
+    <div class="config-error-card">
+      <span class="material-icons config-error-icon" aria-hidden="true">cloud_off</span>
+      <h1 class="config-error-title">{{ facade.t('configLoadErrorTitle') }}</h1>
+      <p class="config-error-body">{{ facade.t('configLoadErrorBody') }}</p>
+      <p class="config-error-detail">{{ cfgErr }}</p>
+      <button
+        id="btn-retry-config"
+        type="button"
+        class="x-cta-btn"
+        (click)="facade.retryInitializeLounge()"
+      >
+        <span class="material-icons" aria-hidden="true">refresh</span>
+        <span>{{ facade.t('configRetryBtn') }}</span>
+      </button>
+    </div>
+  </main>
+} @else if (
+  facade.activeView() === 'AUTH' ||
+  facade.activeView() === 'ONBOARDING'
+) {
+  <app-entrance-view
+    [languageOptions]="languageOptions"
+    [timezoneOptions]="timezoneOptions()"
+    [formattedVersion]="formattedVersion()"
+    (languageChange)="onLanguageChange($event)"
+    (timezoneChange)="onTimezoneChange($event)"
+  />
+} @else {
+  <div
+    class="lounge-shell"
+    [attr.inert]="facade.isReconsentRequired() || facade.deleteAccountStep() > 0 ? '' : null"
+  >
+    <div class="ambient-bg" aria-hidden="true">
+      <div class="ambient-orb orb-purple"></div>
+      <div class="ambient-orb orb-pink"></div>
+    </div>
+
+    <!-- Top Application Bar -->
+    <header
+      class="lounge-topbar"
+      [attr.inert]="facade.isSidebarOpen() ? '' : null"
+    >
+      <div class="topbar-left">
+        <button
+          #hamburgerButton
+          id="btn-hamburger"
+          type="button"
+          class="hamburger-btn"
+          [attr.aria-label]="facade.t('openMenuAria')"
+          [attr.aria-expanded]="facade.isSidebarOpen()"
+          aria-controls="lounge-sidebar-drawer"
+          (click)="facade.toggleSidebar(true)"
+        >
+          <span class="material-icons" aria-hidden="true">menu</span>
+        </button>
+
+        <div class="topbar-brand">
+          <img src="assets/gemitec_icon.svg" alt="" class="topbar-crest" aria-hidden="true" />
+          <span class="topbar-title">
+            @switch (facade.activeView()) {
+              @case ('GALLERY') {
+                {{ facade.t('galleryTitle') }}
+              }
+              @case ('BILLING') {
+                {{ facade.t('billingTitle') }}
+              }
+              @case ('OPTIONS') {
+                {{ facade.t('optionsTitle') }}
+              }
+              @default {
+                {{ facade.personaDisplayName() }}
+              }
+            }
+          </span>
+        </div>
+      </div>
+
+      <div class="topbar-right">
+        @if (facade.accountSummary(); as summary) {
+          <button
+            id="btn-topbar-billing"
+            type="button"
+            class="turns-pill"
+            [class.turns-pill-warning]="facade.isPastDue()"
+            [attr.aria-label]="facade.t('topbarQuotaBtnAria')"
+            (click)="facade.openBilling('PLANS')"
+          >
+            <span class="material-icons turns-pill-icon" aria-hidden="true">
+              {{ facade.isPastDue() ? 'warning_amber' : 'chat_bubble_outline' }}
+            </span>
+            <span id="topbar-turns-value" class="turns-pill-value">
+              {{ summary.subscription.remainingChatTurns }} /
+              {{ summary.subscription.dailyTurnQuota }}
+            </span>
+          </button>
+        }
+      </div>
+    </header>
+
+    <!-- Slide-Over Navigation Drawer -->
+    @if (facade.isSidebarOpen()) {
+      <div
+        class="drawer-backdrop"
+        aria-hidden="true"
+        (click)="facade.toggleSidebar(false)"
+      ></div>
+      <aside
+        #sidebarDrawer
+        id="lounge-sidebar-drawer"
+        class="sidebar-drawer"
+        role="dialog"
+        aria-modal="true"
+        [attr.aria-label]="facade.personaBranding().brandName"
+        [attr.inert]="facade.isSidebarOpen() ? null : ''"
+      >
+        <div class="sidebar-header">
+          <div class="sidebar-brand">
+            <img src="assets/gemitec_icon.svg" alt="" class="sidebar-crest" aria-hidden="true" />
+            <span class="sidebar-brand-label">{{ facade.personaBranding().brandName }}</span>
+          </div>
+          <button
+            #closeSidebarButton
+            id="btn-close-sidebar"
+            type="button"
+            class="icon-close-btn"
+            [attr.aria-label]="facade.t('closeMenuAria')"
+            (click)="facade.toggleSidebar(false)"
+          >
+            <span class="material-icons" aria-hidden="true">close</span>
+          </button>
+        </div>
+
+        @if (facade.accountSummary(); as summary) {
+          <div class="account-card">
+            <div class="account-profile-row">
+              @if (summary.user.avatarUrl) {
+                <img
+                  [src]="summary.user.avatarUrl"
+                  [alt]="summary.user.displayName"
+                  class="account-avatar"
+                  [class.account-avatar-crest]="summary.user.avatarUrl.includes('gemitec_icon')"
+                />
+              } @else {
+                <div class="account-avatar account-avatar-fallback" aria-hidden="true">
+                  <span class="material-icons">person</span>
+                </div>
+              }
+
+              <div class="account-identity">
+                <div class="account-name">{{ summary.user.displayName }}</div>
+                <div class="account-handle">{{ summary.user.xHandle }}</div>
+              </div>
+            </div>
+
+            <div class="subscription-row">
+              <span class="subscription-caption">{{ facade.t('subscriptionLabel') }}</span>
+              <span class="tier-badge" [attr.data-tier]="summary.subscription.tier">
+                {{ facade.getTierLabel(summary.subscription.tier) }}
+              </span>
+            </div>
+
+            <div class="quota-block">
+              <div class="quota-row">
+                <span class="quota-label">{{ facade.t('remainingTurnsLabel') }}</span>
+                <span class="quota-value">
+                  {{ summary.subscription.remainingChatTurns }} /
+                  {{ summary.subscription.dailyTurnQuota }}
+                  {{ facade.t('remainingTurnsUnit') }}
+                </span>
+              </div>
+              <div class="quota-track" aria-hidden="true">
+                <div
+                  class="quota-fill"
+                  [style.width.%]="facade.remainingTurnsPercent()"
+                ></div>
+              </div>
+            </div>
+          </div>
+        }
+
+        <nav class="sidebar-nav">
+          <button
+            id="nav-btn-chat"
+            type="button"
+            class="nav-item"
+            [class.active]="facade.activeView() === 'CHAT'"
+            (click)="facade.navigateTo('CHAT')"
+          >
+            <span class="material-icons nav-item-icon" aria-hidden="true">chat</span>
+            <span class="nav-item-label">{{ facade.t('navChat') }}</span>
+          </button>
+
+          <button
+            id="nav-btn-gallery"
+            type="button"
+            class="nav-item"
+            [class.active]="facade.activeView() === 'GALLERY'"
+            (click)="facade.navigateTo('GALLERY')"
+          >
+            <span class="material-icons nav-item-icon" aria-hidden="true">photo_library</span>
+            <span class="nav-item-label">{{ facade.t('navGallery') }}</span>
+            <span class="nav-count-badge"
+              >{{ unlockedGalleryCount() }}/{{ totalGalleryCount() }}</span
+            >
+          </button>
+
+          <button
+            id="nav-btn-billing"
+            type="button"
+            class="nav-item"
+            [class.active]="facade.activeView() === 'BILLING'"
+            (click)="facade.openBilling('PLANS')"
+          >
+            <span class="material-icons nav-item-icon" aria-hidden="true">payments</span>
+            <span class="nav-item-label">{{ facade.t('navBilling') }}</span>
+          </button>
+
+          <button
+            id="nav-btn-options"
+            type="button"
+            class="nav-item"
+            [class.active]="facade.activeView() === 'OPTIONS'"
+            (click)="facade.navigateTo('OPTIONS')"
+          >
+            <span class="material-icons nav-item-icon" aria-hidden="true">tune</span>
+            <span class="nav-item-label">{{ facade.t('navOptions') }}</span>
+          </button>
+        </nav>
+
+        <footer class="sidebar-footer">
+          <button
+            id="btn-logout"
+            type="button"
+            class="logout-btn"
+            [disabled]="facade.isLoading()"
+            (click)="facade.logout()"
+          >
+            @if (facade.isLoading()) {
+              <span class="material-icons spin-icon" aria-hidden="true">autorenew</span>
+            } @else {
+              <span class="material-icons" aria-hidden="true">logout</span>
+            }
+            <span>{{ facade.t('logoutLabel') }}</span>
+          </button>
+          <span class="sidebar-version">{{ formattedVersion() }}</span>
+        </footer>
+      </aside>
+    }
+
+    @if (facade.newlyUnlockedGalleryItem(); as unlockedItem) {
+      <aside
+        id="gallery-unlock-toast"
+        class="gallery-unlock-toast"
+        role="status"
+        aria-live="polite"
+      >
+        <img
+          [src]="unlockedItem.imageUrl"
+          [alt]="facade.t('newGalleryUnlockedTitle')"
+          class="unlock-toast-thumb"
+        />
+        <div class="unlock-toast-body">
+          <div class="unlock-toast-kicker">
+            <span class="material-icons unlock-toast-kicker-icon" aria-hidden="true"
+              >auto_awesome</span
+            >
+            <span>{{ facade.t('newGalleryUnlockedTitle') }}</span>
+          </div>
+          <p class="unlock-toast-sub">{{ facade.t('newGalleryUnlockedSub') }}</p>
+        </div>
+        <div class="unlock-toast-actions">
+          <button
+            id="btn-unlock-toast-gallery"
+            type="button"
+            class="unlock-toast-action-btn"
+            (click)="openGalleryFromUnlockToast()"
+          >
+            <span class="material-icons" aria-hidden="true">photo_library</span>
+            <span>{{ facade.t('newGalleryUnlockedAction') }}</span>
+          </button>
+          <button
+            id="btn-dismiss-unlock-toast"
+            type="button"
+            class="unlock-toast-close-btn"
+            [attr.aria-label]="facade.t('dismissToastAria')"
+            (click)="facade.dismissUnlockedGalleryNotice()"
+          >
+            <span class="material-icons" aria-hidden="true">close</span>
+          </button>
+        </div>
+      </aside>
+    }
+
+    <!-- Main Content Viewport -->
+    <main
+      #loungeWorkspace
+      class="lounge-workspace"
+      [attr.inert]="facade.isSidebarOpen() ? '' : null"
+    >
+      @switch (facade.activeView()) {
+        @case ('CHAT') {
+          <app-chat-view
+            [unlockedGalleryCount]="unlockedGalleryCount()"
+            [totalGalleryCount]="totalGalleryCount()"
+            (imagePreviewRequested)="openImagePreview($event.imageUrl, $event.event)"
+          />
+        }
+
+        @case ('GALLERY') {
+          <app-gallery-view
+            [unlockedGalleryCount]="unlockedGalleryCount()"
+            [totalGalleryCount]="totalGalleryCount()"
+            [galleryPageSize]="galleryPageSize"
+            (imagePreviewRequested)="openImagePreview($event.imageUrl, $event.event)"
+            (pageChange)="onGalleryPageChange($event)"
+          />
+        }
+
+        @case ('BILLING') {
+          <app-billing-hub />
+        }
+
+        @case ('OPTIONS') {
+          <app-options-view
+            #optionsView
+            [languageOptions]="languageOptions"
+            [timezoneOptions]="timezoneOptions()"
+            (languageChange)="onLanguageChange($event)"
+            (timezoneChange)="onTimezoneChange($event)"
+          />
+        }
+      }
+    </main>
+  </div>
+}
+
+<!-- Non-Dismissible Legal Disclaimer Re-Consent Gate Popup Modal -->
+@if (facade.isReconsentRequired()) {
+  <app-reconsent-modal
+    #reconsentModal
+    [languageOptions]="languageOptions"
+    (languageChange)="onLanguageChange($event)"
+    (requestDeleteAccount)="facade.openDeleteAccountModal()"
+  />
+}
+
+<!-- Multi-Step Account Deletion Native Dialog -->
+<app-delete-account-modal (closed)="onDeleteModalClosed()" />
+
+<!-- Fullscreen Illustration Lightbox Native Dialog -->
+<app-gallery-lightbox-modal
+  [imageUrl]="selectedImageUrl()"
+  (closed)="closeLightbox()"
+/>

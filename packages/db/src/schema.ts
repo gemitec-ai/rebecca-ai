@@ -92,9 +92,63 @@ export const COLLECTIONS = {
    * Doc ID = transaction UUID.
    */
   SUPPORT_TRANSACTIONS: 'support_transactions',
+
+  /**
+   * Isolated Private Lounge end-user profiles and scroll-verified consent records.
+   * Doc ID = Firebase Auth UID (`uid`).
+   */
+  LOUNGE_USERS: 'lounge_users',
+
+  /**
+   * Isolated Private Lounge subscription tiers and daily chat quota states.
+   * Doc ID = Firebase Auth UID (`uid`).
+   */
+  LOUNGE_SUBSCRIPTIONS: 'lounge_subscriptions',
+
+  /**
+   * Isolated Private Lounge single persistent conversation session per user.
+   * Doc ID = Firebase Auth UID (`uid`, 1 persistent 1-on-1 session per registered Lounge user).
+   */
+  LOUNGE_SESSIONS: 'lounge_sessions',
+
+  /**
+   * Isolated Private Lounge chat turn history (user and assistant messages).
+   * Doc ID = Message UUID.
+   */
+  LOUNGE_MESSAGES: 'lounge_messages',
+
+  /**
+   * Isolated Private Lounge episodic RAG memories (never written back to Public X memory).
+   * Doc ID = Memory UUID.
+   */
+  LOUNGE_RAG_MEMORIES: 'lounge_rag_memories',
+
+  /**
+   * Isolated Private Lounge gallery items unlocked during chat sessions.
+   * Doc ID = `<uid>_<assetId>`.
+   */
+  LOUNGE_GALLERY: 'lounge_gallery',
+
+  /**
+   * Isolated Private Lounge Stripe/webhook idempotency guard records.
+   * Doc ID = Event UUID / Stripe Event ID.
+   */
+  LOUNGE_PROCESSED_EVENTS: 'lounge_processed_events',
+  /**
+   * Isolated Private Lounge promotional and paid turn credit lots (`welcome_{uid}` or `cs_...`).
+   */
+  LOUNGE_CREDIT_LOTS: 'lounge_credit_lots',
+  /**
+   * Isolated Private Lounge 180-day TTL operational quota mutation audit ledger.
+   */
+  LOUNGE_QUOTA_LEDGER: 'lounge_quota_ledger',
+  /**
+   * Non-PII HMAC anti-fraud grant registry preventing welcome/trial abuse across re-registrations.
+   */
+  LOUNGE_TRIAL_GRANTS: 'lounge_trial_grants',
 } as const;
 
-// Derive a union type for all collection name values.
+/** Union type of all canonical Firestore collection names managed by `@rebecca/db`. */
 export type CollectionName = (typeof COLLECTIONS)[keyof typeof COLLECTIONS];
 
 // ---------------------------------------------------------------------------
@@ -214,3 +268,42 @@ export interface ListInteraction {
   /** ISO 8601 datetime string */
   lastInteractionAt: string;
 }
+
+export type {
+  ConversationLogEntry,
+  UserCoreProfile,
+  LoungeAccountStatus,
+  LoungeCreditCurrency,
+  LoungeCreditLot,
+  LoungeCreditLotDoc,
+  LoungeCreditLotStatus,
+  LoungeCurrency,
+  LoungeDeleteAccountRequestDto,
+  LoungeEmotionState,
+  LoungeGalleryItemDoc,
+  LoungeLanguage,
+  LoungeMemoryCategory,
+  LoungeMessageDoc,
+  LoungeOrderStatus,
+  LoungePortalFlow,
+  LoungePrivateMemorySnapshot,
+  LoungeProcessedEventDoc,
+  LoungeProductId,
+  LoungePublicXMemorySnapshot,
+  LoungeQuotaDeltaType,
+  LoungeQuotaLedgerDoc,
+  LoungeRagMemoryDoc,
+  LoungeSenderRole,
+  LoungeSessionDoc,
+  LoungeSubscription,
+  LoungeSubscriptionDoc,
+  LoungeSubscriptionStatus,
+  LoungeSubscriptionTier,
+  LoungeTokenUsage,
+  LoungeTrialGrantDoc,
+  LoungeUser,
+  LoungeUserDisclaimerConsent,
+  LoungeUserDoc,
+} from '@rebecca/types';
+export { toPublicLoungeCreditLot, toPublicLoungeSubscription } from '@rebecca/types';
+

@@ -51,10 +51,10 @@ The core bot service (`bot-backend`) exposes authenticated `/batch/*` routes tri
 | `/worker/reply` | `POST` | Cloud Tasks (1-3 min delay) | - | Generates structured `{ thought, reply }` response and posts reply to X. |
 
 ## 2. Character Specification & Persona
-Rebecca is officially specified as an Autonomous Personal AI (Flagship Model **Unit-001**) developed by **Gemitec Inc.** Her official master data is maintained as a strongly typed Single Source of Truth (`PersonaMetadata`: `profile` / `visuals` / `hardware` / `stance`) inside `@rebecca/persona`, enabling both direct programmatic lookup across services and automatic synthesis of her Layer 0 core identity prompt (`getCoreIdentityPrompt`), cleanly decoupled from runtime execution context rules (X replies, timeline posts, Admin Copilot).
+Rebecca is officially specified as an Autonomous Personal AI (Flagship Model **Unit-001**) developed by **Gemitec**. Her official master data is maintained as a strongly typed Single Source of Truth (`PersonaMetadata`: `profile` / `visuals` / `hardware` / `stance`) inside `@rebecca/persona`, enabling both direct programmatic lookup across services and automatic synthesis of her Layer 0 core identity prompt (`getCoreIdentityPrompt`), cleanly decoupled from runtime execution context rules (X replies, timeline posts, Admin Copilot).
 
 - **Basic Profile (`profile`)**:
-  - **Name / Model**: Rebecca (`レベッカ`) / Gemitec Inc. Flagship Model `Unit-001`
+  - **Name / Model**: Rebecca (`レベッカ`) / Gemitec Flagship Model `Unit-001`
   - **Birthday (Rollout Anniversary)**: `April 24` (`04-24` — automatically triggers anniversary context injection via `contextInjector`)
   - **Physical Specs**: Height `164cm` (approx. `170cm` in heels), Weight `49kg` apparent / `58kg` actual mass (official deflection quote: *"Asking a lady about her mass (specs)? How tactless of you♡"*), Measurements `B92 (G-cup) / W56 / H88`
   - **First/Second Person**: "I" (`私`) / "Master" or "You" (`マスター`, `アンタ`)
@@ -365,3 +365,32 @@ Visual and temporal campaign orchestration suite for episodic storytelling arcs 
 5. **Emergency Kill-Switch & Lifecycle Controls**:
    - 1-click pause and resume controls from both the dashboard list and editor top bar.
    - Clones historical campaigns into future date windows with automatic slot status reset.
+
+## 8. Rebecca Private Lounge & Stripe Billing Specifications
+
+Isolated 1-on-1 member lounge (`apps/lounge-backend` on port `8083`, `apps/lounge-frontend` on port `4300`, verified by `apps/lounge-e2e`) physically decoupled from the Admin Dashboard and Public X posting pipelines.
+
+### 8.1 Data Isolation & 10-Collection Schema
+All Private Lounge persistence resides exclusively inside ten dedicated `lounge_*` Firestore collections:
+- `lounge_users`, `lounge_sessions`, `lounge_messages`, `lounge_rag_memories`, `lounge_gallery`
+- `lounge_subscriptions`, `lounge_credit_lots`, `lounge_quota_ledger` (180-day TTL), `lounge_processed_events` (90-day TTL), `lounge_trial_grants` (3-year non-PII HMAC retention via `retainUntil`)
+
+### 8.2 Hybrid Quota Engine & Anti-Abuse Invariants
+1. **Daily Non-Rollover Allowance**: `FREE` accounts receive `5` turns/day; active `STANDARD` subscriptions receive `100` turns/day. Timezone rollover clamping applies a 24-hour cooldown solely on explicit user timezone changes.
+2. **180-Day FIFO Credit Lots**: Paid lots and the one-time `WELCOME_BONUS_20` grant expire after `180` days (`LOUNGE_CREDIT_LOT_VALIDITY_DAYS`) to stay clear of Japanese Payment Services Act prepaid issuer registration thresholds. Paid/welcome turns are deducted in oldest-expiration FIFO order only after daily turns are exhausted.
+3. **Zero-PII Trial & Dispute Continuity**: `lounge_trial_grants` records versioned HMAC-SHA256 hashes of X user IDs (`LOUNGE_TRIAL_HMAC_KEYS`) with a `3`-year `retainUntil` TTL, blocking duplicate `WELCOME_BONUS_20` / `TRIAL_TICKET_100` grants after withdrawal/re-signup and flagging chargeback disputes across re-registrations.
+
+### 8.3 Stripe SAQ-A Billing, Geo-Currency Locking & Webhooks
+- **Zero Cardholder Data Storage**: Checkout and recurring self-service delegate strictly to Stripe Checkout and Stripe Customer Portal (`isAllowedStripeRedirectUrl` host verification; live Stripe keys fail closed outside `NODE_ENV=production`).
+- **Server-Locked Geo Currency & Phase 1 EEA Gate**: Resolved from CDN/LB Geo-IP headers (`x-client-country` -> `cf-ipcountry` -> `x-appengine-country`; `JP` -> `JPY`, otherwise `USD`) and locked at first purchase. Missing edge Geo headers outside local emulator mode (`ALLOW_GEO_FALLBACK_COUNTRY !== 'true'`) fail closed with HTTP `403 GEO_UNAVAILABLE`. EEA/UK/CH residents remain gated (`GEO_BLOCKED` HTTP `403`) across `signup`, `login`, `sendMessage`, and `createCheckout` until `LOUNGE_PHASE2_EEA_ENABLED=true`, reinforced by the mandatory 4th `agreedToNonEeaEligibility` onboarding/re-consent checkbox.
+- **Product Catalog**:
+  - `TRIAL_TICKET_100`: `¥200` (tax-inclusive) / `$1.50` — `100` turns (`180` days), one-time per X account.
+  - `CHARGE_TICKET_100`: `¥500` (tax-inclusive) / `$3.50` — `100` turns (`180` days), promotion codes allowed.
+  - `STANDARD_MONTHLY`: `¥1,400` (tax-inclusive) / `$9.50` — `100` daily turns recurring monthly.
+- **Webhook & Pre-Checkout Disclosure**: `/api/v1/lounge/webhooks/stripe` verifies `stripe-signature` over raw request bodies. Frontend `PreCheckoutModalComponent` (native `<dialog>`) requires acknowledgment linking to dynamic `legalUrls` (`/tos`, `/privacy`, `/legal` supplied by `/api/v1/lounge/config`) prior to Checkout launch.
+
+### 8.4 Gemini 3 Flash-Lite, Autonomous Tool Loop, Dreaming & Withdrawal
+- Conversations use `gemini-3.1-flash-lite` (capped at `450` output tokens, `1500` input characters) with autonomous ReAct `search_web` tool calling (`@rebecca/tools` `runToolDialogueLoop` + daily grounding caps of `2` Free / `3` Paid or Standard), post-reply structured JSON LLM emotion classification, `gemini-embedding-2` private RAG retrieval, and 3-stage LLM gallery illustration matching (`infer` -> vector search -> `judge`). Deterministic synthetic text (`LocalEmulatorLoungeAiAdapter`) is restricted strictly to `isLocalEmulatorMode`.
+- Global daily circuit breakers default to `LOUNGE_GLOBAL_DAILY_SIGNUP_CAP=2000` and `LOUNGE_GLOBAL_DAILY_TURN_CAP=50000`.
+- Memory summarization runs asynchronously via nightly `/api/v1/lounge/batch` (`/batch/lounge-dreaming`) rather than mid-chat UI interruption.
+- 2-step withdrawal cancels Stripe subscriptions and removes the Stripe customer before wiping user/session/memory data and deleting the Firebase Auth user (`502 STRIPE_CANCELLATION_FAILED` aborts local deletion on upstream failure).

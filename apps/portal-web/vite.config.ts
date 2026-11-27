@@ -1,6 +1,7 @@
 import { defineConfig, Plugin } from 'vite';
 import { resolve } from 'path';
 import { activePortalConfig, generateThemeCssVariables } from './src/config/index.ts';
+import { formatObfuscatedSupportEmail } from './src/utils/contactEmail.ts';
 import { renderHead, HeadOptions } from './src/components/head.ts';
 import { renderHeader, PageContext } from './src/components/header.ts';
 import { renderFooter } from './src/components/footer.ts';
@@ -45,6 +46,11 @@ function portalHtmlPlugin(): Plugin {
         return renderFooter(activePortalConfig, dock === 'true');
       });
 
+      const staticSupportEmail = formatObfuscatedSupportEmail(
+        process.env['SUPPORT_CONTACT_EMAIL'],
+        { rejectPlaceholderDomains: process.env['NODE_ENV'] === 'production' },
+      );
+
       // Token replacements
       output = output
         .replace(/{{CHARACTER_NAME}}/g, activePortalConfig.characterName)
@@ -56,7 +62,20 @@ function portalHtmlPlugin(): Plugin {
         .replace(/{{X_URL}}/g, activePortalConfig.social.xUrl)
         .replace(/{{X_HANDLE}}/g, activePortalConfig.social.xHandle)
         .replace(/{{DEFAULT_HASHTAG}}/g, activePortalConfig.defaultHashtag)
-        .replace(/{{PIXAI_URL}}/g, activePortalConfig.social.pixaiUrl ?? '');
+        .replace(/{{PIXAI_URL}}/g, activePortalConfig.social.pixaiUrl ?? '')
+        .replace(/{{SUPPORT_CONTACT_EMAIL_OBFUSCATED}}/g, staticSupportEmail)
+        .replace(
+          /{{SUPPORT_EMAIL_TEXT_DISPLAY}}/g,
+          staticSupportEmail ? 'inline' : 'none',
+        )
+        .replace(
+          /{{SUPPORT_EMAIL_NOTE_DISPLAY}}/g,
+          staticSupportEmail ? 'block' : 'none',
+        )
+        .replace(
+          /{{SUPPORT_EMAIL_FALLBACK_DISPLAY}}/g,
+          staticSupportEmail ? 'none' : 'inline',
+        );
 
       return output;
     },

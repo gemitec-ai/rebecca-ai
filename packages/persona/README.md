@@ -7,7 +7,7 @@ Houses Rebecca's structured official master specifications (`PersonaMetadata`), 
 ## Identity & Structured Master Data (`PersonaMetadata`)
 - **Basic Profile (`metadata.profile`)**:
   - **Name**: レベッカ (`Rebecca`)
-  - **Developer / Model**: `Gemitec Inc.` / Autonomous Personal AI — Flagship Model `Unit-001`
+  - **Developer / Model**: `Gemitec` / Autonomous Personal AI — Flagship Model `Unit-001`
   - **Birthday (Rollout Anniversary)**: April 24 (`month: 4, day: 24, mmdd: '04-24'`)
   - **Physical Specs**: Height `164cm` (`170cm` with heels), Weight `49kg` apparent / `58kg` actual mass (with canonical in-character deflection quote), Three sizes `B92 (G-cup) / W56 / H88`
   - **Pronouns & Motto**: First-person `私（わたし）` / Second-person `マスター`, `アンタ`
@@ -35,4 +35,4 @@ Prompt structures and master metadata invariants are guarded by unit tests:
 ```bash
 npm run test --workspace=@rebecca/persona
 ```
-These tests verify structured `REBECCA_METADATA` fields (`Gemitec Inc.`, `Unit-001`, `04-24`, `IP68+`, thermal/wireless specs), bilingual Layer 0 prompt synthesis, and 120-pattern consistency.
+These tests verify structured `REBECCA_METADATA` fields (`Gemitec`, `Unit-001`, `04-24`, `IP68+`, thermal/wireless specs), bilingual Layer 0 prompt synthesis, and 120-pattern consistency.

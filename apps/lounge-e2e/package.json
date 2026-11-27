@@ -1,0 +1,16 @@
+{
+  "name": "lounge-e2e",
+  "version": "1.0.0",
+  "description": "Playwright end-to-end suite for Rebecca Private Lounge",
+  "main": "index.js",
+  "devDependencies": {
+    "@playwright/test": "^1.65.1"
+  },
+  "scripts": {
+    "test": "playwright test"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs"
+}

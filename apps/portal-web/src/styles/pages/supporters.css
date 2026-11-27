@@ -351,7 +351,7 @@
       box-shadow: 0 12px 32px rgba(0, 0, 0, 0.4), 0 0 22px rgba(217, 119, 6, 0.35);
     }
 
-    /* Tier: Silver (Popular) */
+    /* Tier: Silver (Recommended) */
     .tier-card.tier-silver,
     .tier-card.featured {
       border: 1px solid var(--border-purple);

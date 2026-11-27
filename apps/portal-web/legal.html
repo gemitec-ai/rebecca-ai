@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-  <!-- @head {"title": "特定商取引法に基づく表記 / Legal Notice", "canonicalPath": "/legal", "robots": "noindex, nofollow, noarchive"} -->
+  <!-- @head {"title": "特定商取引法に基づく表記 / Legal Notice", "canonicalPath": "/legal", "robots": "noindex, nofollow, noarchive, noimageindex"} -->
   <link rel="stylesheet" href="/src/styles/pages/tokushoho.css">
 </head>
 <body data-lang="ja">
@@ -20,7 +20,7 @@
 
       <div class="corp-tagline">
         <span class="status-dot-green"></span>
-        <span class="t-ja">{{ENGLISH_NAME}} Project &bull; 法的通知</span>
+        <span class="t-ja">{{ORG_NAME}} &bull; 法的通知</span>
         <span class="t-en">COMMERCIAL DISCLOSURE</span>
       </div>
       <h1 class="page-title">
@@ -28,8 +28,8 @@
         <span class="t-en">Act on Specified Commercial <span class="gradient-text">Transactions</span></span>
       </h1>
       <p class="page-desc">
-        <span class="t-ja">特定商取引に関する法律（特定商取引法）第11条に基づき、{{ENGLISH_NAME}} 公式サポータープログラムおよびデジタルリワード提供にかかる事業者の取引条件を表示しています。</span>
-        <span class="t-en">Information published pursuant to Article 11 of Japan's Act on Specified Commercial Transactions regarding the {{ENGLISH_NAME}} Official Supporter Program and digital rewards delivery.</span>
+        <span class="t-ja">特定商取引に関する法律（特定商取引法）第11条に基づき、{{ENGLISH_NAME}} 公式サポータープログラムおよび <strong>{{CHARACTER_ENGLISH_NAME}} Private Lounge</strong>（有料プラン・都度チケット）にかかる取引条件を表示しています。</span>
+        <span class="t-en">Information published pursuant to Article 11 of Japan's Act on Specified Commercial Transactions covering the {{ENGLISH_NAME}} Official Supporter Program and <strong>{{CHARACTER_ENGLISH_NAME}} Private Lounge</strong> (paid plans and top-up tickets).</span>
       </p>
     </section>
 
@@ -42,8 +42,8 @@
               <span class="t-en">Seller / Operator</span>
             </th>
             <td>
-              <span class="t-ja">{{ENGLISH_NAME}} Project（運営: AKINA）</span>
-              <span class="t-en">{{ENGLISH_NAME}} Project (Operated by AKINA)</span>
+              <span class="t-ja">{{ORG_NAME}} Project（運営: AKINA）</span>
+              <span class="t-en">{{ORG_NAME}} Project (Operated by AKINA)</span>
             </td>
           </tr>
 
@@ -53,8 +53,8 @@
               <span class="t-en">Representative</span>
             </th>
             <td>
-              <span class="t-ja">請求があったら遅滞なく開示します</span>
-              <span class="t-en">Disclosed without delay upon request</span>
+              <span class="t-ja">下記お問い合わせ窓口宛にご請求ください（請求があり次第遅滞なく電子メール等で開示します）</span>
+              <span class="t-en">Please request via the contact channel below (disclosed without delay by email upon request)</span>
             </td>
           </tr>
 
@@ -64,8 +64,8 @@
               <span class="t-en">Address</span>
             </th>
             <td>
-              <span class="t-ja">請求があったら遅滞なく開示します</span>
-              <span class="t-en">Disclosed without delay upon request</span>
+              <span class="t-ja">下記お問い合わせ窓口宛にご請求ください（請求があり次第遅滞なく電子メール等で開示します）</span>
+              <span class="t-en">Please request via the contact channel below (disclosed without delay by email upon request)</span>
             </td>
           </tr>
 
@@ -75,24 +75,24 @@
               <span class="t-en">Phone Number</span>
             </th>
             <td>
-              <span class="t-ja">請求があったら遅滞なく開示します</span>
-              <span class="t-en">Disclosed without delay upon request</span>
+              <span class="t-ja">下記お問い合わせ窓口宛にご請求ください（請求があり次第遅滞なく電子メール等で開示します）</span>
+              <span class="t-en">Please request via the contact channel below (disclosed without delay by email upon request)</span>
             </td>
           </tr>
 
           <tr>
             <th>
-              <span class="t-ja">メールアドレス</span>
-              <span class="t-en">Email Address</span>
+              <span class="t-ja">メールアドレス（お問い合わせ窓口）</span>
+              <span class="t-en">Contact Email Address</span>
             </th>
             <td>
               <span id="contact-email-wrapper">
-                <span id="contact-email-text" style="display:none; font-family: var(--font-mono); color: #ffffff;"></span>
-                <span id="contact-email-note" style="display:none; font-size: 11px; color: var(--text-muted); margin-top: 4px;">
-                  <span class="t-ja">※セキュリティ保護および自動収集プログラム（Bot）対策のため、メールアドレスの「@」を「[at mark]」と表記しております。</span>
-                  <span class="t-en">* For security and automated spam protection, "@" is displayed as "[at mark]".</span>
+                <span id="contact-email-text" style="display:{{SUPPORT_EMAIL_TEXT_DISPLAY}}; font-family: var(--font-mono); color: #ffffff;">{{SUPPORT_CONTACT_EMAIL_OBFUSCATED}}</span>
+                <span id="contact-email-note" style="display:{{SUPPORT_EMAIL_NOTE_DISPLAY}}; font-size: 11px; color: var(--text-muted); margin-top: 4px;">
+                  <span class="t-ja">※セキュリティ保護および自動収集プログラム（Bot）対策のため、「@」を「[at mark]」と表記しております。「@」へ置換のうえご連絡ください。</span>
+                  <span class="t-en">* For security and anti-scraping protection, "@" is displayed as "[at mark]". Replace "[at mark]" with "@" when emailing.</span>
                 </span>
-                <span id="contact-email-fallback">
+                <span id="contact-email-fallback" style="display:{{SUPPORT_EMAIL_FALLBACK_DISPLAY}};">
                   <span class="t-ja">お問い合わせ窓口（公式X {{X_HANDLE}}）</span>
                   <span class="t-en">Contact: Official X ({{X_HANDLE}})</span>
                 </span>
@@ -100,14 +100,30 @@
             </td>
           </tr>
 
-          <tr>
+          <tr id="lounge">
             <th>
-              <span class="t-ja">販売価格</span>
-              <span class="t-en">Price</span>
+              <span class="t-ja">販売価格（税込）</span>
+              <span class="t-en">Pricing (Tax Included)</span>
             </th>
             <td>
-              <span class="t-ja">各決済画面に表示された金額（税込）</span>
-              <span class="t-en">Prices displayed on each checkout screen (tax included)</span>
+              <span class="t-ja">
+                <strong>[{{CHARACTER_ENGLISH_NAME}} Private Lounge]</strong><br>
+                ・スタンダードプラン（月額自動更新）：¥1,400 / 月（税込・非EEA圏USD $9.50 / 月）<br>
+                ・トライアルチケット（+100回・1アカウント1回限り）：¥200（税込・USD $1.50）<br>
+                ・チャージチケット（+100回・都度買い切り）：¥500（税込・USD $3.50）<br>
+                <small style="color: var(--text-muted); font-size: 11.5px; line-height: 1.5; display: inline-block; margin-top: 4px;">※居住地域（Geo-IP）・初回決済国により通貨が自動確定します。購入確認モーダルおよび決済画面に表示される金額が正式価格です。</small><br><br>
+                <strong>[公式サポータープログラム（公開X支援）]</strong><br>
+                各支援プランおよび決済画面に表示された金額（¥500 / ¥1,000 / ¥3,000 税込）
+              </span>
+              <span class="t-en">
+                <strong>[{{CHARACTER_ENGLISH_NAME}} Private Lounge]</strong><br>
+                - Standard Plan (Monthly auto-renewal): ¥1,400 / month (JPY tax incl.; Non-EEA USD $9.50 / month)<br>
+                - Trial Ticket (+100 turns, once per account): ¥200 (JPY tax incl.; USD $1.50)<br>
+                - Charge Ticket (+100 turns, one-time): ¥500 (JPY tax incl.; USD $3.50)<br>
+                <small style="color: var(--text-muted); font-size: 11.5px; line-height: 1.5; display: inline-block; margin-top: 4px;">* Settlement currency is fixed via server Geo-IP / initial checkout country. Final amounts are displayed on the confirmation dialog and checkout page.</small><br><br>
+                <strong>[Official Supporter Program (Public X Support)]</strong><br>
+                Amounts displayed on each supporter tier and checkout page (¥500 / ¥1,000 / ¥3,000 tax included)
+              </span>
             </td>
           </tr>
 
@@ -117,43 +133,66 @@
               <span class="t-en">Additional Charges</span>
             </th>
             <td>
-              <span class="t-ja">インターネット接続料金等の通信費用</span>
-              <span class="t-en">Internet and telecommunication fees</span>
+              <span class="t-ja">インターネット接続料金・通信料金（お客様のご負担となります）。決済手数料は当社負担のため別途請求いたしません。</span>
+              <span class="t-en">Internet connectivity and data fees (borne by customer). No extra checkout surcharge is added by the operator.</span>
             </td>
           </tr>
 
           <tr>
             <th>
-              <span class="t-ja">引き渡し時期</span>
-              <span class="t-en">Delivery Timing</span>
+              <span class="t-ja">お支払い方法・時期</span>
+              <span class="t-en">Payment Methods &amp; Timing</span>
             </th>
             <td>
-              <span class="t-ja">決済完了後、即時（専用ダウンロードページへの遷移・提供）<br>
-                <small style="color: var(--text-muted); font-size: 11.5px; line-height: 1.5; display: inline-block; margin-top: 4px;">※ダウンロードリンクの有効期限は決済完了から30分間です。有効期限経過後、またはブラウザを閉じる・ページ遷移等でURLを紛失した場合は再発行・再提供できません。必ず決済完了直後に端末への保存を完了してください。</small></span>
-              <span class="t-en">Immediate upon payment completion (via dedicated download page).<br>
-                <small style="color: var(--text-muted); font-size: 11.5px; line-height: 1.5; display: inline-block; margin-top: 4px;">Note: The download page and link are valid for 30 minutes after payment completion. Once expired, or if the page is closed/navigated away, the link cannot be reissued. Please download and save the file to your device immediately.</small></span>
+              <span class="t-ja">クレジットカード、Apple Pay、Google Pay（Stripe 経由・当社ではカード情報を一切保持しません）。都度購入は申込確定時に即時決済、月額プランは初回申込時および以後毎月同日時に自動決済されます。</span>
+              <span class="t-en">Credit Card, Apple Pay, Google Pay (processed securely via Stripe; card details are never stored by us). One-time purchases settle immediately; subscriptions bill initially and monthly thereafter.</span>
             </td>
           </tr>
 
           <tr>
             <th>
-              <span class="t-ja">お支払い方法</span>
-              <span class="t-en">Payment Methods</span>
+              <span class="t-ja">引き渡し時期・有効期限</span>
+              <span class="t-en">Delivery Timing &amp; Validity</span>
             </th>
             <td>
-              <span class="t-ja">クレジットカード決済、Apple Pay、Google Pay（Stripe経由）</span>
-              <span class="t-en">Credit Card, Apple Pay, Google Pay (via Stripe)</span>
+              <span class="t-ja">
+                <strong>[{{CHARACTER_ENGLISH_NAME}} Private Lounge]</strong><br>
+                決済確定後、ただちに会話枠または月額プランがアカウントへ即時適用されます。<br>
+                ・<strong>有償都度チケット（トライアル／チャージ）有効期限</strong>：<strong>決済完了日時から180日間</strong>（資金決済法上の適用除外基準に基づき厳格管理され、追加購入等による期限延長は行われません）。<br>
+                ・<strong>毎日付与枠（無料 5回/日・スタンダード 100回/日）</strong>：翌日への繰り越しはありません。<br><br>
+                <strong>[公式サポータープログラム]</strong><br>
+                決済完了後即時（専用ページにてダウンロード提供。リンク有効期限は30分間です。期限経過・画面閉鎖後の再発行はできません）。
+              </span>
+              <span class="t-en">
+                <strong>[{{CHARACTER_ENGLISH_NAME}} Private Lounge]</strong><br>
+                Conversation turns or subscription benefits are granted immediately upon payment confirmation.<br>
+                - <strong>Paid Top-Up Tickets (Trial / Charge)</strong>: Strictly valid for <strong>180 days from payment confirmation</strong> (non-extendable across purchases under Japanese Payment Services Act rules).<br>
+                - <strong>Daily Quotas (Free 5/day, Standard 100/day)</strong>: Reset daily without rollover.<br><br>
+                <strong>[Official Supporter Program]</strong><br>
+                Immediate upon payment completion (download link valid for 30 minutes only; non-reissuable once expired or closed).
+              </span>
             </td>
           </tr>
 
           <tr>
             <th>
-              <span class="t-ja">返品・キャンセル</span>
-              <span class="t-en">Returns &amp; Cancellations</span>
+              <span class="t-ja">継続課金（月額プラン）の期間・解約方法</span>
+              <span class="t-en">Subscription Term &amp; Cancellation</span>
             </th>
             <td>
-              <span class="t-ja">デジタルコンテンツの性質上、決済完了後の返品・返金・キャンセルはお受けしておりません。</span>
-              <span class="t-en">Due to the nature of digital contents, all sales are final and non-refundable.</span>
+              <span class="t-ja">スタンダードプランは期間の定めがなく（最低利用期間なし・解約違約金 ¥0）、解約手続きを行うまで毎月同日時に自動更新されます。解約は Lounge 内「サブスク管理」から遷移する Stripe 公式カスタマーポータルにて、<strong>次回自動更新日時の直前までいつでも手続き可能</strong>です（解約予約後も契約期間満了日時まで利用でき、期間満了後は無料プランへ戻ります）。</span>
+              <span class="t-en">The Standard Plan has no fixed commitment (zero cancellation fee) and renews monthly until cancelled. You may cancel anytime <strong>before the next automatic renewal timestamp</strong> via Subscription Management -> Stripe Customer Portal (access continues through the end of the active billing period, then reverts to Free).</span>
+            </td>
+          </tr>
+
+          <tr>
+            <th>
+              <span class="t-ja">返品・キャンセル・返金特約</span>
+              <span class="t-en">Returns, Cancellations &amp; Refunds</span>
+            </th>
+            <td>
+              <span class="t-ja">デジタルサービスおよび即時提供コンテンツの性質上、お客様都合による決済完了後の返品・キャンセル・返金・日割精算（退会時の残回数・残期間を含む）には応じられません（※重複決済、運営者の故意または重過失、その他強行法規により返金義務が生じる場合を除きます）。</span>
+              <span class="t-en">Due to the immediate digital nature of the Services, customer-requested returns, cancellations, refunds, or pro-rata credits (including unused turns or remaining days upon account withdrawal) are not provided, except in cases of duplicate billing, intentional misconduct or gross negligence by the operator, or where required by mandatory law.</span>
             </td>
           </tr>
 
@@ -163,8 +202,8 @@
               <span class="t-en">System Requirements</span>
             </th>
             <td>
-              <span class="t-ja">インターネット接続および画像ファイル（PNG/JPEG等）を閲覧・保存可能な端末環境</span>
-              <span class="t-en">Internet connection and device environment capable of viewing and saving digital media</span>
+              <span class="t-ja">インターネット接続、JavaScript / Cookie が有効な最新主要ブラウザ、PNG/JPEG 画像を閲覧・保存できる端末環境、および Private Lounge 利用時は X（旧Twitter）アカウント認証が必要です。</span>
+              <span class="t-en">Internet connection, modern web browser with JavaScript/Cookies enabled, device capable of viewing PNG/JPEG media, and an X (Twitter) account for {{CHARACTER_ENGLISH_NAME}} Private Lounge authentication.</span>
             </td>
           </tr>
         </tbody>

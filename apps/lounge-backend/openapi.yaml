@@ -1,0 +1,1275 @@
+openapi: 3.0.3
+info:
+  title: Rebecca Private Lounge BFF API
+  description: |
+    Isolated Backend-for-Frontend (BFF) REST contract for Rebecca Private Lounge.
+    Enforces 1 X account = 1 Private Lounge account = 1 continuous conversation session.
+    Stores user data in dedicated `lounge_*` Firestore collections separated from Public X Bot and Admin Dashboard tables.
+    Public X memory access (user profile, recent turns, vector RAG, and the active persona's Layer 1/2/3 post memories)
+    and Bot image asset lookups are strictly read-only.
+  version: 1.45.2
+servers:
+  - url: http://localhost:8083/api/v1/lounge
+    description: Local Development Lounge BFF Server
+security:
+  - BearerAuth: []
+paths:
+  /health:
+    get:
+      summary: Health check for Private Lounge BFF
+      security: []
+      responses:
+        '200':
+          description: Service healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status, service, version]
+                properties:
+                  status:
+                    type: string
+                    example: ok
+                  service:
+                    type: string
+                    example: lounge-backend
+                  version:
+                    type: string
+                    example: v1.45.2
+
+  /config:
+    get:
+      summary: Retrieve public client runtime configuration and dynamic persona branding
+      security: []
+      responses:
+        '200':
+          description: Runtime UI configuration and active persona metadata
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoungeRuntimeConfigDto'
+
+  /auth/signup:
+    post:
+      summary: Register a Private Lounge user via X OAuth after scroll-verified disclaimer consent (1 account per X account)
+      security: []
+      description: |
+        Requires verified Firebase/X OAuth identity in body (`idToken`, optional `xOAuthCode`) and explicit acceptance
+        of Gemini training usage, zero-PII prohibition, session isolation, and Phase 1 non-EEA/UK/CH eligibility after scrolling to bottom.
+        Returns 403 Forbidden (`GEO_BLOCKED` / `GEO_UNAVAILABLE`) when Geo-IP checks fail, or 409 Conflict if the X account or Firebase UID is already registered.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoungeSignUpRequestDto'
+      responses:
+        '201':
+          description: Registered Private Lounge session created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoungeAuthSessionDto'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /auth/login:
+    post:
+      summary: Sign in an existing X-linked Private Lounge user
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoungeLoginRequestDto'
+      responses:
+        '200':
+          description: Authenticated session restored
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoungeAuthSessionDto'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /auth/logout:
+    post:
+      summary: Revoke current Private Lounge session
+      responses:
+        '204':
+          description: Logged out cleanly
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /account:
+    get:
+      summary: Retrieve Private Lounge profile, subscription tier, remaining turns, and gallery summary
+      responses:
+        '200':
+          description: Account and subscription summary
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoungeAccountSummaryDto'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      summary: Permanently withdraw and cascade-delete Private Lounge account, singleton session, memories, and gallery (no refunds)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoungeDeleteAccountRequestDto'
+      responses:
+        '204':
+          description: Account, singleton session, messages, Dreaming/RAG memories, gallery, and subscription deleted permanently
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /account/preferences:
+    patch:
+      summary: Update user UI/response language, IANA timezone preferences, or onboarding completion
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoungeUpdatePreferencesRequestDto'
+      responses:
+        '200':
+          description: Updated user profile with validated preferences
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoungeUser'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /account/consent:
+    post:
+      summary: Record scroll-verified user acceptance of updated legal/privacy disclaimer version
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoungeUpdateDisclaimerConsentRequestDto'
+      responses:
+        '200':
+          description: Updated user profile carrying latest accepted disclaimerVersion
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoungeUser'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /session:
+    get:
+      summary: Retrieve (or initialize) the authenticated user's single continuous Private Lounge session
+      responses:
+        '200':
+          description: Authenticated user's single persistent Private Lounge session
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoungeSession'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /session/messages:
+    get:
+      summary: Retrieve paginated chat turns for the authenticated user's single Private Lounge session (newest-first paging, chronological items)
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/LimitParam'
+        - $ref: '#/components/parameters/CursorParam'
+      responses:
+        '200':
+          description: Unified paginated session messages (`LoungeMessageListResponseDto`)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoungeMessageListResponseDto'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+    post:
+      summary: Send a user message in the single Private Lounge session and receive assistant reply with two-layer memory injection and optional matched Bot illustration
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoungeSendMessageRequestDto'
+      responses:
+        '201':
+          description: Message turn persisted, assistant reply returned, and matched Bot illustration saved to Gallery
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoungeSendMessageResponseDto'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          description: Daily chat turn quota exhausted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /gallery:
+    get:
+      summary: List Bot illustrations collected in user's Gallery using unified bounded pagination
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/LimitParam'
+        - $ref: '#/components/parameters/CursorParam'
+      responses:
+        '200':
+          description: Unified paginated gallery items (`LoungeGalleryListResponseDto`)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoungeGalleryListResponseDto'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /billing/catalog:
+    get:
+      summary: Retrieve Geo-IP locked product catalog and trial/subscription eligibility
+      responses:
+        '200':
+          description: Billing catalog and eligibility
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoungeBillingCatalogDto'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /billing/checkout:
+    post:
+      summary: Create a Stripe Checkout Session for a pre-created Customer after statutory disclosure acceptance
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoungeCreateCheckoutRequestDto'
+      responses:
+        '200':
+          description: Hosted Stripe Checkout session URL
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoungeCreateCheckoutResponseDto'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /billing/checkout/verify:
+    post:
+      summary: Perform single-shot synchronous Checkout Session verification on redirect
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoungeVerifyCheckoutRequestDto'
+      responses:
+        '200':
+          description: Synchronized subscription and hybrid quota projection
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoungeVerifyCheckoutResponseDto'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /billing/portal:
+    post:
+      summary: Generate a single-use Stripe Customer Portal URL with flow_data deep-linking
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoungeCreatePortalRequestDto'
+      responses:
+        '200':
+          description: Stripe Customer Portal session URL
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoungeCreatePortalResponseDto'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /billing/subscription:
+    get:
+      summary: Retrieve sanitized subscription state, FIFO lot breakdown, and expiring lot reminder
+      parameters:
+        - name: portalReturn
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: ['0', '1', 'true', 'false']
+      responses:
+        '200':
+          description: Subscription detail and hybrid quota breakdown
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoungeSubscriptionDetailResponseDto'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /billing/eu-withdrawal:
+    post:
+      summary: Execute Phase 2 EEA statutory 14-day electronic contract withdrawal
+      description: |
+        Supports active Stripe subscriptions (`targetType: SUBSCRIPTION` with Stripe subscription ID or `'ACTIVE_SUBSCRIPTION'` alias)
+        and unconsumed paid credit lots (`targetType: CREDIT_LOT`). Refunds via Stripe before revoking local quota state.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoungeEuWithdrawalRequestDto'
+      responses:
+        '200':
+          description: Withdrawal processed and transactional receipt notice dispatched
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoungeEuWithdrawalResponseDto'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /billing/orders:
+    get:
+      summary: List cursor-paginated purchase history directly from Stripe Charges joined with active lot balances
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 30
+            default: 20
+        - name: startingAfter
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Cursor-paginated purchase history
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoungeBillingOrdersResponseDto'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /billing/orders/{chargeId}/receipt:
+    get:
+      summary: Resolve an ownership-verified Stripe hosted receipt URL for a succeeded charge
+      parameters:
+        - name: chargeId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Verified Stripe hosted receipt URL
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoungeBillingReceiptResponseDto'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /webhooks/stripe:
+    post:
+      summary: Receive raw Stripe webhook events verified via stripe-signature
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '200':
+          description: Webhook acknowledged
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [received]
+                properties:
+                  received:
+                    type: boolean
+
+  /batch/dreaming:
+    post:
+      summary: Execute Nightly Batch Dreaming consolidation across active Private Lounge users (Cloud Scheduler OIDC)
+      responses:
+        '200':
+          description: Consolidation batch completed
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  parameters:
+    PageParam:
+      name: page
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+        default: 1
+    LimitParam:
+      name: limit
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
+    CursorParam:
+      name: cursor
+      in: query
+      required: false
+      schema:
+        type: string
+  responses:
+    BadRequest:
+      description: Invalid request parameters, locale preference, or confirmation flags
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Unauthorized:
+      description: Missing, invalid, or unregistered Firebase authentication token
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Forbidden:
+      description: Account is suspended, subscription is inactive, or updated disclaimer consent is required (`DISCLAIMER_RECONSENT_REQUIRED`)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Conflict:
+      description: Account already exists for this X identity (1 X account = 1 Private Lounge account)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+  schemas:
+    ErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+        code:
+          type: string
+          description: Optional machine-readable rejection code (e.g., DISCLAIMER_RECONSENT_REQUIRED)
+        requiredDisclaimerVersion:
+          type: integer
+          minimum: 1
+        acceptedDisclaimerVersion:
+          type: integer
+          minimum: 0
+    LoungeLanguage:
+      type: string
+      enum: [ja, en, de, pt, es, zh-HK, vi, th]
+    LoungeEmotionState:
+      type: string
+      enum: [NEUTRAL, HAPPY, TEASING, SHY, EXCITED, THOUGHTFUL, SURPRISED]
+    LoungePersonaBranding:
+      type: object
+      required: [displayName, englishName, brandName, avatarPath, chatIconPath, emotionAvatarPaths]
+      properties:
+        displayName:
+          type: string
+        englishName:
+          type: string
+        brandName:
+          type: string
+        avatarPath:
+          type: string
+        chatIconPath:
+          type: string
+        emotionAvatarPaths:
+          type: object
+          additionalProperties:
+            type: string
+    LoungeLegalUrlsDto:
+      type: object
+      required: [tosUrl, privacyUrl, legalUrl]
+      properties:
+        tosUrl:
+          type: string
+          format: uri
+        privacyUrl:
+          type: string
+          format: uri
+        legalUrl:
+          type: string
+          format: uri
+    LoungeRuntimeConfigDto:
+      type: object
+      required: [appVersion, disclaimerVersion, persona]
+      properties:
+        appVersion:
+          type: string
+        disclaimerVersion:
+          type: integer
+          minimum: 1
+        persona:
+          $ref: '#/components/schemas/LoungePersonaBranding'
+        legalUrls:
+          $ref: '#/components/schemas/LoungeLegalUrlsDto'
+        firebase:
+          type: object
+          required: [apiKey, authDomain, projectId, appId]
+          properties:
+            apiKey:
+              type: string
+            authDomain:
+              type: string
+            projectId:
+              type: string
+            appId:
+              type: string
+            tenantId:
+              type: string
+        useEmulators:
+          type: boolean
+        production:
+          type: boolean
+        phase2EeaEnabled:
+          type: boolean
+        billingEnabled:
+          type: boolean
+        contactEmail:
+          type: string
+          nullable: true
+    LoungeUserDisclaimerConsent:
+      type: object
+      required:
+        - disclaimerVersion
+        - agreedToGeminiTrainingUsage
+        - agreedToZeroPiiProhibition
+        - agreedToOneWayMemoryIsolation
+        - scrolledToBottomAt
+        - consentedAt
+      properties:
+        disclaimerVersion:
+          type: integer
+          minimum: 1
+        agreedToGeminiTrainingUsage:
+          type: boolean
+        agreedToZeroPiiProhibition:
+          type: boolean
+        agreedToOneWayMemoryIsolation:
+          type: boolean
+        agreedToNonEeaEligibility:
+          type: boolean
+        scrolledToBottomAt:
+          type: string
+          format: date-time
+        consentedAt:
+          type: string
+          format: date-time
+    LoungeUser:
+      type: object
+      required: [uid, xUserId, xHandle, displayName, avatarUrl, status, language, timezone, onboardingCompleted, allowServiceImprovementAnalytics, disclaimerConsent, createdAt, updatedAt, lastLoginAt]
+      properties:
+        uid:
+          type: string
+        xUserId:
+          type: string
+        xHandle:
+          type: string
+        displayName:
+          type: string
+        avatarUrl:
+          type: string
+        status:
+          type: string
+          enum: [ACTIVE, SUSPENDED, DELETING]
+        language:
+          $ref: '#/components/schemas/LoungeLanguage'
+        timezone:
+          type: string
+        onboardingCompleted:
+          type: boolean
+        allowServiceImprovementAnalytics:
+          type: boolean
+        countryCode:
+          type: string
+        isEeaResident:
+          type: boolean
+        preferredCurrency:
+          type: string
+          enum: [JPY, USD]
+        disclaimerConsent:
+          $ref: '#/components/schemas/LoungeUserDisclaimerConsent'
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        lastLoginAt:
+          type: string
+          format: date-time
+    LoungeDeleteAccountRequestDto:
+      type: object
+      required: [confirmedIrreversibleDeletion, confirmedNoRefundForRemainingTurns]
+      properties:
+        confirmedIrreversibleDeletion:
+          type: boolean
+        confirmedNoRefundForRemainingTurns:
+          type: boolean
+    LoungeUpdatePreferencesRequestDto:
+      type: object
+      properties:
+        language:
+          $ref: '#/components/schemas/LoungeLanguage'
+        timezone:
+          type: string
+        completeOnboarding:
+          type: boolean
+        allowServiceImprovementAnalytics:
+          type: boolean
+    LoungeUpdateDisclaimerConsentRequestDto:
+      type: object
+      required: [disclaimerConsent]
+      properties:
+        disclaimerConsent:
+          $ref: '#/components/schemas/LoungeUserDisclaimerConsent'
+    LoungeSubscription:
+      type: object
+      required:
+        - uid
+        - tier
+        - status
+        - dailyTurnQuota
+        - dailyRemainingTurns
+        - purchasedRemainingTurns
+        - remainingChatTurns
+        - earliestLotExpiresAt
+        - lastDailyResetAt
+        - lastQuotaResetTimezone
+        - nextDailyResetAt
+        - currentPeriodEnd
+        - trialTicketUsed
+        - cancelAtPeriodEnd
+        - updatedAt
+      properties:
+        uid:
+          type: string
+        tier:
+          type: string
+          enum: [FREE, STANDARD]
+        status:
+          type: string
+          enum: [NONE, ACTIVE, CANCELING, PAST_DUE, CANCELED]
+        billingCurrency:
+          type: string
+          enum: [JPY, USD]
+        dailyTurnQuota:
+          type: integer
+        dailyRemainingTurns:
+          type: integer
+        purchasedRemainingTurns:
+          type: integer
+        remainingChatTurns:
+          type: integer
+        earliestLotExpiresAt:
+          type: string
+          format: date-time
+          nullable: true
+        lastDailyResetAt:
+          type: string
+          format: date-time
+        lastQuotaResetTimezone:
+          type: string
+        nextDailyResetAt:
+          type: string
+          format: date-time
+        currentPeriodEnd:
+          type: string
+          format: date-time
+        trialTicketUsed:
+          type: boolean
+        cancelAtPeriodEnd:
+          type: boolean
+        updatedAt:
+          type: string
+          format: date-time
+    LoungeSession:
+      type: object
+      required: [id, uid, title, messageCount, currentEmotion, publicXMemorySyncedAt, lastMessagePreview, createdAt, updatedAt]
+      properties:
+        id:
+          type: string
+        uid:
+          type: string
+        title:
+          type: string
+        messageCount:
+          type: integer
+        currentEmotion:
+          $ref: '#/components/schemas/LoungeEmotionState'
+        publicXMemorySyncedAt:
+          type: string
+          format: date-time
+        lastMessagePreview:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        archivedAt:
+          type: string
+          format: date-time
+    LoungeTokenUsage:
+      type: object
+      required: [promptTokens, candidatesTokens, totalTokens]
+      properties:
+        promptTokens:
+          type: integer
+        candidatesTokens:
+          type: integer
+        totalTokens:
+          type: integer
+    LoungeMessage:
+      type: object
+      required: [id, sessionId, uid, role, content, emotion, createdAt]
+      properties:
+        id:
+          type: string
+        sessionId:
+          type: string
+        uid:
+          type: string
+        role:
+          type: string
+          enum: [USER, ASSISTANT, SYSTEM]
+        content:
+          type: string
+        emotion:
+          $ref: '#/components/schemas/LoungeEmotionState'
+        imageAssetId:
+          type: string
+        imageUrl:
+          type: string
+        tokenUsage:
+          $ref: '#/components/schemas/LoungeTokenUsage'
+        createdAt:
+          type: string
+          format: date-time
+    LoungeGalleryItem:
+      type: object
+      required: [id, uid, assetId, imageUrl, unlocked]
+      properties:
+        id:
+          type: string
+        uid:
+          type: string
+        assetId:
+          type: string
+        imageUrl:
+          type: string
+        unlocked:
+          type: boolean
+        unlockedAt:
+          type: string
+          format: date-time
+        sourceSessionId:
+          type: string
+    LoungeSignUpRequestDto:
+      type: object
+      required: [idToken, disclaimerConsent]
+      properties:
+        idToken:
+          type: string
+        xOAuthCode:
+          type: string
+        disclaimerConsent:
+          $ref: '#/components/schemas/LoungeUserDisclaimerConsent'
+        language:
+          $ref: '#/components/schemas/LoungeLanguage'
+        timezone:
+          type: string
+    LoungeLoginRequestDto:
+      type: object
+      required: [idToken]
+      properties:
+        idToken:
+          type: string
+        xOAuthCode:
+          type: string
+    LoungeAuthSessionDto:
+      type: object
+      required: [user, appVersion, issuedAt]
+      properties:
+        user:
+          $ref: '#/components/schemas/LoungeUser'
+        appVersion:
+          type: string
+        issuedAt:
+          type: string
+          format: date-time
+    LoungeAccountSummaryDto:
+      type: object
+      required: [user, subscription, unlockedGalleryCount, totalGalleryCount, appVersion]
+      properties:
+        user:
+          $ref: '#/components/schemas/LoungeUser'
+        subscription:
+          $ref: '#/components/schemas/LoungeSubscription'
+        persona:
+          $ref: '#/components/schemas/LoungePersonaBranding'
+        unlockedGalleryCount:
+          type: integer
+        totalGalleryCount:
+          type: integer
+        appVersion:
+          type: string
+    LoungeSendMessageRequestDto:
+      type: object
+      required: [content]
+      properties:
+        content:
+          type: string
+    LoungeSendMessageResponseDto:
+      type: object
+      required: [session, userMessage, assistantMessage, remainingChatTurns]
+      properties:
+        session:
+          $ref: '#/components/schemas/LoungeSession'
+        userMessage:
+          $ref: '#/components/schemas/LoungeMessage'
+        assistantMessage:
+          $ref: '#/components/schemas/LoungeMessage'
+        remainingChatTurns:
+          type: integer
+        subscription:
+          $ref: '#/components/schemas/LoungeSubscription'
+        unlockedGalleryItem:
+          $ref: '#/components/schemas/LoungeGalleryItem'
+    LoungePaginationMeta:
+      type: object
+      required: [totalItems, totalPages, currentPage, limit, nextCursor, hasMore]
+      properties:
+        totalItems:
+          type: integer
+          minimum: 0
+        totalPages:
+          type: integer
+          minimum: 1
+        currentPage:
+          type: integer
+          minimum: 1
+        limit:
+          type: integer
+          minimum: 1
+          maximum: 100
+        nextCursor:
+          type: string
+          nullable: true
+        hasMore:
+          type: boolean
+    LoungeMessageListResponseDto:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/LoungeMessage'
+        meta:
+          $ref: '#/components/schemas/LoungePaginationMeta'
+    LoungeGallerySummaryDto:
+      type: object
+      required: [unlockedCount, totalCount]
+      properties:
+        unlockedCount:
+          type: integer
+          minimum: 0
+        totalCount:
+          type: integer
+          minimum: 0
+    LoungeGalleryListResponseDto:
+      type: object
+      required: [data, meta, summary]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/LoungeGalleryItem'
+        meta:
+          $ref: '#/components/schemas/LoungePaginationMeta'
+        summary:
+          $ref: '#/components/schemas/LoungeGallerySummaryDto'
+
+    LoungeBillingProductDto:
+      type: object
+      required: [productId, mode, currency, unitAmountMinor, formattedPrice, grantedTurns, validityDays, taxInclusive, promotionCodesAllowed, available, eligible]
+      properties:
+        productId:
+          type: string
+          enum: [TRIAL_TICKET_100, CHARGE_TICKET_100, STANDARD_MONTHLY]
+        mode:
+          type: string
+          enum: [payment, subscription]
+        currency:
+          type: string
+          enum: [JPY, USD]
+        unitAmountMinor:
+          type: integer
+        formattedPrice:
+          type: string
+        grantedTurns:
+          type: integer
+        validityDays:
+          type: integer
+          nullable: true
+        taxInclusive:
+          type: boolean
+        promotionCodesAllowed:
+          type: boolean
+        available:
+          type: boolean
+        eligible:
+          type: boolean
+        ineligibleReason:
+          type: string
+          enum: [COMING_SOON, TRIAL_ALREADY_USED, SUBSCRIPTION_ALREADY_ACTIVE, GEO_BLOCKED]
+    LoungeBillingCatalogDto:
+      type: object
+      required: [currency, currencyLocked, countryCode, isEeaResident, phase2EeaEnabled, trialEligible, subscriptionStatus, products]
+      properties:
+        currency:
+          type: string
+          enum: [JPY, USD]
+        currencyLocked:
+          type: boolean
+        countryCode:
+          type: string
+        isEeaResident:
+          type: boolean
+        phase2EeaEnabled:
+          type: boolean
+        trialEligible:
+          type: boolean
+        subscriptionStatus:
+          type: string
+          enum: [NONE, ACTIVE, CANCELING, PAST_DUE, CANCELED]
+        products:
+          type: array
+          items:
+            $ref: '#/components/schemas/LoungeBillingProductDto'
+    LoungeCreateCheckoutRequestDto:
+      type: object
+      required: [productId, acceptedPurchaseDisclosure, acceptedAutoRenewalOptIn, confirmedAdultOrParentalConsent]
+      properties:
+        productId:
+          type: string
+          enum: [TRIAL_TICKET_100, CHARGE_TICKET_100, STANDARD_MONTHLY]
+        acceptedPurchaseDisclosure:
+          type: boolean
+        acceptedAutoRenewalOptIn:
+          type: boolean
+        confirmedAdultOrParentalConsent:
+          type: boolean
+        euDigitalWaiverAccepted:
+          type: boolean
+    LoungeCreateCheckoutResponseDto:
+      type: object
+      required: [checkoutUrl, sessionIdMasked]
+      properties:
+        checkoutUrl:
+          type: string
+        sessionIdMasked:
+          type: string
+    LoungeVerifyCheckoutRequestDto:
+      type: object
+      required: [sessionId]
+      properties:
+        sessionId:
+          type: string
+    LoungeVerifyCheckoutResponseDto:
+      type: object
+      required: [subscription, verified]
+      properties:
+        subscription:
+          $ref: '#/components/schemas/LoungeSubscription'
+        verified:
+          type: boolean
+        autoRefundedConflict:
+          type: boolean
+    LoungeCreatePortalRequestDto:
+      type: object
+      required: [flow]
+      properties:
+        flow:
+          type: string
+          enum: [default, payment_method_update, subscription_cancel]
+    LoungeCreatePortalResponseDto:
+      type: object
+      required: [portalUrl]
+      properties:
+        portalUrl:
+          type: string
+    LoungeCreditLot:
+      type: object
+      required: [id, uid, productId, isPaid, initialTurns, remainingTurns, currency, unitAmount, status, purchasedAt, expiresAt]
+      properties:
+        id:
+          type: string
+        uid:
+          type: string
+        productId:
+          type: string
+          enum: [WELCOME_BONUS_20, TRIAL_TICKET_100, CHARGE_TICKET_100]
+        isPaid:
+          type: boolean
+        initialTurns:
+          type: integer
+        remainingTurns:
+          type: integer
+        currency:
+          type: string
+          enum: [NONE, JPY, USD]
+        unitAmount:
+          type: integer
+        status:
+          type: string
+          enum: [ACTIVE, EXHAUSTED, EXPIRED, REVOKED]
+        purchasedAt:
+          type: string
+          format: date-time
+        expiresAt:
+          type: string
+          format: date-time
+    LoungeQuotaBreakdownDto:
+      type: object
+      required: [dailyTurnQuota, dailyRemainingTurns, purchasedRemainingTurns, remainingChatTurns, activeLots, nextDailyResetAt, consumptionOrder]
+      properties:
+        dailyTurnQuota:
+          type: integer
+        dailyRemainingTurns:
+          type: integer
+        purchasedRemainingTurns:
+          type: integer
+        remainingChatTurns:
+          type: integer
+        activeLots:
+          type: array
+          items:
+            $ref: '#/components/schemas/LoungeCreditLot'
+        nextDailyResetAt:
+          type: string
+          format: date-time
+        consumptionOrder:
+          type: array
+          items:
+            type: string
+        phase2EuWithdrawalEligible:
+          type: boolean
+    LoungeSubscriptionDetailResponseDto:
+      type: object
+      required: [subscription, quotaBreakdown]
+      properties:
+        subscription:
+          $ref: '#/components/schemas/LoungeSubscription'
+        quotaBreakdown:
+          $ref: '#/components/schemas/LoungeQuotaBreakdownDto'
+        expiringSoonWarning:
+          type: object
+          required: [hoursRemaining, expiringTurns, expiresAt]
+          properties:
+            hoursRemaining:
+              type: integer
+            expiringTurns:
+              type: integer
+            expiresAt:
+              type: string
+              format: date-time
+    LoungeEuWithdrawalRequestDto:
+      type: object
+      required: [targetType, targetId, confirmedWithdrawal]
+      properties:
+        targetType:
+          type: string
+          enum: [SUBSCRIPTION, CREDIT_LOT]
+        targetId:
+          type: string
+          description: Stripe subscription ID (or `ACTIVE_SUBSCRIPTION` alias) when `targetType` is `SUBSCRIPTION`; `LoungeCreditLot` ID when `targetType` is `CREDIT_LOT`.
+        confirmedWithdrawal:
+          type: boolean
+    LoungeEuWithdrawalResponseDto:
+      type: object
+      required: [withdrawnAt, refundId, refundedAmountMinor, currency, revokedTurns, confirmationChannel, subscription]
+      properties:
+        withdrawnAt:
+          type: string
+          format: date-time
+        refundId:
+          type: string
+        refundedAmountMinor:
+          type: integer
+        currency:
+          type: string
+          enum: [JPY, USD]
+        revokedTurns:
+          type: integer
+        confirmationChannel:
+          type: string
+          enum: [STRIPE_RECEIPT_AND_IN_APP]
+        subscription:
+          $ref: '#/components/schemas/LoungeSubscription'
+    LoungeBillingOrderItemDto:
+      type: object
+      required: [chargeId, productId, status, amountMinor, refundedAmountMinor, currency, createdAt, receiptAvailable]
+      properties:
+        chargeId:
+          type: string
+        productId:
+          type: string
+          enum: [TRIAL_TICKET_100, CHARGE_TICKET_100, STANDARD_MONTHLY, UNKNOWN]
+        status:
+          type: string
+          enum: [COMPLETED, PARTIAL_REFUNDED, REFUNDED, DISPUTED, FAILED, PENDING]
+        amountMinor:
+          type: integer
+        refundedAmountMinor:
+          type: integer
+        currency:
+          type: string
+          enum: [JPY, USD]
+        createdAt:
+          type: string
+          format: date-time
+        receiptAvailable:
+          type: boolean
+        remainingTurns:
+          type: integer
+        initialTurns:
+          type: integer
+        lotStatus:
+          type: string
+          enum: [ACTIVE, EXHAUSTED, EXPIRED, REVOKED]
+        expiresAt:
+          type: string
+          format: date-time
+    LoungeBillingOrdersResponseDto:
+      type: object
+      required: [orders, nextCursor, hasMore]
+      properties:
+        orders:
+          type: array
+          items:
+            $ref: '#/components/schemas/LoungeBillingOrderItemDto'
+        nextCursor:
+          type: string
+          nullable: true
+        hasMore:
+          type: boolean
+    LoungeBillingReceiptResponseDto:
+      type: object
+      required: [receiptUrl]
+      properties:
+        receiptUrl:
+          type: string

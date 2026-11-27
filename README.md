@@ -175,6 +175,9 @@ POLL_DURATION_MINUTES=1380
 - **`apps/bot-backend`**: The core worker service. Handles RAG memory injection, intent analysis, X API integration, and the background "Dreaming" evolution process.
 - **`apps/dashboard-backend`**: Backend-for-Frontend (BFF) server providing administrative REST endpoints to the control panel, secured via Firebase Auth. Communicates with the bot-backend via internal authenticated HTTP API.
 - **`apps/dashboard-frontend`**: A glassmorphic, Chibi-themed Angular administration control panel for monitoring AI interactions and system health.
+- **`apps/lounge-backend`**: Isolated Rebecca Private Lounge Express 5 BFF handling X-authenticated onboarding, Phase 1 EEA geo-blocking, hybrid daily/charge quota enforcement, Gemini Flash-Lite chat with autonomous web search tool calling and structured emotion classification, nightly dreaming memory consolidation, and Stripe SAQ-A billing webhooks.
+- **`apps/lounge-frontend`**: Rebecca Private Lounge Angular 22 Zoneless SPA featuring scroll-gated re-consent/onboarding, singleton chat HUD, artwork gallery, 3-tab Billing Hub, pre-checkout disclosure dialog, and multi-step withdrawal.
+- **`apps/lounge-e2e`**: Dedicated Playwright E2E test suite verifying Rebecca Private Lounge CUJs against local Firebase Emulators.
 - **`apps/functions`**: Firebase Cloud Functions that asynchronously aggregate raw timeline interactions into read-optimized statistics, ensuring dashboard query performance.
 
 ### Packages (`packages/`)
@@ -216,7 +219,7 @@ For detailed setup instructions, local testing environments (including the stand
 ## License
 
 - **Software Source Code**: This project's codebase and architecture are licensed under the [MIT License](LICENSE). Developers are free to fork, modify, self-host, and build commercial products using their own original characters and personas.
-- **Character IP & Brand Assets**: Character definitions, persona lore/datasets (`packages/persona/src/personas/rebecca.ts`, `packages/persona/src/data/personaPatterns.json`, `packages/persona/src/personaPatternVectors.ts`), official visual assets (`apps/portal-web/public/`, `apps/dashboard-frontend/public/`, `docs/rebecca_landscape.jpg`, `screenshots/`), brand marks ("Rebecca" / "Gemitec Inc."), and official LoRA models are **All Rights Reserved** by AKINA and excluded from the MIT License. See [CHARACTER_IP_NOTICE.md](CHARACTER_IP_NOTICE.md) and the official [Creative & Derivative Works Guidelines](https://rebecca-ai.net/guidelines) for permitted non-commercial fan creations.
+- **Character IP & Brand Assets**: Character definitions, persona lore/datasets (`packages/persona/src/personas/rebecca.ts`, `packages/persona/src/data/personaPatterns.json`, `packages/persona/src/personaPatternVectors.ts`), official visual assets (`apps/portal-web/public/`, `apps/dashboard-frontend/public/`, `docs/rebecca_landscape.jpg`, `screenshots/`), brand marks ("Rebecca" / "Gemitec"), and official LoRA models are **All Rights Reserved** by AKINA and excluded from the MIT License. See [CHARACTER_IP_NOTICE.md](CHARACTER_IP_NOTICE.md) and the official [Creative & Derivative Works Guidelines](https://rebecca-ai.net/guidelines) for permitted non-commercial fan creations.
 
 ## Author
 

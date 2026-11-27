@@ -9,7 +9,7 @@ export default defineConfig({
   retries: 0,
   reporter: [
     ['list'],
-    ['html', { outputFolder: 'playwright-report', open: 'never' }]
+    ['html', { outputFolder: 'playwright-report', open: 'never' }],
   ],
   use: {
     baseURL: 'http://127.0.0.1:4200',
@@ -41,12 +41,12 @@ export default defineConfig({
       stdout: 'pipe',
       stderr: 'pipe',
       timeout: 120 * 1000,
-    }
+    },
   ],
   projects: [
     {
       name: 'chromium',
       use: { ...devices['Desktop Chrome'] },
-    }
-  ]
+    },
+  ],
 });
