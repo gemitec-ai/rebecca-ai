@@ -1,0 +1,127 @@
+@if (facade.deleteAccountStep() > 0) {
+  <dialog
+    #deleteModal
+    id="delete-account-modal"
+    class="delete-dialog"
+    aria-labelledby="delete-modal-title"
+    (cancel)="onDeleteDialogCancel($event)"
+    (close)="onDeleteDialogClose()"
+    (click)="onDialogBackdropClick($event)"
+  >
+    <div class="delete-modal-card">
+      <div class="delete-modal-header">
+        <span class="material-icons delete-modal-warn-icon" aria-hidden="true">warning_amber</span>
+        <h1 id="delete-modal-title" class="delete-modal-title">
+          {{
+            facade.deleteAccountStep() === 1
+              ? facade.t('deleteModalStep1Title')
+              : facade.t('deleteModalStep2Title')
+          }}
+        </h1>
+      </div>
+
+      @if (facade.deleteAccountStep() === 1) {
+        <p class="delete-modal-body">{{ facade.t('deleteModalStep1Body') }}</p>
+
+        @if (facade.hasActiveOrCancelingSubscription()) {
+          <div class="delete-manage-sub-box">
+            <p class="delete-manage-sub-hint">{{ facade.t('deleteModalStep1ManageSubHint') }}</p>
+            <button
+              id="btn-delete-manage-subscription"
+              type="button"
+              class="hud-banner-btn"
+              (click)="openSubscriptionFromDeleteModal()"
+            >
+              {{ facade.t('deleteModalStep1ManageSubBtn') }}
+            </button>
+          </div>
+        }
+
+        <div class="delete-modal-actions">
+          <button
+            #deleteCancelButton
+            id="btn-delete-cancel"
+            type="button"
+            class="modal-cancel-btn"
+            (click)="facade.closeDeleteAccountModal()"
+          >
+            {{ facade.t('deleteModalCancelBtn') }}
+          </button>
+          <button
+            id="btn-delete-step1-next"
+            type="button"
+            class="modal-danger-next-btn"
+            (click)="facade.proceedToDeleteAccountStep2()"
+          >
+            <span>{{ facade.t('deleteModalStep1NextBtn') }}</span>
+            <span class="material-icons" aria-hidden="true">arrow_forward</span>
+          </button>
+        </div>
+      } @else {
+        <p class="delete-modal-body">{{ facade.t('deleteModalStep2Body') }}</p>
+
+        <div class="delete-check-list">
+          <div class="delete-check-item">
+            <input
+              #deleteIrreversibleCheck
+              id="checkbox-delete-irreversible"
+              type="checkbox"
+              class="consent-checkbox"
+              [checked]="facade.deleteConfirmIrreversible()"
+              (change)="onDeleteIrreversibleChange($event)"
+            />
+            <label for="checkbox-delete-irreversible" class="consent-label-text">
+              {{ facade.t('deleteModalCheckIrreversible') }}
+            </label>
+          </div>
+
+          <div class="delete-check-item">
+            <input
+              id="checkbox-delete-no-refund"
+              type="checkbox"
+              class="consent-checkbox"
+              [checked]="facade.deleteConfirmNoRefund()"
+              (change)="onDeleteNoRefundChange($event)"
+            />
+            <label for="checkbox-delete-no-refund" class="consent-label-text">
+              {{ facade.t('deleteModalCheckNoRefund') }}
+            </label>
+          </div>
+        </div>
+
+        @if (facade.deleteStripeError(); as stripeErr) {
+          <div id="delete-stripe-error-banner" class="past-due-banner" role="alert">
+            <span class="material-icons" aria-hidden="true">error_outline</span>
+            <span class="hud-banner-text">{{ stripeErr }}</span>
+          </div>
+        }
+
+        <div class="delete-modal-actions">
+          <button
+            #deleteCancelButton
+            id="btn-delete-cancel"
+            type="button"
+            class="modal-cancel-btn"
+            (click)="facade.closeDeleteAccountModal()"
+          >
+            {{ facade.t('deleteModalCancelBtn') }}
+          </button>
+          <button
+            id="btn-confirm-delete-account"
+            type="button"
+            class="modal-danger-confirm-btn"
+            [disabled]="!facade.canConfirmDeleteAccount()"
+            (click)="facade.confirmDeleteAccount()"
+          >
+            @if (facade.isLoading()) {
+              <span class="material-icons spin-icon" aria-hidden="true">autorenew</span>
+            } @else {
+              <span class="material-icons" aria-hidden="true">delete_forever</span>
+            }
+            <span>{{ facade.t('deleteModalConfirmBtn') }}</span>
+          </button>
+        </div>
+      }
+    </div>
+  </dialog>
+}

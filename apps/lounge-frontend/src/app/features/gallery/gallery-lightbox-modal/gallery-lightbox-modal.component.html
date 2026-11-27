@@ -1,0 +1,29 @@
+@if (imageUrl(); as previewUrl) {
+  <dialog
+    #lightboxModal
+    id="gallery-lightbox-modal"
+    class="lightbox-dialog"
+    aria-labelledby="lightbox-dialog-title"
+    (cancel)="onLightboxDialogCancel($event)"
+    (close)="onLightboxDialogClose()"
+    (click)="onDialogBackdropClick($event)"
+  >
+    <div class="lightbox-frame">
+      <h1 id="lightbox-dialog-title" class="visually-hidden">
+        {{ facade.t('viewFullImageAria') }}
+      </h1>
+      <button
+        #closeLightboxButton
+        id="btn-close-lightbox"
+        type="button"
+        class="lightbox-close-btn"
+        autofocus
+        [attr.aria-label]="facade.t('closeLightboxAria')"
+        (click)="close()"
+      >
+        <span class="material-icons" aria-hidden="true">close</span>
+      </button>
+      <img class="lightbox-img" [src]="previewUrl" [alt]="facade.personaDisplayName()" />
+    </div>
+  </dialog>
+}

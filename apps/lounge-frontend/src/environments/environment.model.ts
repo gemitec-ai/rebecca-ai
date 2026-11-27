@@ -1,7 +1,7 @@
 import type { LoungePersonaBranding } from '@rebecca/types';
 
 /**
- * Environment configuration contract for the Gemitec Private Lounge SPA.
+ * Environment configuration contract for the Private Lounge SPA.
  */
 export interface LoungeEnvironment {
   readonly production: boolean;

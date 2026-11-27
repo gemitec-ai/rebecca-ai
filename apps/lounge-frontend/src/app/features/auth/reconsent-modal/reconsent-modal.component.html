@@ -1,0 +1,180 @@
+<dialog
+  #reconsentDialog
+  id="reconsent-modal"
+  class="reconsent-dialog"
+  aria-labelledby="reconsent-modal-title"
+  aria-describedby="reconsent-modal-subtitle"
+  (cancel)="onDialogCancel($event)"
+  (close)="onDialogClose()"
+>
+  <section class="reconsent-modal-card">
+    <header class="reconsent-header-row">
+      <div class="reconsent-version-pill">
+        <span class="pill-label">{{ facade.t('reconsentBadge') }}</span>
+        <span class="pill-version">· {{ versionSuffixLabel() }}</span>
+      </div>
+
+      <div class="reconsent-lang-wrap">
+        <app-lounge-dropdown
+          id="reconsent-lang-dropdown"
+          [compact]="true"
+          [align]="'right'"
+          [leadingIcon]="'language'"
+          [options]="languageOptions()"
+          [selectedValue]="facade.lang()"
+          [ariaLabel]="facade.t('languageSelectLabel')"
+          (valueChange)="languageChange.emit($event)"
+        />
+      </div>
+    </header>
+
+    <div class="reconsent-heading-group">
+      <h1 id="reconsent-modal-title" class="reconsent-title">{{ facade.t('reconsentTitle') }}</h1>
+      <p id="reconsent-modal-subtitle" class="reconsent-subtitle">
+        {{ facade.t('reconsentSubtitle') }}
+      </p>
+    </div>
+
+    <div
+      class="reconsent-scroll-wrap"
+      [class.at-bottom]="facade.disclaimerScrolledToBottom()"
+    >
+      <div class="reconsent-scroll-body">
+        <div
+          #disclaimerBox
+          id="reconsent-scroll-box"
+          class="reconsent-scroll-box"
+          tabindex="0"
+          role="region"
+          [attr.aria-label]="facade.t('reconsentTitle')"
+          (scroll)="onDisclaimerScroll($event)"
+        >
+          <div class="disclaimer-clause">
+            <h2>{{ facade.t('clause1Title') }}</h2>
+            <p>{{ facade.t('clause1Body') }}</p>
+          </div>
+
+          <div class="disclaimer-clause">
+            <h2>{{ facade.t('clause2Title') }}</h2>
+            <p>{{ facade.t('clause2Body') }}</p>
+          </div>
+
+          <div class="disclaimer-clause">
+            <h2>{{ facade.t('clause3Title') }}</h2>
+            <p>{{ facade.t('clause3Body') }}</p>
+          </div>
+
+          @if (!facade.phase2EeaEnabled()) {
+            <div class="disclaimer-clause">
+              <h2>{{ facade.t('clause4Title') }}</h2>
+              <p>{{ facade.t('clause4Body') }}</p>
+            </div>
+          }
+        </div>
+      </div>
+
+      <div class="scroll-progress-track" aria-hidden="true">
+        <div
+          class="scroll-progress-fill"
+          [style.width.%]="facade.disclaimerScrollProgress()"
+        ></div>
+      </div>
+
+      <div
+        class="reconsent-scroll-strip"
+        [class.unlocked]="facade.disclaimerScrolledToBottom()"
+        aria-live="polite"
+      >
+        <div class="scroll-status-text">
+          <span class="material-icons scroll-status-icon" aria-hidden="true">
+            {{ facade.disclaimerScrolledToBottom() ? 'check_circle' : 'arrow_downward' }}
+          </span>
+          <span>
+            {{
+              facade.disclaimerScrolledToBottom()
+                ? facade.t('scrollUnlocked')
+                : facade.t('scrollLocked')
+            }}
+          </span>
+        </div>
+        <span class="scroll-progress-pct">{{ facade.disclaimerScrollProgress() }}%</span>
+      </div>
+    </div>
+
+    <div class="reconsent-consent-list">
+      <div
+        class="reconsent-consent-label"
+        [class.consent-disabled]="!facade.disclaimerScrolledToBottom()"
+      >
+        <input
+          id="checkbox-reconsent"
+          type="checkbox"
+          class="reconsent-checkbox"
+          [disabled]="!facade.disclaimerScrolledToBottom()"
+          [checked]="facade.disclaimerChecked()"
+          (change)="onConsentChange($event)"
+        />
+        <label for="checkbox-reconsent" class="reconsent-consent-text">
+          {{ facade.t('reconsentConsentLabel') }}
+        </label>
+      </div>
+
+      @if (!facade.phase2EeaEnabled()) {
+        <div
+          class="reconsent-consent-label"
+          [class.consent-disabled]="!facade.disclaimerScrolledToBottom()"
+        >
+          <input
+            id="checkbox-reconsent-non-eea"
+            type="checkbox"
+            class="reconsent-checkbox"
+            [disabled]="!facade.disclaimerScrolledToBottom()"
+            [checked]="facade.nonEeaEligibilityChecked()"
+            (change)="onNonEeaChange($event)"
+          />
+          <label for="checkbox-reconsent-non-eea" class="reconsent-consent-text">
+            {{ facade.t('nonEeaEligibilityLabel') }}
+          </label>
+        </div>
+      }
+    </div>
+
+    <button
+      id="btn-submit-reconsent"
+      type="button"
+      class="reconsent-agree-btn"
+      [disabled]="!facade.canSubmitSignUp()"
+      (click)="facade.submitDisclaimerReconsent()"
+    >
+      @if (facade.isLoading()) {
+        <span class="material-icons spin-icon" aria-hidden="true">autorenew</span>
+      }
+      <span>{{ facade.t('reconsentCta') }}</span>
+    </button>
+
+    <div class="reconsent-exit-row">
+      <button
+        id="btn-reconsent-logout"
+        type="button"
+        class="reconsent-link-btn reconsent-logout-link"
+        [disabled]="facade.isLoading()"
+        (click)="facade.logout()"
+      >
+        {{ facade.t('reconsentLogoutBtn') }}
+      </button>
+
+      <span class="reconsent-exit-sep" aria-hidden="true">·</span>
+
+      <button
+        #reconsentDeleteButton
+        id="btn-reconsent-delete"
+        type="button"
+        class="reconsent-link-btn reconsent-delete-link"
+        [disabled]="facade.isLoading()"
+        (click)="requestDeleteAccount.emit()"
+      >
+        {{ facade.t('reconsentDeleteBtn') }}
+      </button>
+    </div>
+  </section>
+</dialog>

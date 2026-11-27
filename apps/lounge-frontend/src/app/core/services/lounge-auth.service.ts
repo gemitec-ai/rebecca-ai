@@ -15,17 +15,22 @@ import {
   type User,
 } from 'firebase/auth';
 
-const LOUNGE_FIREBASE_APP_NAME = 'gemitec-private-lounge';
+const LOUNGE_FIREBASE_APP_NAME = 'private-lounge';
 const EMU_X_USER_STORAGE_KEY = 'lounge_emu_x_user';
 const DEFAULT_EMU_X_USER = '1000000099';
 const SAFE_EMU_X_USER_PATTERN = /^[A-Za-z0-9_-]{3,40}$/;
+
+/** Validates that an emulator X user identifier matches the safe synthetic allowlist pattern. */
+export function isSafeEmulatorXUserId(value: string): boolean {
+  return SAFE_EMU_X_USER_PATTERN.test(value);
+}
 
 /**
  * Credential bundle returned after interactive X (`twitter.com`) authentication.
  */
 export interface LoungeXAuthCredentialResult {
   readonly idToken: string;
-  readonly xOAuthCode: string;
+  readonly xOAuthCode?: string;
   readonly uid: string;
 }
 
@@ -47,6 +52,11 @@ export class LoungeAuthService {
 
   /** Reactive signal reflecting the currently signed-in Firebase User. */
   public readonly currentUserSignal = signal<User | null>(null);
+
+  /** Returns `true` once Firebase Web configuration has been applied from `/api/v1/lounge/config`. */
+  public isConfigured(): boolean {
+    return this.firebaseConfig !== null;
+  }
 
   /** Applies runtime Firebase configuration resolved from `/api/v1/lounge/config`. */
   public configure(config: Pick<LoungeRuntimeConfigDto, 'firebase' | 'useEmulators' | 'production'>): void {
@@ -96,40 +106,27 @@ export class LoungeAuthService {
     }
   }
 
-  /** Synchronously returns the active cached Firebase ID token without awaiting refresh locks. */
-  public getSyncToken(): string | null {
-    const user = this.currentUserSignal() ?? this.auth?.currentUser ?? null;
-    if (!user) {
-      return null;
-    }
-    const tokenCarrier = user as unknown as {
-      accessToken?: string;
-      stsTokenManager?: { accessToken?: string };
-    };
-    return tokenCarrier.accessToken ?? tokenCarrier.stsTokenManager?.accessToken ?? null;
-  }
-
-  /** Returns the current user's Firebase ID token asynchronously, guarded by a short timeout. */
+  /**
+   * Returns the current user's Firebase ID token asynchronously via `user.getIdToken()`,
+   * ensuring automatic SDK token refresh when cached tokens expire and clearing timeout timers.
+   */
   public async getToken(forceRefresh = false): Promise<string | null> {
-    if (!forceRefresh) {
-      const syncToken = this.getSyncToken();
-      if (syncToken) {
-        return syncToken;
-      }
-    }
     const user = this.currentUserSignal() ?? this.auth?.currentUser ?? null;
     if (!user) {
       return null;
     }
+    let timerId: ReturnType<typeof setTimeout> | undefined;
     try {
-      return await Promise.race([
-        user.getIdToken(forceRefresh),
-        new Promise<string | null>((_, reject) =>
-          setTimeout(() => reject(new Error('Firebase getIdToken timed out')), 3000),
-        ),
-      ]);
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        timerId = setTimeout(() => reject(new Error('Firebase getIdToken timed out')), 3000);
+      });
+      return await Promise.race([user.getIdToken(forceRefresh), timeoutPromise]);
     } catch {
       return null;
+    } finally {
+      if (timerId !== undefined) {
+        clearTimeout(timerId);
+      }
     }
   }
 
@@ -137,7 +134,7 @@ export class LoungeAuthService {
    * Signs the user in with X (`twitter.com`) via `signInWithPopup` in live environments or
    * deterministic `OAuthProvider('twitter.com')` credentials when running on the Auth Emulator.
    *
-   * @throws Error When Firebase Web configuration is unavailable or X popup fails.
+   * @throws Error When Firebase Web configuration is unavailable or X popup fails or times out.
    */
   public async authenticateWithX(): Promise<LoungeXAuthCredentialResult> {
     const auth = this.ensureAuthOrThrow();
@@ -164,23 +161,46 @@ export class LoungeAuthService {
     }
 
     const provider = new TwitterAuthProvider();
+    let timedOut = false;
+    let timerId: ReturnType<typeof setTimeout> | undefined;
     const loginPromise = (async (): Promise<LoungeXAuthCredentialResult> => {
       const result = await signInWithPopup(auth, provider);
+      if (timedOut) {
+        await signOut(auth).catch(() => undefined);
+        this.currentUserSignal.set(null);
+        throw new Error('X sign-in timed out. Please try again.');
+      }
       const idToken = await result.user.getIdToken(true);
+      if (timedOut) {
+        await signOut(auth).catch(() => undefined);
+        this.currentUserSignal.set(null);
+        throw new Error('X sign-in timed out. Please try again.');
+      }
       const oauthCred = TwitterAuthProvider.credentialFromResult(result);
+      const xOAuthCode = oauthCred?.accessToken?.trim();
       this.currentUserSignal.set(result.user);
       return {
         idToken,
-        xOAuthCode: oauthCred?.accessToken ?? 'firebase-twitter-popup',
+        ...(xOAuthCode ? { xOAuthCode } : {}),
         uid: result.user.uid,
       };
     })();
+    void loginPromise.catch(() => undefined);
 
-    const timeoutPromise = new Promise<never>((_, reject) =>
-      setTimeout(() => reject(new Error('X sign-in timed out. Please try again.')), 25000),
-    );
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      timerId = setTimeout(() => {
+        timedOut = true;
+        reject(new Error('X sign-in timed out. Please try again.'));
+      }, 25000);
+    });
 
-    return Promise.race([loginPromise, timeoutPromise]);
+    try {
+      return await Promise.race([loginPromise, timeoutPromise]);
+    } finally {
+      if (timerId !== undefined) {
+        clearTimeout(timerId);
+      }
+    }
   }
 
   /** Signs out of the scoped Firebase Auth client safely if initialized. */

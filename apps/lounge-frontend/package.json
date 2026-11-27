@@ -1,7 +1,7 @@
 {
   "name": "lounge-frontend",
   "version": "1.45.2",
-  "description": "Gemitec Private Lounge Angular 22 Zoneless SPA skeleton",
+  "description": "Rebecca Private Lounge Angular 22 Zoneless SPA",
   "license": "MIT",
   "scripts": {
     "build": "ng build",

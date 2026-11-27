@@ -1,0 +1,566 @@
+<section id="billing-view" class="subview-container billing-view">
+  <header class="view-header">
+    <div class="view-title-group">
+      <span class="material-icons view-title-icon" aria-hidden="true">payments</span>
+      <div>
+        <h1 class="view-title">{{ facade.t('billingTitle') }}</h1>
+        <p class="view-subtitle">{{ facade.t('billingSubtitle') }}</p>
+      </div>
+    </div>
+
+    <button
+      id="btn-billing-back-to-chat"
+      type="button"
+      class="back-btn"
+      (click)="facade.navigateTo('CHAT')"
+    >
+      <span class="material-icons" aria-hidden="true">arrow_back</span>
+      <span>{{ facade.t('backToChat') }}</span>
+    </button>
+  </header>
+
+  @if (facade.billingBannerNotice(); as banner) {
+    <div
+      id="billing-status-banner"
+      class="billing-banner"
+      [class.banner-success]="banner.tone === 'success'"
+      [class.banner-warning]="banner.tone === 'warning'"
+      role="status"
+      aria-live="polite"
+    >
+      <span class="material-icons" aria-hidden="true">
+        {{ banner.tone === 'warning' ? 'warning_amber' : 'check_circle_outline' }}
+      </span>
+      <span class="billing-banner-text">{{ banner.text }}</span>
+      <button
+        id="btn-dismiss-billing-banner"
+        type="button"
+        class="banner-close-btn"
+        [attr.aria-label]="facade.t('dismissToastAria')"
+        (click)="facade.dismissBillingBanner()"
+      >
+        <span class="material-icons" aria-hidden="true">close</span>
+      </button>
+    </div>
+  }
+
+  <div
+    class="billing-tablist"
+    role="tablist"
+    [attr.focusgroup]="'tablist nomemory'"
+    [attr.aria-label]="facade.t('billingTitle')"
+  >
+    @for (tab of tabs; track tab; let idx = $index) {
+      <button
+        #tabBtn
+        [id]="tabId(tab)"
+        type="button"
+        role="tab"
+        class="billing-tab-btn"
+        [attr.aria-selected]="facade.billingTab() === tab"
+        [attr.tabindex]="facade.billingTab() === tab ? 0 : -1"
+        [attr.focusgroupstart]="facade.billingTab() === tab ? '' : null"
+        (click)="selectTab(tab)"
+        (keydown)="onTabKeydown($event, idx)"
+      >
+        {{ tabLabel(tab) }}
+      </button>
+    }
+  </div>
+
+  @if (facade.isLoadingBilling()) {
+    <div id="billing-loading-indicator" class="billing-loading-pill" role="status" aria-live="polite">
+      <span class="material-icons spin-icon" aria-hidden="true">autorenew</span>
+      <span>{{ facade.t('billingLoadingLabel') }}</span>
+    </div>
+  }
+
+  <div
+    id="billing-panel-plans"
+    role="tabpanel"
+    [attr.aria-labelledby]="tabId('PLANS')"
+    [attr.hidden]="facade.billingTab() === 'PLANS' ? null : 'until-found'"
+    tabindex="0"
+    (beforematch)="selectTab('PLANS')"
+  >
+    <div class="tabpanel-surface">
+      @if (isAccountSuspended()) {
+        <div id="billing-dispute-blocked-banner" class="billing-alert-card danger" role="alert">
+          <span class="material-icons" aria-hidden="true">gpp_maybe</span>
+          <span>{{ facade.t('billingDisputeBlockedNotice') }}</span>
+        </div>
+      } @else if (isGeoBlocked()) {
+        <div id="billing-geo-blocked-banner" class="billing-alert-card warning" role="status">
+          <span class="material-icons" aria-hidden="true">public_off</span>
+          <span>{{ facade.t('billingGeoBlockedNotice') }}</span>
+        </div>
+      }
+
+      <div class="billing-context-card">
+        <p class="context-free-note">{{ facade.t('billingFreeContextNote') }}</p>
+        <p class="context-currency-note">{{ facade.t('billingCurrencyAutoNote') }}</p>
+      </div>
+
+      @if (facade.isLoadingBilling() && !facade.billingCatalog()) {
+        <div id="billing-products-loading-grid" class="products-grid" aria-busy="true">
+          @for (productId of placeholderProductIds; track productId) {
+            <article [id]="'product-card-' + productId" class="product-card product-loading-card">
+              <div class="product-card-top">
+                <div class="product-badges">
+                  <span class="badge-pill subtle">{{ facade.t('billingLoadingLabel') }}</span>
+                </div>
+                <h2 class="product-title">{{ getProductTitle(productId) }}</h2>
+                <p class="product-desc">{{ getProductDescription({ productId }) }}</p>
+              </div>
+              <div class="product-card-actions">
+                <button
+                  [id]="'btn-select-product-' + productId"
+                  type="button"
+                  class="product-cta-btn btn-loading"
+                  disabled
+                  aria-disabled="true"
+                >
+                  <span class="btn-spinner" aria-hidden="true"></span>
+                  <span>{{ facade.t('billingPlanLoadingBtn') }}</span>
+                </button>
+              </div>
+            </article>
+          }
+        </div>
+      } @else if (facade.billingCatalog(); as catalog) {
+        <div class="products-grid" [attr.aria-busy]="facade.isLoadingBilling() ? 'true' : null">
+          @for (product of catalog.products; track product.productId) {
+            <article
+              [id]="'product-card-' + product.productId"
+              class="product-card"
+              [class.product-recommended]="
+                product.productId === 'STANDARD_MONTHLY' && product.available && product.eligible
+              "
+              [class.product-disabled]="
+                !facade.isLoadingBilling() && (!product.available || !product.eligible)
+              "
+            >
+              <div class="product-card-top">
+                <div class="product-badges">
+                  @if (isComingSoon(product)) {
+                    <span class="badge-pill subtle">
+                      {{ facade.t('billingPlanComingSoonBadge') }}
+                    </span>
+                  } @else if (product.productId === 'STANDARD_MONTHLY') {
+                    <span class="badge-pill purple">
+                      {{
+                        product.ineligibleReason === 'SUBSCRIPTION_ALREADY_ACTIVE'
+                          ? facade.t('billingPlanActiveBadge')
+                          : facade.t('billingPlanRecommendedBadge')
+                      }}
+                    </span>
+                  } @else if (product.productId === 'TRIAL_TICKET_100') {
+                    <span class="badge-pill pink">
+                      {{
+                        product.ineligibleReason === 'TRIAL_ALREADY_USED'
+                          ? facade.t('billingPlanUsedBadge')
+                          : facade.t('billingPlanOneTimeBadge')
+                      }}
+                    </span>
+                  } @else {
+                    <span class="badge-pill subtle">{{ facade.t('billingValidity180Days') }}</span>
+                  }
+                  @if (product.taxInclusive) {
+                    <span class="badge-pill tax">{{ facade.t('taxInclusiveBadge') }}</span>
+                  }
+                </div>
+                <h2 class="product-title">{{ getProductTitle(product.productId) }}</h2>
+                <p class="product-price">{{ formatProductPrice(product) }}</p>
+                <p class="product-desc">{{ getProductDescription(product) }}</p>
+              </div>
+
+              <div class="product-card-actions">
+                <button
+                  [id]="'btn-select-product-' + product.productId"
+                  type="button"
+                  class="product-cta-btn"
+                  [class.btn-loading]="facade.isLoadingBilling()"
+                  [class.btn-disabled]="
+                    !facade.isLoadingBilling() && (!product.available || !product.eligible)
+                  "
+                  [disabled]="
+                    !product.available ||
+                    !product.eligible ||
+                    isAccountSuspended() ||
+                    facade.isLoadingBilling()
+                  "
+                  [attr.aria-disabled]="
+                    !product.available ||
+                    !product.eligible ||
+                    isAccountSuspended() ||
+                    facade.isLoadingBilling()
+                      ? 'true'
+                      : null
+                  "
+                  (click)="facade.openPreCheckoutModal(product)"
+                >
+                  @if (facade.isLoadingBilling()) {
+                    <span class="btn-spinner" aria-hidden="true"></span>
+                    <span>{{ facade.t('billingPlanLoadingBtn') }}</span>
+                  } @else if (isComingSoon(product)) {
+                    <span class="material-icons btn-lock-icon" aria-hidden="true">lock</span>
+                    <span>{{ facade.t('billingComingSoonBtn') }}</span>
+                  } @else if (!product.eligible) {
+                    <span>
+                      {{
+                        product.ineligibleReason === 'TRIAL_ALREADY_USED'
+                          ? facade.t('billingPlanUsedBadge')
+                          : product.ineligibleReason === 'SUBSCRIPTION_ALREADY_ACTIVE'
+                            ? facade.t('billingPlanActiveBadge')
+                            : facade.t('billingUnavailableBtn')
+                      }}
+                    </span>
+                  } @else {
+                    <span>
+                      {{
+                        product.mode === 'subscription'
+                          ? facade.t('billingSubscribeCta')
+                          : facade.t('billingBuyTicketCta')
+                      }}
+                    </span>
+                  }
+                </button>
+              </div>
+            </article>
+          }
+        </div>
+      } @else {
+        <div id="billing-products-fallback-grid" class="products-grid">
+          @for (productId of placeholderProductIds; track productId) {
+            <article [id]="'product-card-' + productId" class="product-card product-disabled">
+              <div class="product-card-top">
+                <div class="product-badges">
+                  <span class="badge-pill subtle">{{ facade.t('billingPlanComingSoonBadge') }}</span>
+                </div>
+                <h2 class="product-title">{{ getProductTitle(productId) }}</h2>
+                <p class="product-desc">{{ getProductDescription({ productId }) }}</p>
+              </div>
+              <div class="product-card-actions">
+                <button
+                  [id]="'btn-select-product-' + productId"
+                  type="button"
+                  class="product-cta-btn btn-disabled"
+                  disabled
+                  aria-disabled="true"
+                >
+                  <span class="material-icons btn-lock-icon" aria-hidden="true">lock</span>
+                  <span>{{ facade.t('billingComingSoonBtn') }}</span>
+                </button>
+              </div>
+            </article>
+          }
+        </div>
+      }
+
+      <p class="cca-footnote">{{ facade.t('billingCcaNotice') }}</p>
+    </div>
+  </div>
+
+  <div
+    id="billing-panel-subscription"
+    role="tabpanel"
+    [attr.aria-labelledby]="tabId('SUBSCRIPTION')"
+    [attr.hidden]="facade.billingTab() === 'SUBSCRIPTION' ? null : 'until-found'"
+    tabindex="0"
+    (beforematch)="selectTab('SUBSCRIPTION')"
+  >
+    <div class="tabpanel-surface">
+      @if (facade.accountSummary()?.subscription; as sub) {
+        <div class="sub-metrics-grid">
+          <div class="metric-box">
+            <span class="metric-label">{{ facade.t('subTierLabel') }}</span>
+            <strong id="sub-tier-value" class="metric-value" [attr.data-tier]="sub.tier">
+              {{ facade.getTierLabel(sub.tier) }}
+            </strong>
+          </div>
+          <div class="metric-box">
+            <span class="metric-label">{{ facade.t('subStatusLabel') }}</span>
+            <strong id="sub-status-value" class="metric-value" [attr.data-status]="sub.status">
+              {{ facade.getSubscriptionStatusLabel(sub.status) }}
+            </strong>
+          </div>
+          <div class="metric-box highlight">
+            <span class="metric-label">{{ facade.t('subQuotaTotalLabel') }}</span>
+            <strong id="sub-total-turns-value" class="metric-value">
+              {{ sub.remainingChatTurns }} {{ facade.t('remainingTurnsUnit') }}
+            </strong>
+          </div>
+        </div>
+
+        <div class="breakdown-card">
+          <div class="breakdown-row">
+            <span>{{ facade.t('subDailyBucketLabel') }}</span>
+            <strong id="sub-daily-bucket-value">
+              {{ sub.dailyRemainingTurns }} / {{ sub.dailyTurnQuota }}
+            </strong>
+          </div>
+          <div class="breakdown-row">
+            <span>{{ facade.t('subPurchasedBucketLabel') }}</span>
+            <strong id="sub-purchased-bucket-value">
+              {{ sub.purchasedRemainingTurns }} {{ facade.t('remainingTurnsUnit') }}
+            </strong>
+          </div>
+          <div class="breakdown-row">
+            <span>{{ facade.t('subNextResetLabel') }}</span>
+            <span>{{ formatDateTime(sub.nextDailyResetAt) }}</span>
+          </div>
+          @if (sub.tier === 'STANDARD' || sub.status === 'ACTIVE' || sub.status === 'CANCELING') {
+            <div class="breakdown-row">
+              <span>{{ facade.t('subPeriodEndLabel') }}</span>
+              <span>{{ formatDateTime(sub.currentPeriodEnd) }}</span>
+            </div>
+          }
+          <p class="breakdown-note">{{ facade.t('subConsumptionOrderNote') }}</p>
+        </div>
+
+        @if (sub.cancelAtPeriodEnd || sub.status === 'CANCELING') {
+          <div id="billing-canceling-notice" class="billing-alert-card warning" role="status">
+            <span class="material-icons" aria-hidden="true">schedule</span>
+            <span>{{ facade.t('subCancelAtPeriodEndNotice') }}</span>
+          </div>
+        }
+      }
+
+      @if (facade.subscriptionDetail(); as detail) {
+        @if (detail.expiringSoonWarning; as expWarn) {
+          <div id="billing-expiring-lot-warning" class="billing-alert-card warning" role="status">
+            <span class="material-icons" aria-hidden="true">hourglass_bottom</span>
+            <span>
+              {{ facade.t('subExpiringSoonWarning') }}
+              ({{ expWarn.expiringTurns }} {{ facade.t('remainingTurnsUnit') }} /
+              {{ formatDateTime(expWarn.expiresAt) }})
+            </span>
+          </div>
+        }
+
+        <div class="lots-card">
+          <h2 class="section-heading">{{ facade.t('subActiveLotsTitle') }}</h2>
+          @if (detail.quotaBreakdown.activeLots.length === 0) {
+            <p class="muted-empty">{{ facade.t('subNoActiveLotsText') }}</p>
+          } @else {
+            <ul class="lots-list">
+              @for (lot of detail.quotaBreakdown.activeLots; track lot.id) {
+                <li class="lot-row">
+                  <div class="lot-main-info">
+                    <strong>{{ getProductTitle(lot.productId) }}</strong>
+                    <p class="lot-meta">
+                      {{ facade.t('subLotExpiresLabel') }} {{ formatDateTime(lot.expiresAt) }}
+                    </p>
+                  </div>
+                  <div class="lot-row-actions">
+                    <span class="lot-turns-badge">
+                      {{ lot.remainingTurns }} / {{ lot.initialTurns }}
+                    </span>
+                    @if (isEligibleCreditLotWithdrawal(lot, detail.quotaBreakdown.phase2EuWithdrawalEligible ?? false)) {
+                      <button
+                        [id]="'btn-eu-withdrawal-lot-' + lot.id"
+                        type="button"
+                        class="portal-btn danger-outline lot-withdraw-btn"
+                        [disabled]="facade.isLoadingBilling()"
+                        (click)="requestEuLotWithdrawal(lot.id)"
+                      >
+                        {{ facade.t('subEuWithdrawalLotBtn') }}
+                      </button>
+                    }
+                  </div>
+                </li>
+              }
+            </ul>
+          }
+        </div>
+
+        @if (facade.pendingEuWithdrawal()) {
+          <div id="eu-withdrawal-confirm-box" class="eu-confirm-card" role="alertdialog" aria-labelledby="eu-withdraw-prompt-text">
+            <p id="eu-withdraw-prompt-text" class="portal-note">{{ facade.t('euWithdrawalConfirmPrompt') }}</p>
+            <div class="portal-actions">
+              <button
+                id="btn-cancel-eu-withdrawal"
+                type="button"
+                class="portal-btn"
+                [disabled]="facade.isLoadingBilling()"
+                (click)="facade.cancelEuWithdrawalConfirmation()"
+              >
+                {{ facade.t('euWithdrawalCancelBtn') }}
+              </button>
+              <button
+                id="btn-confirm-eu-withdrawal"
+                type="button"
+                class="portal-btn danger-outline"
+                [disabled]="facade.isLoadingBilling()"
+                (click)="facade.confirmPendingEuWithdrawal()"
+              >
+                {{ facade.t('euWithdrawalConfirmBtn') }}
+              </button>
+            </div>
+          </div>
+        }
+
+        @if (
+          detail.quotaBreakdown.phase2EuWithdrawalEligible &&
+          detail.subscription.status === 'ACTIVE'
+        ) {
+          <div class="portal-card">
+            <p class="portal-note">{{ facade.t('subEuWithdrawalDesc') }}</p>
+            <button
+              id="btn-eu-withdrawal-sub"
+              type="button"
+              class="portal-btn danger-outline"
+              [disabled]="facade.isLoadingBilling()"
+              (click)="requestEuSubscriptionWithdrawal()"
+            >
+              {{ facade.t('subEuWithdrawalBtn') }}
+            </button>
+          </div>
+        }
+      }
+
+      <div class="portal-card">
+        <h2 class="section-heading">{{ facade.t('subPortalSectionTitle') }}</h2>
+        <p class="portal-note">{{ facade.t('subPortalExternalNote') }}</p>
+        <div class="portal-actions">
+          <button
+            id="btn-portal-default"
+            type="button"
+            class="portal-btn"
+            [disabled]="!hasStripeCustomerHistory() || facade.isLoadingBilling()"
+            (click)="facade.openCustomerPortal('default')"
+          >
+            <span class="material-icons" aria-hidden="true">open_in_new</span>
+            <span>{{ facade.t('portalManageDefaultBtn') }}</span>
+          </button>
+          <button
+            id="btn-portal-payment-method"
+            type="button"
+            class="portal-btn"
+            [disabled]="!hasStripeCustomerHistory() || facade.isLoadingBilling()"
+            (click)="facade.openCustomerPortal('payment_method_update')"
+          >
+            <span class="material-icons" aria-hidden="true">credit_card</span>
+            <span>{{ facade.t('portalUpdateCardBtn') }}</span>
+          </button>
+          <button
+            id="btn-portal-cancel"
+            type="button"
+            class="portal-btn danger-outline"
+            [disabled]="!canOpenCancelPortal() || facade.isLoadingBilling()"
+            (click)="facade.openCustomerPortal('subscription_cancel')"
+          >
+            <span class="material-icons" aria-hidden="true">cancel</span>
+            <span>{{ facade.t('portalCancelSubBtn') }}</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div
+    id="billing-panel-history"
+    role="tabpanel"
+    [attr.aria-labelledby]="tabId('HISTORY')"
+    [attr.hidden]="facade.billingTab() === 'HISTORY' ? null : 'until-found'"
+    tabindex="0"
+    (beforematch)="selectTab('HISTORY')"
+  >
+    <div class="tabpanel-surface">
+      <div class="history-card">
+        <h2 id="billing-orders-heading" class="section-heading">{{ facade.t('historyTitle') }}</h2>
+        @if (facade.isLoadingBilling() && facade.billingOrders().length === 0) {
+          <p id="billing-orders-loading" class="muted-empty history-loading-row" role="status">
+            <span class="btn-spinner" aria-hidden="true"></span>
+            <span>{{ facade.t('billingLoadingLabel') }}</span>
+          </p>
+        } @else if (facade.billingOrders().length === 0) {
+          <p id="billing-orders-empty" class="muted-empty">{{ facade.t('emptyOrdersText') }}</p>
+        } @else {
+          <div
+            class="table-wrapper orders-table-scroll"
+            tabindex="0"
+            role="region"
+            aria-labelledby="billing-orders-heading"
+          >
+            <table class="orders-table">
+              <caption class="visually-hidden">{{ facade.t('historyTitle') }}</caption>
+              <thead>
+                <tr>
+                  <th scope="col">{{ facade.t('historyDateCol') }}</th>
+                  <th scope="col">{{ facade.t('historyProductCol') }}</th>
+                  <th scope="col">{{ facade.t('historyAmountCol') }}</th>
+                  <th scope="col">{{ facade.t('historyStatusCol') }}</th>
+                  <th scope="col">{{ facade.t('historyTurnsCol') }}</th>
+                  <th scope="col">{{ facade.t('historyReceiptCol') }}</th>
+                </tr>
+              </thead>
+              <tbody>
+                @for (order of facade.billingOrders(); track order.chargeId) {
+                  <tr>
+                    <td [attr.data-label]="facade.t('historyDateCol')">
+                      {{ formatDateTime(order.createdAt) }}
+                    </td>
+                    <td [attr.data-label]="facade.t('historyProductCol')">
+                      {{ getProductTitle(order.productId) }}
+                    </td>
+                    <td class="mono-cell" [attr.data-label]="facade.t('historyAmountCol')">
+                      {{ formatOrderAmount(order) }}
+                    </td>
+                    <td [attr.data-label]="facade.t('historyStatusCol')">
+                      <span class="order-status-pill" [attr.data-status]="order.status">
+                        {{ getOrderStatusLabel(order.status) }}
+                      </span>
+                    </td>
+                    <td class="mono-cell" [attr.data-label]="facade.t('historyTurnsCol')">
+                      @if (order.remainingTurns !== undefined && order.initialTurns !== undefined) {
+                        {{ order.remainingTurns }} / {{ order.initialTurns }}
+                      } @else {
+                        —
+                      }
+                    </td>
+                    <td [attr.data-label]="facade.t('historyReceiptCol')">
+                      @if (order.receiptAvailable) {
+                        <button
+                          [id]="'btn-receipt-' + order.chargeId"
+                          type="button"
+                          class="receipt-link-btn"
+                          (click)="facade.openOrderReceipt(order.chargeId)"
+                        >
+                          <span class="material-icons" aria-hidden="true">receipt_long</span>
+                          <span>{{ facade.t('receiptOpenBtn') }}</span>
+                        </button>
+                      } @else {
+                        <span class="muted-cell">{{ facade.t('receiptUnavailableLabel') }}</span>
+                      }
+                    </td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
+
+          @if (facade.billingOrdersHasMore()) {
+            <div class="orders-load-more-row">
+              <button
+                id="btn-load-more-orders"
+                type="button"
+                class="portal-btn"
+                [disabled]="facade.isLoadingMoreOrders()"
+                (click)="facade.loadMoreOrders()"
+              >
+                {{ facade.t('loadMoreOrdersBtn') }}
+              </button>
+            </div>
+          }
+        }
+      </div>
+    </div>
+  </div>
+
+  <app-pre-checkout-modal
+    [product]="facade.selectedCheckoutProduct()"
+    [isEeaResident]="facade.billingCatalog()?.isEeaResident ?? false"
+    [phase2EeaEnabled]="facade.billingCatalog()?.phase2EeaEnabled ?? false"
+  />
+</section>

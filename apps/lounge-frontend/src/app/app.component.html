@@ -26,317 +26,39 @@
       <p class="boot-splash-label">{{ facade.t('bootstrappingLabel') }}</p>
     </div>
   </main>
+} @else if (facade.configLoadError(); as cfgErr) {
+  <main id="lounge-config-error" class="boot-splash-shell" role="alert">
+    <div class="ambient-bg" aria-hidden="true">
+      <div class="ambient-orb orb-purple"></div>
+      <div class="ambient-orb orb-pink"></div>
+    </div>
+    <div class="config-error-card">
+      <span class="material-icons config-error-icon" aria-hidden="true">cloud_off</span>
+      <h1 class="config-error-title">{{ facade.t('configLoadErrorTitle') }}</h1>
+      <p class="config-error-body">{{ facade.t('configLoadErrorBody') }}</p>
+      <p class="config-error-detail">{{ cfgErr }}</p>
+      <button
+        id="btn-retry-config"
+        type="button"
+        class="x-cta-btn"
+        (click)="facade.retryInitializeLounge()"
+      >
+        <span class="material-icons" aria-hidden="true">refresh</span>
+        <span>{{ facade.t('configRetryBtn') }}</span>
+      </button>
+    </div>
+  </main>
 } @else if (
   facade.activeView() === 'AUTH' ||
   facade.activeView() === 'ONBOARDING'
 ) {
-  <main
-    class="auth-shell"
-    [attr.inert]="facade.isReconsentRequired() || facade.deleteAccountStep() > 0 ? '' : null"
-  >
-    <div class="ambient-bg" aria-hidden="true">
-      <div class="ambient-orb orb-purple"></div>
-      <div class="ambient-orb orb-pink"></div>
-      <div class="ambient-grid"></div>
-    </div>
-
-    <div class="auth-layout">
-      <!-- Left Stage: Gemitec Private Lounge Companion Showcase -->
-      <section class="hero-panel">
-        <div class="brand-pill">
-          <img src="assets/gemitec_icon.svg" alt="" class="brand-crest-icon" aria-hidden="true" />
-          <span>GEMITEC // {{ facade.t('brandBadge') }}</span>
-        </div>
-
-        <h1 class="hero-title">
-          <span class="hero-title-lead">{{ facade.t('heroLead') }}</span>
-          <span class="hero-title-accent">{{ facade.t('heroHighlight') }}</span>
-        </h1>
-
-        <p class="hero-body">{{ facade.t('heroBody') }}</p>
-
-        <div class="hero-character-stage">
-          <div class="character-halo" aria-hidden="true"></div>
-          <img
-            [src]="facade.personaBranding().avatarPath"
-            [alt]="facade.personaDisplayName()"
-            class="hero-cutout"
-          />
-          <div class="hero-nameplate">
-            <span class="material-icons nameplate-icon" aria-hidden="true">chat_bubble</span>
-            <span>{{ facade.personaDisplayName() }}</span>
-          </div>
-        </div>
-      </section>
-
-      <!-- Right Stage: Auth Card OR Post-X-Link Locale/Timezone Onboarding Card -->
-      @if (facade.activeView() === 'AUTH') {
-        <section class="auth-card" [attr.aria-label]="facade.t('authHeadingSrOnly')">
-          <header class="auth-card-header">
-            <div class="auth-tabs" role="tablist">
-              <button
-                id="tab-login"
-                type="button"
-                role="tab"
-                class="auth-tab"
-                [class.active]="facade.authMode() === 'LOGIN'"
-                [attr.aria-selected]="facade.authMode() === 'LOGIN'"
-                (click)="facade.setAuthMode('LOGIN')"
-              >
-                {{ facade.t('tabLogin') }}
-              </button>
-              <button
-                id="tab-signup"
-                type="button"
-                role="tab"
-                class="auth-tab"
-                [class.active]="facade.authMode() === 'SIGNUP'"
-                [attr.aria-selected]="facade.authMode() === 'SIGNUP'"
-                (click)="facade.setAuthMode('SIGNUP')"
-              >
-                {{ facade.t('tabSignUp') }}
-              </button>
-            </div>
-
-            <div class="auth-lang-wrap">
-              <app-lounge-dropdown
-                id="auth-lang-dropdown"
-                [compact]="true"
-                [align]="'right'"
-                [leadingIcon]="'language'"
-                [options]="languageOptions"
-                [selectedValue]="facade.lang()"
-                [ariaLabel]="facade.t('languageSelectLabel')"
-                (valueChange)="onLanguageChange($event)"
-              />
-            </div>
-          </header>
-
-          @if (facade.authMode() === 'SIGNUP') {
-            <div class="auth-panel-body">
-              <div class="disclaimer-heading">
-                <span class="material-icons disclaimer-heading-icon" aria-hidden="true">gavel</span>
-                <span>{{ facade.t('disclaimerInstruction') }}</span>
-              </div>
-
-              <div
-                class="disclaimer-scroll-wrap"
-                [class.at-bottom]="facade.disclaimerScrolledToBottom()"
-              >
-                <div
-                  #disclaimerBox
-                  id="disclaimer-scroll-box"
-                  class="disclaimer-scroll-box"
-                  tabindex="0"
-                  role="region"
-                  [attr.aria-label]="facade.t('disclaimerRegionLabel')"
-                  (scroll)="onDisclaimerScroll($event)"
-                >
-                  <div class="disclaimer-clause">
-                    <h2>{{ facade.t('clause1Title') }}</h2>
-                    <p>{{ facade.t('clause1Body') }}</p>
-                  </div>
-
-                  <div class="disclaimer-clause">
-                    <h2>{{ facade.t('clause2Title') }}</h2>
-                    <p>{{ facade.t('clause2Body') }}</p>
-                  </div>
-
-                  <div class="disclaimer-clause">
-                    <h2>{{ facade.t('clause3Title') }}</h2>
-                    <p>{{ facade.t('clause3Body') }}</p>
-                  </div>
-                </div>
-              </div>
-
-              <div
-                class="scroll-status-bar"
-                [class.unlocked]="facade.disclaimerScrolledToBottom()"
-                aria-live="polite"
-              >
-                <div class="scroll-status-text">
-                  <span class="material-icons scroll-status-icon" aria-hidden="true">
-                    {{ facade.disclaimerScrolledToBottom() ? 'check_circle' : 'arrow_downward' }}
-                  </span>
-                  <span>
-                    {{
-                      facade.disclaimerScrolledToBottom()
-                        ? facade.t('scrollUnlocked')
-                        : facade.t('scrollLocked')
-                    }}
-                  </span>
-                </div>
-                <span class="scroll-progress-pct">{{ facade.disclaimerScrollProgress() }}%</span>
-              </div>
-
-              <label
-                class="consent-label"
-                [class.consent-disabled]="!facade.disclaimerScrolledToBottom()"
-              >
-                <input
-                  id="checkbox-disclaimer-consent"
-                  type="checkbox"
-                  class="consent-checkbox"
-                  [disabled]="!facade.disclaimerScrolledToBottom()"
-                  [checked]="facade.disclaimerChecked()"
-                  (change)="onConsentChange($event)"
-                />
-                <span>{{ facade.t('consentLabel') }}</span>
-              </label>
-
-              <button
-                id="btn-x-signup"
-                type="button"
-                class="x-cta-btn"
-                [disabled]="!facade.canSubmitSignUp()"
-                (click)="facade.submitSignUpWithX()"
-              >
-                @if (facade.isLoading()) {
-                  <span class="material-icons spin-icon" aria-hidden="true">autorenew</span>
-                } @else {
-                  <svg class="x-brand-svg" viewBox="0 0 24 24" aria-hidden="true">
-                    <path
-                      fill="currentColor"
-                      d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"
-                    />
-                  </svg>
-                }
-                <span>{{ facade.t('signUpCta') }}</span>
-              </button>
-            </div>
-          } @else {
-            <div class="auth-panel-body login-panel-body">
-              <div class="login-callout">
-                <div class="login-callout-badge" aria-hidden="true">
-                  <span class="material-icons">bolt</span>
-                </div>
-                <h2 class="login-callout-title">{{ facade.t('loginCalloutTitle') }}</h2>
-                <p class="login-callout-body">{{ facade.t('loginCalloutBody') }}</p>
-              </div>
-
-              <button
-                id="btn-x-login"
-                type="button"
-                class="x-cta-btn"
-                [disabled]="facade.isLoading()"
-                (click)="facade.submitLoginWithX()"
-              >
-                @if (facade.isLoading()) {
-                  <span class="material-icons spin-icon" aria-hidden="true">autorenew</span>
-                } @else {
-                  <svg class="x-brand-svg" viewBox="0 0 24 24" aria-hidden="true">
-                    <path
-                      fill="currentColor"
-                      d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"
-                    />
-                  </svg>
-                }
-                <span>{{ facade.t('loginCta') }}</span>
-              </button>
-
-              <div class="login-signup-bridge">
-                <span class="login-signup-prompt">{{ facade.t('loginNewUserPrompt') }}</span>
-                <button
-                  id="btn-switch-to-signup"
-                  type="button"
-                  class="switch-signup-btn"
-                  (click)="facade.setAuthMode('SIGNUP')"
-                >
-                  <span class="material-icons" aria-hidden="true">person_add</span>
-                  <span>{{ facade.t('loginSwitchToSignUpBtn') }}</span>
-                </button>
-              </div>
-            </div>
-          }
-
-          <footer class="auth-card-footer">
-            <span>{{ facade.t('disclaimerVersionLabel') }}</span>
-            <span class="version-chip">{{ formattedVersion() }}</span>
-          </footer>
-        </section>
-      } @else {
-        <section
-          id="onboarding-preferences-card"
-          class="auth-card onboarding-card"
-          [attr.aria-label]="facade.t('onboardingTitle')"
-        >
-          <div class="onboarding-linked-pill">
-            <span class="material-icons onboarding-linked-icon" aria-hidden="true"
-              >check_circle</span
-            >
-            <span>{{ facade.t('onboardingXLinkedBadge') }}</span>
-            @if (facade.accountSummary()?.user?.xHandle; as handle) {
-              <span class="onboarding-x-handle">{{ handle }}</span>
-            }
-          </div>
-
-          <div class="onboarding-heading-group">
-            <h2 class="onboarding-title">{{ facade.t('onboardingTitle') }}</h2>
-            <p class="onboarding-subtitle">{{ facade.t('onboardingSubtitle') }}</p>
-          </div>
-
-          <div class="onboarding-fields">
-            <div class="option-group">
-              <div class="option-label-row">
-                <span class="material-icons option-label-icon" aria-hidden="true">language</span>
-                <span class="option-label-text">{{ facade.t('optionsLanguageLabel') }}</span>
-              </div>
-              <app-lounge-dropdown
-                id="onboarding-lang-dropdown"
-                [leadingIcon]="'language'"
-                [options]="languageOptions"
-                [selectedValue]="facade.lang()"
-                [ariaLabel]="facade.t('optionsLanguageLabel')"
-                (valueChange)="onLanguageChange($event)"
-              />
-              <p class="option-hint">{{ facade.t('optionsLanguageHint') }}</p>
-            </div>
-
-            <div class="option-group">
-              <div class="option-label-row">
-                <span class="material-icons option-label-icon" aria-hidden="true">schedule</span>
-                <span class="option-label-text">{{ facade.t('optionsTimezoneLabel') }}</span>
-              </div>
-              <app-lounge-dropdown
-                id="onboarding-timezone-dropdown"
-                [leadingIcon]="'schedule'"
-                [options]="timezoneOptions"
-                [selectedValue]="facade.timezone()"
-                [ariaLabel]="facade.t('optionsTimezoneLabel')"
-                (valueChange)="onTimezoneChange($event)"
-              />
-              <p class="option-hint">{{ facade.t('optionsTimezoneHint') }}</p>
-            </div>
-          </div>
-
-          <div class="onboarding-note-box">
-            <span class="material-icons onboarding-note-icon" aria-hidden="true">info_outline</span>
-            <span>{{ facade.t('onboardingChangeLaterNote') }}</span>
-          </div>
-
-          <button
-            id="btn-start-lounge"
-            type="button"
-            class="x-cta-btn"
-            [disabled]="facade.isLoading()"
-            (click)="facade.completeOnboarding()"
-          >
-            @if (facade.isLoading()) {
-              <span class="material-icons spin-icon" aria-hidden="true">autorenew</span>
-            } @else {
-              <span class="material-icons" aria-hidden="true">arrow_forward</span>
-            }
-            <span>{{ facade.t('onboardingStartCta') }}</span>
-          </button>
-
-          <footer class="auth-card-footer">
-            <span>{{ facade.t('disclaimerVersionLabel') }}</span>
-            <span class="version-chip">{{ formattedVersion() }}</span>
-          </footer>
-        </section>
-      }
-    </div>
-  </main>
+  <app-entrance-view
+    [languageOptions]="languageOptions"
+    [timezoneOptions]="timezoneOptions()"
+    [formattedVersion]="formattedVersion()"
+    (languageChange)="onLanguageChange($event)"
+    (timezoneChange)="onTimezoneChange($event)"
+  />
 } @else {
   <div
     class="lounge-shell"
@@ -348,7 +70,10 @@
     </div>
 
     <!-- Top Application Bar -->
-    <header class="lounge-topbar">
+    <header
+      class="lounge-topbar"
+      [attr.inert]="facade.isSidebarOpen() ? '' : null"
+    >
       <div class="topbar-left">
         <button
           #hamburgerButton
@@ -419,12 +144,13 @@
         class="sidebar-drawer"
         role="dialog"
         aria-modal="true"
-        [attr.aria-label]="facade.t('brandBadge')"
+        [attr.aria-label]="facade.personaBranding().brandName"
+        [attr.inert]="facade.isSidebarOpen() ? null : ''"
       >
         <div class="sidebar-header">
           <div class="sidebar-brand">
             <img src="assets/gemitec_icon.svg" alt="" class="sidebar-crest" aria-hidden="true" />
-            <span class="sidebar-brand-label">GEMITEC // {{ facade.t('brandBadge') }}</span>
+            <span class="sidebar-brand-label">{{ facade.personaBranding().brandName }}</span>
           </div>
           <button
             #closeSidebarButton
@@ -462,7 +188,9 @@
 
             <div class="subscription-row">
               <span class="subscription-caption">{{ facade.t('subscriptionLabel') }}</span>
-              <span class="tier-badge">{{ summary.subscription.tier }}</span>
+              <span class="tier-badge" [attr.data-tier]="summary.subscription.tier">
+                {{ facade.getTierLabel(summary.subscription.tier) }}
+              </span>
             </div>
 
             <div class="quota-block">
@@ -598,326 +326,28 @@
     }
 
     <!-- Main Content Viewport -->
-    <main #loungeWorkspace class="lounge-workspace">
+    <main
+      #loungeWorkspace
+      class="lounge-workspace"
+      [attr.inert]="facade.isSidebarOpen() ? '' : null"
+    >
       @switch (facade.activeView()) {
         @case ('CHAT') {
-          <div class="chat-layout">
-            <!-- PC Left Companion Showcase (hidden on Mobile to maximize conversation space) -->
-            <aside class="companion-panel">
-              <div class="companion-visual-stage">
-                <div class="companion-halo" aria-hidden="true"></div>
-                <img
-                  [src]="facade.personaBranding().avatarPath"
-                  [alt]="facade.personaDisplayName()"
-                  class="companion-cutout"
-                />
-              </div>
-
-              <div class="companion-info">
-                <h2 class="companion-name">{{ facade.personaDisplayName() }}</h2>
-                <p class="companion-subtext">{{ facade.t('companionSubtext') }}</p>
-              </div>
-
-              <button
-                id="btn-companion-gallery"
-                type="button"
-                class="companion-gallery-btn"
-                (click)="facade.navigateTo('GALLERY')"
-              >
-                <span class="material-icons" aria-hidden="true">photo_library</span>
-                <span class="companion-gallery-label">{{ facade.t('openGalleryBtn') }}</span>
-                <span class="companion-gallery-count"
-                  >{{ unlockedGalleryCount() }}/{{ totalGalleryCount() }}</span
-                >
-              </button>
-            </aside>
-
-            <!-- Primary Single-Session Chat Stream & Composer -->
-            <section class="chat-panel">
-              <div class="chat-stream-stage">
-                <div
-                  #chatStream
-                  id="chat-message-stream"
-                  class="chat-stream"
-                  aria-live="polite"
-                  (scroll)="onChatScroll($event)"
-                >
-                  @if (facade.isLoadingOlderMessages()) {
-                    <div id="chat-history-loading" class="chat-history-status" role="status">
-                      <span class="material-icons spin-icon" aria-hidden="true">autorenew</span>
-                      <span>{{ facade.t('chatLoadingOlder') }}</span>
-                    </div>
-                  } @else if (facade.hasMoreMessages()) {
-                    <div class="chat-history-status">
-                      <button
-                        id="btn-load-older-messages"
-                        type="button"
-                        class="chat-load-older-btn"
-                        (click)="triggerLoadOlderMessages()"
-                      >
-                        <span class="material-icons" aria-hidden="true">history</span>
-                        <span>{{ facade.t('chatLoadOlderBtn') }}</span>
-                      </button>
-                    </div>
-                  } @else if (facade.messages().length > 0) {
-                    <div id="chat-history-beginning" class="chat-history-beginning" role="status">
-                      {{ facade.t('chatBeginningOfHistory') }}
-                    </div>
-                  }
-
-                  @for (msg of facade.messages(); track msg.id) {
-                    @if (msg.role === 'ASSISTANT') {
-                      <article class="message-row from-assistant">
-                        <img
-                          class="ai-chat-avatar"
-                          [src]="getEmotionAvatarPath(msg.emotion)"
-                          [alt]="facade.personaDisplayName()"
-                        />
-                        <div class="message-bubble assistant-bubble">
-                          <div class="message-meta">
-                            <span class="sender-name">{{ facade.personaDisplayName() }}</span>
-                            <time class="message-time" [attr.datetime]="msg.createdAt">
-                              {{ formatMessageTime(msg.createdAt) }}
-                            </time>
-                          </div>
-                          <p class="message-text">{{ msg.content }}</p>
-
-                          @if (msg.imageUrl) {
-                            <button
-                              type="button"
-                              class="chat-inline-image-btn"
-                              [attr.aria-label]="facade.t('viewFullImageAria')"
-                              (click)="openImagePreview(msg.imageUrl, $event)"
-                            >
-                              <img
-                                class="chat-inline-image"
-                                [src]="msg.imageUrl"
-                                [alt]="facade.personaDisplayName()"
-                                (load)="onInlineImageLoad()"
-                              />
-                              <span class="inline-image-zoom-hint" aria-hidden="true">
-                                <span class="material-icons">zoom_in</span>
-                              </span>
-                              @if (facade.isNewlyUnlockedAsset(msg.imageAssetId)) {
-                                <span class="inline-new-gallery-badge">
-                                  <span class="material-icons" aria-hidden="true"
-                                    >photo_library</span
-                                  >
-                                  <span>{{ facade.t('newGalleryBadge') }}</span>
-                                </span>
-                              }
-                            </button>
-                          }
-                        </div>
-                      </article>
-                    } @else {
-                      <article class="message-row from-user">
-                        <div class="message-bubble user-bubble">
-                          <div class="message-meta">
-                            <span class="sender-name">
-                              {{ facade.accountSummary()?.user?.xHandle ?? '@you' }}
-                            </span>
-                            <time class="message-time" [attr.datetime]="msg.createdAt">
-                              {{ formatMessageTime(msg.createdAt) }}
-                            </time>
-                          </div>
-                          <p class="message-text">{{ msg.content }}</p>
-                        </div>
-                      </article>
-                    }
-                  }
-                </div>
-
-                @if (showJumpToLatest()) {
-                  <button
-                    id="btn-jump-to-latest"
-                    type="button"
-                    class="chat-jump-latest-btn"
-                    (click)="jumpToLatestMessage()"
-                  >
-                    <span class="material-icons" aria-hidden="true">arrow_downward</span>
-                    <span>{{ facade.t('chatJumpToLatest') }}</span>
-                  </button>
-                }
-              </div>
-
-              @if (facade.isPastDue()) {
-                <div id="chat-past-due-banner" class="past-due-banner" role="alert">
-                  <span class="material-icons" aria-hidden="true">warning_amber</span>
-                  <span class="hud-banner-text">{{ facade.t('pastDueBannerText') }}</span>
-                  <button
-                    id="btn-past-due-update-card"
-                    type="button"
-                    class="hud-banner-btn"
-                    (click)="facade.openCustomerPortal('payment_method_update')"
-                  >
-                    {{ facade.t('pastDueUpdateCardBtn') }}
-                  </button>
-                </div>
-              }
-
-              @if (facade.isLowQuotaNudge()) {
-                <div id="chat-low-quota-nudge" class="low-quota-banner" role="status">
-                  <span class="material-icons" aria-hidden="true">bolt</span>
-                  <span class="hud-banner-text">{{ facade.t('lowQuotaNudgeBanner') }}</span>
-                  <button
-                    id="btn-low-quota-view-plans"
-                    type="button"
-                    class="hud-banner-btn"
-                    (click)="facade.openBilling('PLANS')"
-                  >
-                    {{ facade.t('lowQuotaBuyBtn') }}
-                  </button>
-                </div>
-              }
-
-              @if (facade.accountSummary()?.subscription?.remainingChatTurns === 0) {
-                <div id="chat-quota-exhausted-banner" class="quota-exhausted-banner" role="status">
-                  <span class="material-icons" aria-hidden="true">info_outline</span>
-                  <div class="hud-banner-text">
-                    <span>{{ facade.t('quotaExhaustedBanner') }}</span>
-                    @if (formatResetTimestamp(facade.accountSummary()?.subscription?.nextDailyResetAt); as nextReset) {
-                      <span class="quota-countdown-text">
-                        ({{ facade.t('quotaCountdownHint') }} {{ nextReset }})
-                      </span>
-                    }
-                  </div>
-                  <button
-                    id="btn-quota-exhausted-buy"
-                    type="button"
-                    class="hud-banner-btn"
-                    (click)="facade.openBilling('PLANS')"
-                  >
-                    {{ facade.t('lowQuotaBuyBtn') }}
-                  </button>
-                </div>
-              }
-
-              <form class="composer-bar" (submit)="onSendMessage($event)">
-                <textarea
-                  #composerInput
-                  id="chat-composer-input"
-                  class="composer-input"
-                  rows="1"
-                  [attr.maxlength]="maxComposerLength"
-                  [value]="facade.composerDraft()"
-                  [placeholder]="facade.t('composerPlaceholder')"
-                  [attr.aria-label]="facade.t('composerAria')"
-                  [disabled]="
-                    facade.isLoading() ||
-                    (facade.accountSummary()?.subscription?.remainingChatTurns ?? 0) <= 0
-                  "
-                  (input)="onComposerInput($event)"
-                  (keydown)="onComposerKeydown($event)"
-                ></textarea>
-
-                @if (facade.composerCharCount() >= 1200) {
-                  <span id="composer-char-counter" class="composer-char-counter" aria-live="off">
-                    {{ facade.composerCharCount() }}/{{ maxComposerLength }}
-                  </span>
-                }
-
-                <button
-                  id="btn-send-message"
-                  type="submit"
-                  class="send-btn"
-                  [disabled]="
-                    facade.isLoading() ||
-                    !facade.composerDraft().trim() ||
-                    (facade.accountSummary()?.subscription?.remainingChatTurns ?? 0) <= 0
-                  "
-                  [attr.aria-label]="facade.t('sendLabel')"
-                >
-                  @if (facade.isLoading()) {
-                    <span class="material-icons spin-icon" aria-hidden="true">autorenew</span>
-                  } @else {
-                    <span class="material-icons" aria-hidden="true">send</span>
-                  }
-                  <span class="send-label">{{ facade.t('sendLabel') }}</span>
-                </button>
-              </form>
-            </section>
-          </div>
+          <app-chat-view
+            [unlockedGalleryCount]="unlockedGalleryCount()"
+            [totalGalleryCount]="totalGalleryCount()"
+            (imagePreviewRequested)="openImagePreview($event.imageUrl, $event.event)"
+          />
         }
 
         @case ('GALLERY') {
-          <section id="gallery-view" class="subview-container gallery-view">
-            <header class="view-header">
-              <div class="view-title-group">
-                <span class="material-icons view-title-icon" aria-hidden="true">photo_library</span>
-                <div>
-                  <h1 class="view-title">{{ facade.t('galleryTitle') }}</h1>
-                  <p class="view-subtitle">{{ facade.t('gallerySubtitle') }}</p>
-                </div>
-              </div>
-
-              <div class="view-header-actions">
-                <span class="gallery-count-pill">
-                  {{ unlockedGalleryCount() }} / {{ totalGalleryCount() }}
-                  {{ facade.t('galleryUnlockedLabel') }}
-                </span>
-                <button
-                  id="btn-back-to-chat"
-                  type="button"
-                  class="back-btn"
-                  (click)="facade.navigateTo('CHAT')"
-                >
-                  <span class="material-icons" aria-hidden="true">arrow_back</span>
-                  <span>{{ facade.t('backToChat') }}</span>
-                </button>
-              </div>
-            </header>
-
-            <div
-              class="gallery-grid"
-              [attr.aria-busy]="facade.isLoadingGalleryPage() ? 'true' : null"
-            >
-              @for (item of facade.galleryItems(); track item.id) {
-                @if (item.unlocked) {
-                  <button
-                    [id]="'gallery-card-' + item.id"
-                    type="button"
-                    class="gallery-tile unlocked"
-                    [attr.aria-label]="facade.t('viewFullImageAria')"
-                    (click)="openImagePreview(item.imageUrl, $event)"
-                  >
-                    <img
-                      class="gallery-tile-img"
-                      [src]="item.imageUrl"
-                      [alt]="facade.personaDisplayName()"
-                      loading="lazy"
-                    />
-                    <span class="gallery-zoom-badge" aria-hidden="true">
-                      <span class="material-icons">zoom_in</span>
-                    </span>
-                  </button>
-                } @else {
-                  <div [id]="'gallery-card-' + item.id" class="gallery-tile locked">
-                    <span class="material-icons gallery-lock-icon" aria-hidden="true"
-                      >lock_outline</span
-                    >
-                  </div>
-                }
-              }
-            </div>
-
-            @if (facade.galleryTotalPages() > 1 || facade.galleryTotalItems() > 0) {
-              <app-lounge-pagination
-                id="gallery-pagination"
-                [currentPage]="facade.galleryCurrentPage()"
-                [totalPages]="facade.galleryTotalPages()"
-                [totalItems]="facade.galleryTotalItems()"
-                [pageSize]="galleryPageSize"
-                [loading]="facade.isLoadingGalleryPage()"
-                [showingLabel]="facade.t('paginationShowingLabel')"
-                [pageLabel]="facade.t('paginationPageLabel')"
-                [itemsUnit]="facade.t('paginationItemsUnit')"
-                [prevAriaLabel]="facade.t('paginationPrevAria')"
-                [nextAriaLabel]="facade.t('paginationNextAria')"
-                (pageChange)="onGalleryPageChange($event)"
-              />
-            }
-          </section>
+          <app-gallery-view
+            [unlockedGalleryCount]="unlockedGalleryCount()"
+            [totalGalleryCount]="totalGalleryCount()"
+            [galleryPageSize]="galleryPageSize"
+            (imagePreviewRequested)="openImagePreview($event.imageUrl, $event.event)"
+            (pageChange)="onGalleryPageChange($event)"
+          />
         }
 
         @case ('BILLING') {
@@ -925,120 +355,13 @@
         }
 
         @case ('OPTIONS') {
-          <section id="options-view" class="subview-container options-view">
-            <header class="view-header">
-              <div class="view-title-group">
-                <span class="material-icons view-title-icon" aria-hidden="true">tune</span>
-                <div>
-                  <h1 class="view-title">{{ facade.t('optionsTitle') }}</h1>
-                  <p class="view-subtitle">{{ facade.t('optionsSubtitle') }}</p>
-                </div>
-              </div>
-
-              <button
-                id="btn-options-back-to-chat"
-                type="button"
-                class="back-btn"
-                (click)="facade.navigateTo('CHAT')"
-              >
-                <span class="material-icons" aria-hidden="true">arrow_back</span>
-                <span>{{ facade.t('backToChat') }}</span>
-              </button>
-            </header>
-
-            <div class="options-stack">
-              <div class="options-card">
-                <div class="option-group">
-                  <div class="option-label-row">
-                    <span class="material-icons option-label-icon" aria-hidden="true">language</span>
-                    <span class="option-label-text">{{ facade.t('optionsLanguageLabel') }}</span>
-                  </div>
-                  <app-lounge-dropdown
-                    id="options-lang-dropdown"
-                    [leadingIcon]="'language'"
-                    [options]="languageOptions"
-                    [selectedValue]="facade.lang()"
-                    [ariaLabel]="facade.t('optionsLanguageLabel')"
-                    (valueChange)="onLanguageChange($event)"
-                  />
-                  <p class="option-hint">{{ facade.t('optionsLanguageHint') }}</p>
-                </div>
-
-                <div class="options-divider" aria-hidden="true"></div>
-
-                <div class="option-group">
-                  <div class="option-label-row">
-                    <span class="material-icons option-label-icon" aria-hidden="true">schedule</span>
-                    <span class="option-label-text">{{ facade.t('optionsTimezoneLabel') }}</span>
-                  </div>
-                  <app-lounge-dropdown
-                    id="options-timezone-dropdown"
-                    [leadingIcon]="'schedule'"
-                    [options]="timezoneOptions"
-                    [selectedValue]="facade.timezone()"
-                    [ariaLabel]="facade.t('optionsTimezoneLabel')"
-                    (valueChange)="onTimezoneChange($event)"
-                  />
-                  <p class="option-hint">{{ facade.t('optionsTimezoneHint') }}</p>
-                </div>
-
-                <div class="options-divider" aria-hidden="true"></div>
-
-                <div class="option-group">
-                  <div class="analytics-toggle-row">
-                    <input
-                      id="chk-analytics-optin"
-                      type="checkbox"
-                      class="consent-checkbox"
-                      [checked]="facade.accountSummary()?.user?.allowServiceImprovementAnalytics ?? true"
-                      (change)="onAnalyticsOptInChange($event)"
-                    />
-                    <label for="chk-analytics-optin" class="option-label-text">
-                      {{ facade.t('optionsAnalyticsLabel') }}
-                    </label>
-                  </div>
-                  <p class="option-hint">{{ facade.t('optionsAnalyticsHint') }}</p>
-                </div>
-
-                @if (facade.optionsSavedNotice(); as savedMsg) {
-                  <div
-                    id="options-saved-banner"
-                    class="options-saved-pill"
-                    role="status"
-                    aria-live="polite"
-                  >
-                    <span class="material-icons" aria-hidden="true">check_circle</span>
-                    <span>{{ savedMsg }}</span>
-                  </div>
-                }
-              </div>
-
-              <!-- Account Withdrawal / Cascade Data Reset Section -->
-              <div class="danger-zone-card">
-                <div class="danger-zone-header">
-                  <span class="material-icons danger-zone-icon" aria-hidden="true"
-                    >warning_amber</span
-                  >
-                  <div>
-                    <h2 class="danger-zone-title">{{ facade.t('deleteAccountSectionTitle') }}</h2>
-                    <p class="danger-zone-desc">{{ facade.t('deleteAccountSectionDesc') }}</p>
-                  </div>
-                </div>
-
-                <button
-                  #openDeleteAccountButton
-                  id="btn-open-delete-account"
-                  type="button"
-                  class="danger-open-btn"
-                  [disabled]="facade.isLoading()"
-                  (click)="facade.openDeleteAccountModal()"
-                >
-                  <span class="material-icons" aria-hidden="true">delete_forever</span>
-                  <span>{{ facade.t('deleteAccountOpenBtn') }}</span>
-                </button>
-              </div>
-            </div>
-          </section>
+          <app-options-view
+            #optionsView
+            [languageOptions]="languageOptions"
+            [timezoneOptions]="timezoneOptions()"
+            (languageChange)="onLanguageChange($event)"
+            (timezoneChange)="onTimezoneChange($event)"
+          />
         }
       }
     </main>
@@ -1055,158 +378,11 @@
   />
 }
 
-<!-- Multi-Step Account Deletion Warning & Consent Modal -->
-@if (facade.deleteAccountStep() > 0) {
-  <div
-    #deleteModal
-    id="delete-account-modal"
-    class="modal-backdrop"
-    role="dialog"
-    aria-modal="true"
-    [attr.aria-label]="
-      facade.deleteAccountStep() === 1
-        ? facade.t('deleteModalStep1Title')
-        : facade.t('deleteModalStep2Title')
-    "
-    (click)="facade.closeDeleteAccountModal()"
-  >
-    <div class="delete-modal-card" (click)="$event.stopPropagation()">
-      <div class="delete-modal-header">
-        <span class="material-icons delete-modal-warn-icon" aria-hidden="true">warning_amber</span>
-        <h2 class="delete-modal-title">
-          {{
-            facade.deleteAccountStep() === 1
-              ? facade.t('deleteModalStep1Title')
-              : facade.t('deleteModalStep2Title')
-          }}
-        </h2>
-      </div>
+<!-- Multi-Step Account Deletion Native Dialog -->
+<app-delete-account-modal (closed)="onDeleteModalClosed()" />
 
-      @if (facade.deleteAccountStep() === 1) {
-        <p class="delete-modal-body">{{ facade.t('deleteModalStep1Body') }}</p>
-
-        @if (facade.hasActiveOrCancelingSubscription()) {
-          <div class="delete-manage-sub-box">
-            <p class="delete-manage-sub-hint">{{ facade.t('deleteModalStep1ManageSubHint') }}</p>
-            <button
-              id="btn-delete-manage-subscription"
-              type="button"
-              class="hud-banner-btn"
-              (click)="openSubscriptionFromDeleteModal()"
-            >
-              {{ facade.t('deleteModalStep1ManageSubBtn') }}
-            </button>
-          </div>
-        }
-
-        <div class="delete-modal-actions">
-          <button
-            #deleteCancelButton
-            id="btn-delete-cancel"
-            type="button"
-            class="modal-cancel-btn"
-            (click)="facade.closeDeleteAccountModal()"
-          >
-            {{ facade.t('deleteModalCancelBtn') }}
-          </button>
-          <button
-            id="btn-delete-step1-next"
-            type="button"
-            class="modal-danger-next-btn"
-            (click)="facade.proceedToDeleteAccountStep2()"
-          >
-            <span>{{ facade.t('deleteModalStep1NextBtn') }}</span>
-            <span class="material-icons" aria-hidden="true">arrow_forward</span>
-          </button>
-        </div>
-      } @else {
-        <p class="delete-modal-body">{{ facade.t('deleteModalStep2Body') }}</p>
-
-        <div class="delete-check-list">
-          <label class="delete-check-item">
-            <input
-              #deleteIrreversibleCheck
-              id="checkbox-delete-irreversible"
-              type="checkbox"
-              class="consent-checkbox"
-              [checked]="facade.deleteConfirmIrreversible()"
-              (change)="onDeleteIrreversibleChange($event)"
-            />
-            <span>{{ facade.t('deleteModalCheckIrreversible') }}</span>
-          </label>
-
-          <label class="delete-check-item">
-            <input
-              id="checkbox-delete-no-refund"
-              type="checkbox"
-              class="consent-checkbox"
-              [checked]="facade.deleteConfirmNoRefund()"
-              (change)="onDeleteNoRefundChange($event)"
-            />
-            <span>{{ facade.t('deleteModalCheckNoRefund') }}</span>
-          </label>
-        </div>
-
-        @if (facade.deleteStripeError(); as stripeErr) {
-          <div id="delete-stripe-error-banner" class="past-due-banner" role="alert">
-            <span class="material-icons" aria-hidden="true">error_outline</span>
-            <span class="hud-banner-text">{{ stripeErr }}</span>
-          </div>
-        }
-
-        <div class="delete-modal-actions">
-          <button
-            #deleteCancelButton
-            id="btn-delete-cancel"
-            type="button"
-            class="modal-cancel-btn"
-            (click)="facade.closeDeleteAccountModal()"
-          >
-            {{ facade.t('deleteModalCancelBtn') }}
-          </button>
-          <button
-            id="btn-confirm-delete-account"
-            type="button"
-            class="modal-danger-confirm-btn"
-            [disabled]="!facade.canConfirmDeleteAccount()"
-            (click)="facade.confirmDeleteAccount()"
-          >
-            @if (facade.isLoading()) {
-              <span class="material-icons spin-icon" aria-hidden="true">autorenew</span>
-            } @else {
-              <span class="material-icons" aria-hidden="true">delete_forever</span>
-            }
-            <span>{{ facade.t('deleteModalConfirmBtn') }}</span>
-          </button>
-        </div>
-      }
-    </div>
-  </div>
-}
-
-<!-- Fullscreen Illustration Lightbox Modal -->
-@if (selectedImageUrl(); as previewUrl) {
-  <div
-    #lightboxModal
-    id="gallery-lightbox-modal"
-    class="lightbox-backdrop"
-    role="dialog"
-    aria-modal="true"
-    [attr.aria-label]="facade.t('viewFullImageAria')"
-    (click)="closeLightbox()"
-  >
-    <div class="lightbox-frame" (click)="$event.stopPropagation()">
-      <button
-        #closeLightboxButton
-        id="btn-close-lightbox"
-        type="button"
-        class="lightbox-close-btn"
-        [attr.aria-label]="facade.t('closeLightboxAria')"
-        (click)="closeLightbox()"
-      >
-        <span class="material-icons" aria-hidden="true">close</span>
-      </button>
-      <img class="lightbox-img" [src]="previewUrl" [alt]="facade.personaDisplayName()" />
-    </div>
-  </div>
-}
+<!-- Fullscreen Illustration Lightbox Native Dialog -->
+<app-gallery-lightbox-modal
+  [imageUrl]="selectedImageUrl()"
+  (closed)="closeLightbox()"
+/>

@@ -1,0 +1,126 @@
+:host {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+.options-view {
+  max-width: 760px;
+}
+
+.options-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.options-card {
+  position: relative;
+  z-index: 2;
+  max-width: 100%;
+  padding: 1.5rem;
+  border-radius: 1.2rem;
+  border: 1px solid var(--border-purple);
+  background: var(--bg-surface);
+  backdrop-filter: blur(18px);
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.options-divider {
+  height: 1px;
+  background: var(--border-subtle);
+}
+
+.options-saved-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  align-self: flex-start;
+  padding: 0.45rem 0.9rem;
+  border-radius: 999px;
+  border: 1px solid rgba(16, 185, 129, 0.42);
+  background: rgba(16, 185, 129, 0.12);
+  color: #6ee7b7;
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+.analytics-toggle-row {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  min-height: 44px;
+}
+
+.danger-zone-card {
+  position: relative;
+  z-index: 1;
+  padding: 1.35rem 1.5rem;
+  border-radius: 1.2rem;
+  border: 1px solid rgba(244, 63, 94, 0.38);
+  background: rgba(30, 12, 20, 0.55);
+  backdrop-filter: blur(18px);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+
+.danger-zone-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  flex: 1;
+  min-width: 240px;
+}
+
+.danger-zone-icon {
+  font-size: 1.45rem;
+  color: #fda4af;
+  margin-top: 2px;
+}
+
+.danger-zone-title {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 700;
+  color: #ffe4e8;
+}
+
+.danger-zone-desc {
+  margin: 0.25rem 0 0;
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+}
+
+.danger-open-btn {
+  min-height: 44px;
+  padding: 0 1.1rem;
+  border-radius: 0.8rem;
+  border: 1px solid rgba(244, 63, 94, 0.55);
+  background: rgba(244, 63, 94, 0.14);
+  color: #fecdd3;
+  font-size: 0.875rem;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background-color 0.18s ease, border-color 0.18s ease;
+}
+
+.danger-open-btn:hover:not(:disabled) {
+  background: rgba(244, 63, 94, 0.28);
+  border-color: #fb7185;
+}
+
+@media (max-width: 960px) {
+  .danger-zone-card {
+    padding: 1.1rem;
+  }
+}

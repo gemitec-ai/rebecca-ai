@@ -19,7 +19,7 @@ export const environment: LoungeEnvironment = {
   persona: {
     displayName: 'AIコンパニオン',
     englishName: 'AI Companion',
-    brandName: 'Gemitec Lounge',
+    brandName: 'Private Lounge',
     avatarPath: 'assets/persona_cutout.webp',
     chatIconPath: 'assets/avatars/persona_icon.png',
     emotionAvatarPaths: DEFAULT_EMOTION_AVATARS,

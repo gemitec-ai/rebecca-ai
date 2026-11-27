@@ -22,29 +22,30 @@ import type {
 } from '@rebecca/types';
 import { AppComponent } from './app.component';
 import { appConfig } from './app.config';
-import {
-  LoungeBffAdapter,
-  LoungeReconsentRequiredClientError,
-} from './core/adapters/lounge-bff.adapter';
+import { LoungeReconsentRequiredClientError } from './core/errors/lounge-client.errors';
+import { HttpLoungeConfigAdapter } from './infrastructure/http/http-lounge-config.adapter';
 import {
   detectInitialLoungeLanguage,
   detectInitialLoungeTimezone,
   LOUNGE_TRANSLATIONS,
-} from './core/i18n/lounge-translations';
+} from './core/services/lounge-translations';
 import { LoungeAccountPort } from './core/ports/lounge-account.port';
 import { LoungeAuthPort } from './core/ports/lounge-auth.port';
 import { LoungeConfigPort } from './core/ports/lounge-config.port';
 import { LoungeGalleryPort } from './core/ports/lounge-gallery.port';
 import { LoungeSessionPort } from './core/ports/lounge-session.port';
 import { LoungeFacadeService } from './core/services/lounge-facade.service';
-import { LoungeDropdownComponent } from './shared/components/lounge-dropdown/lounge-dropdown.component';
-import { LoungePaginationComponent } from './shared/components/lounge-pagination/lounge-pagination.component';
-import { ReconsentModalComponent } from './shared/components/reconsent-modal/reconsent-modal.component';
+import { LoungeDropdownComponent } from './shared/components/molecules/lounge-dropdown/lounge-dropdown.component';
+import { LoungePaginationComponent } from './shared/components/molecules/lounge-pagination/lounge-pagination.component';
+import { EntranceViewComponent } from './features/auth/entrance-view/entrance-view.component';
+import { ReconsentModalComponent } from './features/auth/reconsent-modal/reconsent-modal.component';
+import { ChatViewComponent } from './features/chat/chat-view/chat-view.component';
+import { DeleteAccountModalComponent } from './features/options/delete-account-modal/delete-account-modal.component';
 
 const SYNTHETIC_BRANDING: LoungePersonaBranding = {
   displayName: 'レベッカ',
   englishName: 'Rebecca',
-  brandName: 'Gemitec Lounge',
+  brandName: 'Rebecca Private Lounge',
   avatarPath: 'assets/persona_cutout.webp',
   chatIconPath: 'assets/avatars/persona_icon.png',
   emotionAvatarPaths: {
@@ -474,7 +475,7 @@ class InMemoryLoungeBffFake
   }
 }
 
-describe('Gemitec Private Lounge Root Shell (AppComponent)', () => {
+describe('Rebecca Private Lounge Root Shell (AppComponent)', () => {
   let fakeBff: InMemoryLoungeBffFake;
   let fixture: ComponentFixture<AppComponent>;
   let component: AppComponent;
@@ -566,17 +567,23 @@ describe('Gemitec Private Lounge Root Shell (AppComponent)', () => {
     expect(facade.disclaimerChecked()).toBe(false);
 
     // Guard non-element / non-input events
-    component.onDisclaimerScroll(new Event('scroll'));
-    component.onConsentChange(new Event('change'));
-    component.onDeleteIrreversibleChange(new Event('change'));
-    component.onDeleteNoRefundChange(new Event('change'));
-    component.onComposerInput(new Event('input'));
+    const entranceView = fixture.debugElement.query(
+      By.directive(EntranceViewComponent),
+    ).componentInstance as EntranceViewComponent;
+    entranceView.onDisclaimerScroll(new Event('scroll'));
+    entranceView.onConsentChange(new Event('change'));
+    entranceView.onNonEeaChange(new Event('change'));
+    const deleteModalComp = fixture.debugElement.query(
+      By.directive(DeleteAccountModalComponent),
+    ).componentInstance as DeleteAccountModalComponent;
+    deleteModalComp.onDeleteIrreversibleChange(new Event('change'));
+    deleteModalComp.onDeleteNoRefundChange(new Event('change'));
 
     // Auto-unlock non-overflowing disclaimer containers on window resize while on AUTH view
     const box = query<HTMLElement>('#disclaimer-scroll-box');
     Object.defineProperty(box, 'clientHeight', { value: 220, configurable: true });
     Object.defineProperty(box, 'scrollHeight', { value: 220, configurable: true });
-    component.onWindowResize();
+    entranceView.onWindowResize();
     expect(facade.disclaimerScrollProgress()).toBe(100);
     expect(facade.disclaimerScrolledToBottom()).toBe(true);
 
@@ -592,6 +599,9 @@ describe('Gemitec Private Lounge Root Shell (AppComponent)', () => {
 
     checkbox.checked = true;
     checkbox.dispatchEvent(new Event('change'));
+    const nonEeaCheckbox = query<HTMLInputElement>('#checkbox-non-eea-eligibility');
+    nonEeaCheckbox.checked = true;
+    nonEeaCheckbox.dispatchEvent(new Event('change'));
     await fixture.whenStable();
     fixture.detectChanges();
     expect(signUpBtn.disabled).toBe(false);
@@ -665,14 +675,21 @@ describe('Gemitec Private Lounge Root Shell (AppComponent)', () => {
     fixture.detectChanges();
     expect(authDropdown.querySelector('[role="listbox"]')).toBeNull();
 
-    // Non-preset timezone stays visible instead of substituting opts[0] (Baker Island)
+    // Unmatched values in LoungeDropdownComponent return null instead of substituting opts[0]
     const customDropdownFixture = TestBed.createComponent(LoungeDropdownComponent);
     customDropdownFixture.componentRef.setInput('options', [
       { label: '(UTC-12:00) Baker Island', value: 'Etc/GMT+12' },
     ]);
     customDropdownFixture.componentRef.setInput('selectedValue', 'Europe/Berlin');
     customDropdownFixture.detectChanges();
-    expect(customDropdownFixture.componentInstance.selectedOption()?.label).toBe('Europe/Berlin');
+    expect(customDropdownFixture.componentInstance.selectedOption()).toBeNull();
+
+    // AppComponent dynamically prepends non-preset valid IANA timezones with UTC offset
+    facade.timezone.set('Europe/Berlin');
+    expect(component.timezoneOptions()[0]?.value).toBe('Europe/Berlin');
+    component.onTimezoneChange('Europe/Berlin');
+    expect(facade.timezone()).toBe('Europe/Berlin');
+    facade.timezone.set('Asia/Tokyo');
 
     // Empty options and disabled guard checks
     customDropdownFixture.componentRef.setInput('options', []);
@@ -738,6 +755,11 @@ describe('Gemitec Private Lounge Root Shell (AppComponent)', () => {
     const avatarImg = query<HTMLImageElement>('.from-assistant .ai-chat-avatar');
     expect(avatarImg.getAttribute('src')).toBe('assets/avatars/persona_surprised.png');
 
+    const chatView = fixture.debugElement.query(
+      By.directive(ChatViewComponent),
+    ).componentInstance as ChatViewComponent;
+    chatView.onComposerInput(new Event('input'));
+
     const emotions: LoungeEmotionState[] = [
       'NEUTRAL',
       'HAPPY',
@@ -748,24 +770,24 @@ describe('Gemitec Private Lounge Root Shell (AppComponent)', () => {
       'SURPRISED',
     ];
     for (const emotion of emotions) {
-      expect(component.getEmotionAvatarPath(emotion)).toContain(emotion.toLowerCase());
+      expect(chatView.getEmotionAvatarPath(emotion)).toContain(emotion.toLowerCase());
     }
-    expect(component.getEmotionAvatarPath(undefined)).toBe('assets/avatars/persona_icon.png');
+    expect(chatView.getEmotionAvatarPath(undefined)).toBe('assets/avatars/persona_icon.png');
 
     // Midnight formatting uses h23 (00:00, never 24:00) + invalid date/zone fallbacks
     facade.lang.set('en');
     facade.timezone.set('Asia/Tokyo');
-    expect(component.formatMessageTime('2026-11-22T15:00:00.000Z')).toBe('00:00');
-    expect(component.formatMessageTime('not-a-date')).toBe('');
+    expect(chatView.formatMessageTime('2026-11-22T15:00:00.000Z')).toBe('00:00');
+    expect(chatView.formatMessageTime('not-a-date')).toBe('');
     facade.timezone.set('Invalid/Zone_Test');
-    expect(component.formatMessageTime('2026-11-22T12:08:00.000Z')).toBe('12:08');
+    expect(chatView.formatMessageTime('2026-11-22T12:08:00.000Z')).toBe('12:08');
     facade.timezone.set('Asia/Tokyo');
     facade.lang.set('ja');
 
     // Zero text emotion badges in Chat
     expect(query<HTMLElement>('#chat-message-stream').textContent).not.toContain('SURPRISED');
 
-    // Lightbox focus trap asserts activeElement wraps cleanly back to close button
+    // Lightbox uses native modal <dialog> and closes cleanly via Escape/cancel event
     component.openImagePreview('');
     expect(component.selectedImageUrl()).toBeNull();
 
@@ -774,12 +796,10 @@ describe('Gemitec Private Lounge Root Shell (AppComponent)', () => {
     await fixture.whenStable();
     fixture.detectChanges();
 
-    const closeLightboxBtn = query<HTMLButtonElement>('#btn-close-lightbox');
-    closeLightboxBtn.focus();
-    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true }));
-    expect(document.activeElement).toBe(closeLightboxBtn);
-
-    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    const lightboxDialog = query<HTMLDialogElement>('#gallery-lightbox-modal');
+    expect(lightboxDialog.tagName).toBe('DIALOG');
+    expect(lightboxDialog.hasAttribute('open')).toBe(true);
+    lightboxDialog.dispatchEvent(new Event('cancel', { cancelable: true }));
     await fixture.whenStable();
     fixture.detectChanges();
     expect(fixture.nativeElement.querySelector('#gallery-lightbox-modal')).toBeNull();
@@ -830,7 +850,7 @@ describe('Gemitec Private Lounge Root Shell (AppComponent)', () => {
 
     fakeBff.shouldFailSend = true;
     await facade.sendMessage('エラー系テスト');
-    expect(facade.errorMessage()).toBe('Upstream AI service temporary error');
+    expect(facade.errorMessage()).toBe(facade.t('errorGeneric'));
     facade.dismissError();
     fakeBff.shouldFailSend = false;
 
@@ -883,13 +903,12 @@ describe('Gemitec Private Lounge Root Shell (AppComponent)', () => {
     await fixture.whenStable();
     fixture.detectChanges();
 
-    const modalEl = query<HTMLElement>('#delete-account-modal');
+    // Native <dialog> open confirmation (browser top-layer handles Tab trapping natively)
+    const modalEl = query<HTMLDialogElement>('#delete-account-modal');
+    expect(modalEl.tagName).toBe('DIALOG');
+    expect(modalEl.open).toBe(true);
     expect(facade.deleteAccountStep()).toBe(1);
-    const firstFocusableStep1 = query<HTMLButtonElement>('#btn-delete-manage-subscription');
     const nextBtnStep1 = query<HTMLButtonElement>('#btn-delete-step1-next');
-    nextBtnStep1.focus();
-    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true }));
-    expect(document.activeElement).toBe(firstFocusableStep1);
 
     // Advance to Step 2 and assert focus shifts cleanly to the first checkbox
     nextBtnStep1.click();
@@ -932,15 +951,19 @@ describe('Gemitec Private Lounge Root Shell (AppComponent)', () => {
     void modalEl;
   });
 
-  it('handles quota exhaustion, BFF error paths, Escape drawer close, and LoungeBffAdapter lifecycle', async () => {
+  it('handles quota exhaustion, BFF error paths, Escape drawer close, and HttpLoungeBffAdapter lifecycle', async () => {
     fakeBff.shouldFailConfig = true;
-    await facade.loadRuntimeConfig();
-    expect(facade.personaBranding().chatIconPath).toBe('assets/avatars/persona_icon.png');
+    await facade.retryInitializeLounge();
+    fixture.detectChanges();
+    expect(facade.configLoadError()).toBe(facade.t('configLoadErrorBody'));
+    expect(query<HTMLElement>('#lounge-config-error')).toBeTruthy();
     fakeBff.shouldFailConfig = false;
+    await facade.retryInitializeLounge();
+    expect(facade.configLoadError()).toBeNull();
 
     fakeBff.shouldFailLogin = true;
     await facade.submitLoginWithX();
-    expect(facade.errorMessage()).toBe('X login rejected');
+    expect(facade.errorMessage()).toBe(facade.t('errorGeneric'));
     fakeBff.shouldFailLogin = false;
 
     fakeBff.remainingTurns = 0;
@@ -953,33 +976,68 @@ describe('Gemitec Private Lounge Root Shell (AppComponent)', () => {
     expect(query<HTMLTextAreaElement>('#chat-composer-input').disabled).toBe(true);
     expect(fixture.nativeElement.querySelector('.quota-exhausted-banner')).not.toBeNull();
 
-    // Drawer focus trap asserts focus wraps cleanly between first and last focusable element
+    // Drawer focus trap asserts focus wraps cleanly between first and last visible focusable element
     query<HTMLButtonElement>('#btn-hamburger').click();
     await fixture.whenStable();
     fixture.detectChanges();
 
+    // Selected pre-checkout modal skips document Escape handler cleanly
+    facade.selectedCheckoutProduct.set({
+      productId: 'CHARGE_TICKET_100',
+      mode: 'payment',
+      currency: 'JPY',
+      unitAmountMinor: 500,
+      formattedPrice: '¥500',
+      grantedTurns: 100,
+      validityDays: 180,
+      taxInclusive: true,
+      promotionCodesAllowed: true,
+      available: true,
+      eligible: true,
+    });
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    expect(facade.isSidebarOpen()).toBe(true);
+    facade.selectedCheckoutProduct.set(null);
+
+    const drawerEl = query<HTMLElement>('#lounge-sidebar-drawer');
+    const hiddenProbeBtn = document.createElement('button');
+    hiddenProbeBtn.hidden = true;
+    drawerEl.appendChild(hiddenProbeBtn);
+    const invisibleProbeBtn = document.createElement('button');
+    invisibleProbeBtn.style.display = 'none';
+    drawerEl.appendChild(invisibleProbeBtn);
+
     const drawerButtons = (fixture.nativeElement as HTMLElement).querySelectorAll<HTMLButtonElement>(
-      '#lounge-sidebar-drawer button',
+      '#lounge-sidebar-drawer button:not([hidden])',
     );
     const firstBtn = drawerButtons[0];
-    const lastBtn = drawerButtons[drawerButtons.length - 1];
-    lastBtn.focus();
+    const lastVisibleBtn = Array.from(drawerButtons).filter(
+      (b) => b.style.display !== 'none',
+    ).pop();
+    if (!lastVisibleBtn) {
+      throw new Error('Expected visible drawer button');
+    }
+    lastVisibleBtn.focus();
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true }));
     expect(document.activeElement).toBe(firstBtn);
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', shiftKey: true, bubbles: true }));
-    expect(document.activeElement).toBe(lastBtn);
+    expect(document.activeElement).toBe(lastVisibleBtn);
+    hiddenProbeBtn.remove();
+    invisibleProbeBtn.remove();
 
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
     await fixture.whenStable();
     fixture.detectChanges();
     expect(facade.isSidebarOpen()).toBe(false);
 
-    // Guard & error paths for delete modal, Escape dismissal, sign-up, onboarding & logout
+    // Guard & error paths for native <dialog> delete modal cancellation, sign-up, onboarding & logout
     await facade.confirmDeleteAccount(); // no-op when modal is closed
     facade.openDeleteAccountModal();
     await fixture.whenStable();
     fixture.detectChanges();
-    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    const deleteDialogEl = query<HTMLDialogElement>('#delete-account-modal');
+    expect(deleteDialogEl.tagName).toBe('DIALOG');
+    deleteDialogEl.dispatchEvent(new Event('cancel', { cancelable: true }));
     await fixture.whenStable();
     fixture.detectChanges();
     expect(facade.deleteAccountStep()).toBe(0);
@@ -990,47 +1048,139 @@ describe('Gemitec Private Lounge Root Shell (AppComponent)', () => {
     facade.setDeleteConfirmNoRefund(true);
     fakeBff.shouldFailDelete = true;
     await facade.confirmDeleteAccount();
-    expect(facade.errorMessage()).toBe('Account deletion temporarily unavailable');
+    expect(facade.errorMessage()).toBe(facade.t('errorGeneric'));
     facade.closeDeleteAccountModal();
     facade.dismissError();
     fakeBff.shouldFailDelete = false;
 
     fakeBff.shouldFailPreferences = true;
     await facade.completeOnboarding();
-    expect(facade.errorMessage()).toBe('Failed to persist preferences');
+    expect(facade.errorMessage()).toBe(facade.t('errorGeneric'));
     fakeBff.shouldFailPreferences = false;
 
     fakeBff.shouldFailLogout = true;
     await facade.logout();
-    expect(facade.errorMessage()).toBe('Logout endpoint unavailable');
+    expect(facade.errorMessage()).toBe(facade.t('errorGeneric'));
     expect(facade.activeView()).toBe('AUTH');
     fakeBff.shouldFailLogout = false;
 
     fakeBff.shouldFailSignUp = true;
     facade.disclaimerScrolledToBottom.set(true);
     facade.disclaimerChecked.set(true);
+    facade.nonEeaEligibilityChecked.set(true);
     await facade.submitSignUpWithX();
-    expect(facade.errorMessage()).toBe('Sign-up rejected by server');
+    expect(facade.errorMessage()).toBe(facade.t('errorGeneric'));
     fakeBff.shouldFailSignUp = false;
 
     await facade.submitLoginWithX();
     await fixture.whenStable();
     fixture.detectChanges();
+
+    // Formatting, emotion avatar fallback & empty state verification (Chat & Gallery)
+    const chatView = fixture.debugElement.query(
+      By.directive(ChatViewComponent),
+    ).componentInstance as ChatViewComponent;
+    expect(chatView.formatResetTimestamp(undefined)).toBe('');
+    expect(chatView.formatResetTimestamp('not-a-date')).toBe('');
+    expect(chatView.formatResetTimestamp('2026-11-25T15:30:00.000Z').length).toBeGreaterThan(0);
+    expect(chatView.formatMessageTime('not-a-date')).toBe('');
+    expect(chatView.getEmotionAvatarPath(undefined)).toBe(facade.personaBranding().chatIconPath);
+
+    fakeBff.messages = [];
+    fakeBff.galleryItems = [];
+    await facade.logout();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    // Entrance auth tab keyboard roving navigation (0 = #tab-login, 1 = #tab-signup)
+    const loginTab = query<HTMLButtonElement>('#tab-login');
+    const signUpTab = query<HTMLButtonElement>('#tab-signup');
+    loginTab.focus();
+    loginTab.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+    expect(document.activeElement).toBe(signUpTab);
+    signUpTab.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true }));
+    expect(document.activeElement).toBe(loginTab);
+    loginTab.dispatchEvent(new KeyboardEvent('keydown', { key: 'End', bubbles: true }));
+    expect(document.activeElement).toBe(signUpTab);
+    signUpTab.dispatchEvent(new KeyboardEvent('keydown', { key: 'Home', bubbles: true }));
+    expect(document.activeElement).toBe(loginTab);
+    loginTab.dispatchEvent(new KeyboardEvent('keydown', { key: 'a', bubbles: true }));
+    expect(document.activeElement).toBe(loginTab);
+
+    // Log back in with empty messages & empty gallery to verify real empty-state DOM elements
+    await facade.submitLoginWithX();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(query<HTMLElement>('#chat-empty-state')).toBeTruthy();
+
+    facade.navigateTo('GALLERY');
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(query<HTMLElement>('#gallery-empty-state')).toBeTruthy();
+
+    // Native <dialog> lightbox cancel/close & delete modal backdrop/subscription navigation
+    component.openImagePreview('assets/avatars/persona_happy.png');
+    await fixture.whenStable();
+    fixture.detectChanges();
+    const lightboxEl = query<HTMLDialogElement>('#gallery-lightbox-modal');
+    expect(lightboxEl.open).toBe(true);
+    lightboxEl.dispatchEvent(new Event('cancel', { cancelable: true }));
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(component.selectedImageUrl()).toBeNull();
+
+    component.openImagePreview('assets/avatars/persona_happy.png');
+    await fixture.whenStable();
+    fixture.detectChanges();
+    query<HTMLDialogElement>('#gallery-lightbox-modal').dispatchEvent(
+      new MouseEvent('click', { bubbles: true }),
+    );
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(component.selectedImageUrl()).toBeNull();
+
+    component.openImagePreview('assets/avatars/persona_happy.png');
+    await fixture.whenStable();
+    fixture.detectChanges();
+    query<HTMLDialogElement>('#gallery-lightbox-modal').dispatchEvent(new Event('close'));
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(component.selectedImageUrl()).toBeNull();
+
+    facade.openDeleteAccountModal();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    query<HTMLDialogElement>('#delete-account-modal').dispatchEvent(new Event('close'));
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(facade.deleteAccountStep()).toBe(0);
+
+    facade.openDeleteAccountModal();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    const deleteModal = fixture.debugElement.query(
+      By.directive(DeleteAccountModalComponent),
+    ).componentInstance as DeleteAccountModalComponent;
+    deleteModal.openSubscriptionFromDeleteModal();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(facade.deleteAccountStep()).toBe(0);
+    expect(facade.activeView()).toBe('BILLING');
+    expect(facade.billingTab()).toBe('SUBSCRIPTION');
+
     await facade.logout();
     expect(facade.authMode()).toBe('LOGIN');
     expect(facade.errorMessage()).toBeNull();
 
-    // Direct LoungeBffAdapter lifecycle, HTTP /config fallbacks & preview scenario contracts
+    // Direct HttpLoungeConfigAdapter fail-fast verification on /config without fallback fixtures
     TestBed.resetTestingModule();
     await TestBed.configureTestingModule({
       providers: [provideZonelessChangeDetection(), provideHttpClient(), provideHttpClientTesting()],
     }).compileComponents();
     const httpTesting = TestBed.inject(HttpTestingController);
-    const createAdapter = (): LoungeBffAdapter =>
-      TestBed.runInInjectionContext(() => new LoungeBffAdapter());
+    const configAdapter = TestBed.inject(HttpLoungeConfigAdapter);
 
-    const adapter = createAdapter();
-    const cfg1Promise = adapter.getRuntimeConfig();
+    const cfg1Promise = configAdapter.getRuntimeConfig();
     httpTesting.expectOne('/api/v1/lounge/config').flush({
       appVersion: 'v9.9.9',
       disclaimerVersion: 2,
@@ -1038,248 +1188,19 @@ describe('Gemitec Private Lounge Root Shell (AppComponent)', () => {
     });
     expect((await cfg1Promise).appVersion).toBe('v9.9.9');
 
-    const cfg2Promise = adapter.getRuntimeConfig();
+    const cfg2Promise = configAdapter.getRuntimeConfig();
     httpTesting
       .expectOne('/api/v1/lounge/config')
-      .flush({}, { status: 500, statusText: 'Server Error' });
-    expect((await cfg2Promise).appVersion).toMatch(/^\d+\.\d+\.\d+$|^v\d+\.\d+\.\d+$/);
+      .flush({ error: 'Down' }, { status: 500, statusText: 'Server Error' });
+    await expect(cfg2Promise).rejects.toThrow('Down');
 
-    const cfg3Promise = adapter.getRuntimeConfig();
+    const cfg3Promise = configAdapter.getRuntimeConfig();
     httpTesting
       .expectOne('/api/v1/lounge/config')
       .flush({ appVersion: 'v1.0.0', disclaimerVersion: '2026', persona: 'invalid' });
-    expect((await cfg3Promise).persona.englishName).toBe('AI Companion');
+    await expect(cfg3Promise).rejects.toThrow(/Invalid runtime configuration/i);
 
-    const cfg4Promise = adapter.getRuntimeConfig();
-    httpTesting.expectOne('/api/v1/lounge/config').flush({
-      appVersion: 'v1.0.0',
-      disclaimerVersion: 1,
-      persona: { ...SYNTHETIC_BRANDING, emotionAvatarPaths: null },
-    });
-    expect((await cfg4Promise).persona.englishName).toBe('AI Companion');
     httpTesting.verify();
-
-    const originalSearch = window.location.search;
-    try {
-      window.history.replaceState({}, '', '?previewScenario=billing');
-      const previewAdapter = createAdapter();
-      await previewAdapter.logout();
-      await expect(previewAdapter.getCurrentSession()).resolves.not.toBeNull();
-      // Force fresh sign-up validation by setting previewUser null via onboarding logout -> signup
-      window.history.replaceState({}, '', '?previewScenario=session');
-      const freshAdapter = createAdapter();
-      await freshAdapter.logout();
-
-      await expect(
-        freshAdapter.signUpWithX({
-          idToken: 'tok',
-          xOAuthCode: 'code',
-          disclaimerConsent: {
-            disclaimerVersion: 1,
-            agreedToGeminiTrainingUsage: false,
-            agreedToZeroPiiProhibition: true,
-            agreedToOneWayMemoryIsolation: true,
-            scrolledToBottomAt: '2026-11-22T12:00:00.000Z',
-            consentedAt: '2026-11-22T12:00:00.000Z',
-          },
-        }),
-      ).rejects.toThrow('Mandatory disclaimer');
-
-      const signedUp = await freshAdapter.signUpWithX({
-        idToken: 'tok',
-        xOAuthCode: 'code',
-        language: 'zh-HK',
-        timezone: 'Asia/Hong_Kong',
-        disclaimerConsent: {
-          disclaimerVersion: 1,
-          agreedToGeminiTrainingUsage: true,
-          agreedToZeroPiiProhibition: true,
-          agreedToOneWayMemoryIsolation: true,
-          scrolledToBottomAt: '2026-11-22T12:00:00.000Z',
-          consentedAt: '2026-11-22T12:00:00.000Z',
-        },
-      });
-      expect(signedUp.user.language).toBe('zh-HK');
-      expect(signedUp.user.onboardingCompleted).toBe(false);
-      expect(signedUp.user.disclaimerConsent.disclaimerVersion).toBe(1);
-      await expect(freshAdapter.getCurrentSession()).resolves.not.toBeNull();
-
-      // Duplicate sign-up rejects (1 account per X account)
-      await expect(
-        freshAdapter.signUpWithX({
-          idToken: 'tok',
-          xOAuthCode: 'code',
-          disclaimerConsent: signedUp.user.disclaimerConsent,
-        }),
-      ).rejects.toThrow('already registered');
-
-      const summary = await freshAdapter.getAccountSummary();
-      expect(summary.totalGalleryCount).toBeGreaterThan(0);
-      const updatedPrefUser = await freshAdapter.updatePreferences({
-        language: 'de',
-        timezone: 'Europe/Berlin',
-        completeOnboarding: true,
-      });
-      expect(updatedPrefUser.language).toBe('de');
-      expect(updatedPrefUser.onboardingCompleted).toBe(true);
-
-      await expect(
-        freshAdapter.updateDisclaimerConsent({
-          disclaimerConsent: {
-            disclaimerVersion: 1,
-            agreedToGeminiTrainingUsage: false,
-            agreedToZeroPiiProhibition: true,
-            agreedToOneWayMemoryIsolation: true,
-            scrolledToBottomAt: '2026-11-23T00:00:00.000Z',
-            consentedAt: '2026-11-23T00:00:00.000Z',
-          },
-        }),
-      ).rejects.toThrow('Mandatory disclaimer clauses');
-      await expect(
-        freshAdapter.updateDisclaimerConsent({
-          disclaimerConsent: {
-            disclaimerVersion: 2,
-            agreedToGeminiTrainingUsage: true,
-            agreedToZeroPiiProhibition: true,
-            agreedToOneWayMemoryIsolation: true,
-            scrolledToBottomAt: '2026-11-23T00:00:00.000Z',
-            consentedAt: '2026-11-23T00:00:00.000Z',
-          },
-        }),
-      ).rejects.toThrow('must match active version');
-      const reconsentedUser = await freshAdapter.updateDisclaimerConsent({
-        disclaimerConsent: {
-          disclaimerVersion: 1,
-          agreedToGeminiTrainingUsage: true,
-          agreedToZeroPiiProhibition: true,
-          agreedToOneWayMemoryIsolation: true,
-          scrolledToBottomAt: '2026-11-23T00:00:00.000Z',
-          consentedAt: '2026-11-23T00:00:00.000Z',
-        },
-      });
-      expect(reconsentedUser.disclaimerConsent.disclaimerVersion).toBe(1);
-
-      const singleton = await freshAdapter.getSession();
-      expect(singleton.id).toBe('uid_preview_001');
-      const msgsPage1 = await freshAdapter.listMessages({ page: 1, limit: 20 });
-      expect(msgsPage1.data.length).toBe(20);
-      expect(msgsPage1.meta).toEqual({
-        currentPage: 1,
-        limit: 20,
-        totalItems: 26,
-        totalPages: 2,
-        nextCursor: 'msg_007',
-        hasMore: true,
-      });
-      const nextChatCursor = msgsPage1.meta.nextCursor;
-      if (!nextChatCursor) {
-        throw new Error('Expected nextCursor on chat page 1');
-      }
-      const msgsPage2 = await freshAdapter.listMessages({
-        limit: 20,
-        cursor: nextChatCursor,
-      });
-      expect(msgsPage2.data.length).toBe(6);
-      expect(msgsPage2.data[0].id).toBe('msg_001');
-      expect(msgsPage2.meta).toEqual({
-        currentPage: 2,
-        limit: 20,
-        totalItems: 26,
-        totalPages: 2,
-        nextCursor: null,
-        hasMore: false,
-      });
-      const invalidCursorMsgs = await freshAdapter.listMessages({
-        limit: 20,
-        cursor: 'missing_msg_cursor',
-      });
-      expect(invalidCursorMsgs.data).toEqual([]);
-      expect(invalidCursorMsgs.meta.hasMore).toBe(false);
-
-      const galleryPage1 = await freshAdapter.listGallery({ page: 1, limit: 12 });
-      expect(galleryPage1.data.length).toBe(12);
-      expect(galleryPage1.meta.totalPages).toBe(2);
-      expect(galleryPage1.meta.hasMore).toBe(true);
-      expect(galleryPage1.summary).toEqual({ unlockedCount: 5, totalCount: 18 });
-      const galleryPage2 = await freshAdapter.listGallery({ page: 2, limit: 12 });
-      expect(galleryPage2.data.length).toBe(6);
-      expect(galleryPage2.meta.hasMore).toBe(false);
-      expect(galleryPage2.meta.nextCursor).toBeNull();
-      const nextGalleryCursor = galleryPage1.meta.nextCursor;
-      if (!nextGalleryCursor) {
-        throw new Error('Expected nextCursor on gallery page 1');
-      }
-      const galleryByCursor = await freshAdapter.listGallery({
-        limit: 12,
-        cursor: nextGalleryCursor,
-      });
-      expect(galleryByCursor.data.map((item) => item.id)).toEqual(
-        galleryPage2.data.map((item) => item.id),
-      );
-      const invalidCursorGallery = await freshAdapter.listGallery({
-        limit: 12,
-        cursor: 'missing_gallery_cursor',
-      });
-      expect(invalidCursorGallery.data).toEqual([]);
-
-      await expect(freshAdapter.sendMessage({ content: '   ' })).rejects.toThrow('cannot be empty');
-      const turnRes = await freshAdapter.sendMessage({ content: 'こんにちは' });
-      expect(turnRes.unlockedGalleryItem?.unlocked).toBe(true);
-      const gallery = await freshAdapter.listGallery({ page: 1, limit: 12 });
-      expect(gallery.summary.unlockedCount).toBe(6);
-
-      // Exhaust preview quota (5 daily + 20 welcome = 25 total -> 24 remaining after 1st turn)
-      for (let i = 0; i < 24; i++) {
-        await freshAdapter.sendMessage({ content: `turn ${i}` });
-      }
-      await expect(freshAdapter.sendMessage({ content: 'over quota' })).rejects.toThrow(
-        'quota exhausted',
-      );
-
-      // Incomplete deletion throws, complete deletion wipes preview session cleanly, logout + login restore session
-      await expect(
-        freshAdapter.deleteAccount({
-          confirmedIrreversibleDeletion: false,
-          confirmedNoRefundForRemainingTurns: true,
-        }),
-      ).rejects.toThrow('confirmations are required');
-      await freshAdapter.deleteAccount({
-        confirmedIrreversibleDeletion: true,
-        confirmedNoRefundForRemainingTurns: true,
-      });
-      await freshAdapter.loginWithX({ idToken: 'tok' });
-      await expect(freshAdapter.getCurrentSession()).resolves.not.toBeNull();
-      await freshAdapter.logout();
-
-      // Preview scenario URL hooks for headless UX audits
-      window.history.replaceState({}, '', '?previewScenario=onboarding');
-      const onboardingPreview = createAdapter();
-      expect((await onboardingPreview.getCurrentSession())?.user.onboardingCompleted).toBe(false);
-
-      window.history.replaceState({}, '', '?previewScenario=reconsent');
-      const reconsentPreview = createAdapter();
-      expect(
-        (await reconsentPreview.getCurrentSession())?.user.disclaimerConsent.disclaimerVersion,
-      ).toBe(0);
-      await expect(reconsentPreview.sendMessage({ content: 'blocked turn' })).rejects.toThrow(
-        LoungeReconsentRequiredClientError,
-      );
-
-      window.history.replaceState({}, '', '?previewScenario=mid-session-reconsent');
-      const midSessionPreview = createAdapter();
-      expect(
-        (await midSessionPreview.getCurrentSession())?.user.disclaimerConsent.disclaimerVersion,
-      ).toBe(1);
-      await expect(midSessionPreview.sendMessage({ content: 'stale session turn' })).rejects.toThrow(
-        LoungeReconsentRequiredClientError,
-      );
-
-      window.history.replaceState({}, '', '?previewScenario=session');
-      const sessionPreview = createAdapter();
-      expect((await sessionPreview.getCurrentSession())?.user.onboardingCompleted).toBe(true);
-    } finally {
-      window.history.replaceState({}, '', originalSearch || '/');
-    }
   });
 
   it('auto-detects initial browser language and timezone across 8 locales with fallback to en/UTC', () => {
@@ -1345,9 +1266,11 @@ describe('Gemitec Private Lounge Root Shell (AppComponent)', () => {
     expect(modal.querySelector('.reconsent-preserved-callout')).toBeNull();
     expect(modal.querySelector('.reconsent-footer')).toBeNull();
 
-    // Escape key & backdrop click MUST NOT close #reconsent-modal; Tab wraps focus inside modal
-    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
-    modal.click();
+    // Native <dialog> cancel event MUST NOT close #reconsent-modal
+    expect(modal.tagName).toBe('DIALOG');
+    const cancelEv = new Event('cancel', { cancelable: true });
+    modal.dispatchEvent(cancelEv);
+    expect(cancelEv.defaultPrevented).toBe(true);
     await fixture.whenStable();
     fixture.detectChanges();
     expect(facade.isReconsentRequired()).toBe(true);
@@ -1358,6 +1281,7 @@ describe('Gemitec Private Lounge Root Shell (AppComponent)', () => {
     ).componentInstance as ReconsentModalComponent;
     reconsentComp.onDisclaimerScroll(new Event('scroll'));
     reconsentComp.onConsentChange(new Event('change'));
+    reconsentComp.onNonEeaChange(new Event('change'));
     const box = query<HTMLElement>('#reconsent-scroll-box');
     Object.defineProperty(box, 'clientHeight', { value: 200, configurable: true });
     Object.defineProperty(box, 'scrollHeight', { value: 200, configurable: true });
@@ -1366,25 +1290,7 @@ describe('Gemitec Private Lounge Root Shell (AppComponent)', () => {
     facade.disclaimerScrolledToBottom.set(false);
     facade.disclaimerScrollProgress.set(0);
 
-    // Shift+Tab even from the non-focusable .reconsent-modal-card container wraps backward inside #reconsent-modal
     expect(query<HTMLElement>('.lounge-shell').hasAttribute('inert')).toBe(true);
-    const modalCard = query<HTMLElement>('.reconsent-modal-card');
-    modalCard.focus();
-    expect(document.activeElement).toBe(modalCard);
-    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', shiftKey: true, bubbles: true }));
-    expect(document.activeElement).toBe(query<HTMLElement>('#btn-reconsent-delete'));
-
-    const modalFocusables = modal.querySelectorAll<HTMLElement>(
-      'button:not([disabled]), input:not([disabled]), [tabindex]:not([tabindex="-1"])',
-    );
-    const firstModalEl = modalFocusables[0];
-    const lastModalEl = modalFocusables[modalFocusables.length - 1];
-    lastModalEl.focus();
-    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true }));
-    expect(document.activeElement).toBe(firstModalEl);
-    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', shiftKey: true, bubbles: true }));
-    expect(document.activeElement).toBe(lastModalEl);
-    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'a', bubbles: true }));
 
     const submitReconsentBtn = query<HTMLButtonElement>('#btn-submit-reconsent');
     expect(submitReconsentBtn.disabled).toBe(true);
@@ -1393,7 +1299,7 @@ describe('Gemitec Private Lounge Root Shell (AppComponent)', () => {
     await facade.submitDisclaimerReconsent();
     expect(facade.errorMessage()).toBe(LOUNGE_TRANSLATIONS.ja.scrollRequiredError);
 
-    // Scroll to bottom, tick checkbox, surface BFF error cleanly, then Choice 1 agrees and unlocks Chat
+    // Scroll to bottom, tick both consent & Phase 1 non-EEA checkboxes, surface BFF error cleanly, then unlock Chat
     Object.defineProperty(box, 'scrollTop', { value: 420, configurable: true });
     Object.defineProperty(box, 'clientHeight', { value: 140, configurable: true });
     Object.defineProperty(box, 'scrollHeight', { value: 560, configurable: true });
@@ -1404,6 +1310,9 @@ describe('Gemitec Private Lounge Root Shell (AppComponent)', () => {
     const checkbox = query<HTMLInputElement>('#checkbox-reconsent');
     checkbox.checked = true;
     checkbox.dispatchEvent(new Event('change'));
+    const reconsentNonEea = query<HTMLInputElement>('#checkbox-reconsent-non-eea');
+    reconsentNonEea.checked = true;
+    reconsentNonEea.dispatchEvent(new Event('change'));
     await fixture.whenStable();
     fixture.detectChanges();
     expect(submitReconsentBtn.disabled).toBe(false);
@@ -1411,7 +1320,7 @@ describe('Gemitec Private Lounge Root Shell (AppComponent)', () => {
     fakeBff.shouldFailReconsent = true;
     submitReconsentBtn.click();
     await flushMicrotasks();
-    expect(facade.errorMessage()).toBe('Consent update temporarily unavailable');
+    expect(facade.errorMessage()).toBe(facade.t('errorGeneric'));
     expect(facade.isReconsentRequired()).toBe(true);
     fakeBff.shouldFailReconsent = false;
 
@@ -1520,6 +1429,9 @@ describe('Gemitec Private Lounge Root Shell (AppComponent)', () => {
     const midCheck = query<HTMLInputElement>('#checkbox-reconsent');
     midCheck.checked = true;
     midCheck.dispatchEvent(new Event('change'));
+    const midNonEea = query<HTMLInputElement>('#checkbox-reconsent-non-eea');
+    midNonEea.checked = true;
+    midNonEea.dispatchEvent(new Event('change'));
     await fixture.whenStable();
     fixture.detectChanges();
     query<HTMLButtonElement>('#btn-submit-reconsent').click();
@@ -1575,7 +1487,8 @@ describe('Gemitec Private Lounge Root Shell (AppComponent)', () => {
     expect(facade.galleryItems().length).toBe(12);
     expect(component.unlockedGalleryCount()).toBe(5);
     expect(component.totalGalleryCount()).toBe(18);
-    expect(fixture.nativeElement.querySelectorAll('.gallery-tile').length).toBe(12);
+    expect(fixture.nativeElement.querySelectorAll('.gallery-tile.unlocked').length).toBe(5);
+    expect(fixture.nativeElement.querySelectorAll('.gallery-tile.locked').length).toBe(0);
 
     const paginationEl = query<HTMLElement>('#gallery-pagination');
     const page2Btn = Array.from(paginationEl.querySelectorAll('button')).find(
@@ -1591,7 +1504,8 @@ describe('Gemitec Private Lounge Root Shell (AppComponent)', () => {
 
     expect(facade.galleryCurrentPage()).toBe(2);
     expect(facade.galleryItems().length).toBe(6);
-    expect(fixture.nativeElement.querySelectorAll('.gallery-tile').length).toBe(6);
+    expect(fixture.nativeElement.querySelectorAll('.gallery-tile.unlocked').length).toBe(0);
+    expect(query<HTMLElement>('.gallery-grid').children.length).toBe(0);
     expect(component.unlockedGalleryCount()).toBe(5);
 
     // Out-of-page already-unlocked encounter while viewing Page 2 must NOT inflate count
@@ -1608,9 +1522,33 @@ describe('Gemitec Private Lounge Root Shell (AppComponent)', () => {
     // Gallery fetch failure sets explicit errorMessage and resets loading flag
     fakeBff.shouldFailListGallery = true;
     await facade.loadGalleryPage(2);
-    expect(facade.errorMessage()).toBe('Failed to load gallery collection');
+    expect(facade.errorMessage()).toBe(facade.t('errorGeneric'));
     expect(facade.isLoadingGalleryPage()).toBe(false);
     fakeBff.shouldFailListGallery = false;
+
+    // Catalog total stays separate from unlocked row count (1 unlocked of 50 catalog items)
+    await facade.logout();
+    fakeBff.galleryItems = [
+      {
+        id: 'uid_test_001_bot_img_01',
+        uid: 'uid_test_001',
+        assetId: 'bot_img_01',
+        imageUrl: 'assets/gallery_morning.webp',
+        unlocked: true,
+        unlockedAt: '2026-11-22T12:02:00.000Z',
+        sourceSessionId: 'uid_test_001',
+      },
+    ];
+    const listGallerySpy = jest.spyOn(fakeBff, 'listGallery').mockResolvedValueOnce({
+      data: fakeBff.galleryItems,
+      meta: { currentPage: 1, limit: 12, totalItems: 1, totalPages: 1, nextCursor: null, hasMore: false },
+      summary: { unlockedCount: 1, totalCount: 50 },
+    });
+    await facade.submitLoginWithX();
+    expect(facade.galleryTotalItems()).toBe(1);
+    expect(component.totalGalleryCount()).toBe(50);
+    expect(component.unlockedGalleryCount()).toBe(1);
+    listGallerySpy.mockRestore();
 
     // Unlocking a brand-new item when a session starts with an empty gallery increments counts 0 -> 1
     await facade.logout();
@@ -1673,11 +1611,14 @@ describe('Gemitec Private Lounge Root Shell (AppComponent)', () => {
     });
 
     // Scrolled far from bottom (> 80px) reveals Jump-to-latest pill & guards onInlineImageLoad()
+    const chatView = fixture.debugElement.query(
+      By.directive(ChatViewComponent),
+    ).componentInstance as ChatViewComponent;
     streamEl.dispatchEvent(new Event('scroll'));
     fixture.detectChanges();
-    expect(component.showJumpToLatest()).toBe(true);
+    expect(chatView.showJumpToLatest()).toBe(true);
     expect(query<HTMLButtonElement>('#btn-jump-to-latest')).toBeTruthy();
-    component.onInlineImageLoad();
+    chatView.onInlineImageLoad();
     expect(currentScrollTop).toBe(500);
 
     // Trigger upward boundary at scrollTop <= 40 -> prepends msg_001..006 & anchors scrollTop by delta (+480)
@@ -1705,9 +1646,9 @@ describe('Gemitec Private Lounge Root Shell (AppComponent)', () => {
     query<HTMLButtonElement>('#btn-jump-to-latest').click();
     fixture.detectChanges();
     expect(currentScrollTop).toBe(getScrollHeight());
-    expect(component.showJumpToLatest()).toBe(false);
+    expect(chatView.showJumpToLatest()).toBe(false);
     currentScrollTop = 120;
-    component.onInlineImageLoad();
+    chatView.onInlineImageLoad();
     expect(currentScrollTop).toBe(getScrollHeight());
 
     // Upward fetch error populates errorMessage cleanly
@@ -1715,7 +1656,7 @@ describe('Gemitec Private Lounge Root Shell (AppComponent)', () => {
     facade.hasMoreMessages.set(true);
     facade.oldestMessageCursor.set('msg_007');
     expect(await facade.loadOlderMessages()).toBe(false);
-    expect(facade.errorMessage()).toBe('Failed to load conversation history');
+    expect(facade.errorMessage()).toBe(facade.t('errorGeneric'));
     expect(facade.isLoadingOlderMessages()).toBe(false);
 
     // Logout resets all pagination state cleanly

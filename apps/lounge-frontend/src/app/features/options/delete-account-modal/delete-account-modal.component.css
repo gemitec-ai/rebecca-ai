@@ -1,0 +1,21 @@
+:host {
+  display: contents;
+}
+
+.delete-manage-sub-box {
+  padding: 0.85rem;
+  border-radius: 0.75rem;
+  background: rgba(124, 58, 237, 0.12);
+  border: 1px solid var(--border-purple);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.6rem;
+}
+
+.delete-manage-sub-hint {
+  margin: 0;
+  font-size: 0.82rem;
+  line-height: 1.45;
+  color: var(--text-secondary);
+}
