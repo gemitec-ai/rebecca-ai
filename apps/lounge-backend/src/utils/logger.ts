@@ -6,8 +6,8 @@ import { Logger } from '@rebecca/logger';
 export const loungeLogger = new Logger('lounge-backend');
 
 /**
- * Removes CR/LF control sequences from untrusted log strings to prevent log injection.
+ * Strips CR/LF control sequences from untrusted log strings to prevent multi-line log injection.
  */
-export function sanitizeLogInput(value: string): string {
+export function toSingleLineLog(value: string): string {
   return value.replace(/[\r\n]+/g, ' ').trim();
 }

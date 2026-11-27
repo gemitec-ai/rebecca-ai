@@ -8,6 +8,7 @@ import {
   handleLoungeControllerError,
   normalizePaginationQuery,
 } from '../../../utils/errors';
+import { DEFAULT_LOUNGE_GALLERY_LIMIT } from '../repositories/loungeGallery.repository';
 import type { ILoungeGalleryUseCase } from '../usecases/loungeGallery.usecase';
 
 /**
@@ -21,11 +22,14 @@ export class LoungeGalleryController {
     const traceHeader = extractTraceHeader(req);
     try {
       const { uid } = requireLoungeIdentity(req);
-      const query = normalizePaginationQuery({
-        page: req.query['page'],
-        limit: req.query['limit'],
-        cursor: req.query['cursor'],
-      });
+      const query = normalizePaginationQuery(
+        {
+          page: req.query['page'],
+          limit: req.query['limit'],
+          cursor: req.query['cursor'],
+        },
+        DEFAULT_LOUNGE_GALLERY_LIMIT,
+      );
       const result = await this.galleryUseCase.listGallery(uid, query);
       res.status(200).json(result);
     } catch (err) {

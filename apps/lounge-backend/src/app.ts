@@ -1,5 +1,3 @@
-import fs from 'node:fs';
-import path from 'node:path';
 import cors from 'cors';
 import express, {
   type Express,
@@ -13,12 +11,11 @@ import helmet from 'helmet';
 import { Firestore } from '@google-cloud/firestore';
 import { getCollections } from '@rebecca/db';
 import { getActivePersona } from '@rebecca/persona';
-import {
-  CURRENT_LOUNGE_DISCLAIMER_VERSION,
-  type LoungeEmotionState,
-  type LoungeFirebaseWebConfig,
-  type LoungePersonaBranding,
-  type LoungeRuntimeConfigDto,
+import type {
+  LoungeFirebaseWebConfig,
+  LoungeLegalUrlsDto,
+  LoungePersonaBranding,
+  LoungeRuntimeConfigDto,
 } from '@rebecca/types';
 import {
   loadLoungeRuntimeConfig,
@@ -26,12 +23,12 @@ import {
 } from './config/loungeConfig';
 import {
   createLoungeAuthMiddleware,
-  type ILoungeAuthVerifierPort,
 } from './middleware/loungeAuth';
+import type { ILoungeAuthVerifierPort } from './features/auth/ports/loungeAuthVerifier.port';
 import { createLoungeBatchAuthMiddleware } from './middleware/loungeBatchAuth';
 import {
+  createFirebaseIdentityClient,
   FirebaseLoungeAuthVerifier,
-  resolveFirebaseLoungeAuthClient,
 } from './features/auth/adapters/firebaseLoungeAuth.verifier';
 import { LoungeAuthController } from './features/auth/controllers/loungeAuth.controller';
 import { createLoungeAuthRouter } from './features/auth/routers/loungeAuth.router';
@@ -53,17 +50,17 @@ import {
   LoungeAccountUseCase,
   type ILoungeAccountUseCase,
 } from './features/account/usecases/loungeAccount.usecase';
-import {
-  FirestoreBotImageVectorSearchAdapter,
-  FirestorePublicXMemoryReadAdapter,
-  GeminiLoungeAiAdapter,
-  LocalEmulatorLoungeAiAdapter,
-} from './features/sessions/adapters/geminiLoungeAi.adapters';
+import { FirestoreBotImageVectorSearchAdapter } from './features/sessions/adapters/firestoreBotImageVectorSearch.adapter';
+import { FirestorePublicXMemoryReadAdapter } from './features/sessions/adapters/firestorePublicXMemoryRead.adapter';
+import { GeminiLoungeAiAdapter } from './features/sessions/adapters/geminiLoungeAi.adapters';
+import { LocalEmulatorLoungeAiAdapter } from './features/sessions/adapters/localEmulatorLoungeAi.adapter';
+import { LoungeIllustrationMatcherService } from './features/sessions/domain/loungeIllustrationMatcher.service';
 import type {
   IBotImageAssetSearchPort,
   ILoungeChatPipelinePort,
   ILoungeEmbeddingPort,
   ILoungeEmotionClassifierPort,
+  ILoungeImageMatcherPort,
   IPublicXMemoryReadPort,
 } from './features/sessions/ports/loungeAi.port';
 import { LoungeSessionController } from './features/sessions/controllers/loungeSession.controller';
@@ -86,12 +83,12 @@ import {
   LoungeGalleryUseCase,
   type ILoungeGalleryUseCase,
 } from './features/gallery/usecases/loungeGallery.usecase';
-import {
-  LocalTestStripeGatewayAdapter,
-  type ILoungeStripeGatewayPort,
-} from './features/billing/ports/loungeStripe.port';
+import { DisabledLoungeStripeGatewayAdapter } from './features/billing/adapters/disabledLoungeStripeGateway.adapter';
+import { LocalTestStripeGatewayAdapter } from './features/billing/adapters/localTestStripeGateway.adapter';
+import type { ILoungeStripeGatewayPort } from './features/billing/ports/loungeStripe.port';
 import { StripeSdkGatewayAdapter } from './features/billing/adapters/stripeSdkGateway.adapter';
 import { LoungeBillingController } from './features/billing/controllers/loungeBilling.controller';
+import { FirestoreLoungeBillingRepository } from './features/billing/repositories/loungeBilling.repository';
 import { createLoungeBillingRouter } from './features/billing/routers/loungeBilling.router';
 import {
   LoungeBillingUseCase,
@@ -102,61 +99,12 @@ import {
   LoungeDreamingBatchService,
   createLoungeBatchRouter,
 } from './features/dreaming/loungeDreaming.service';
+import {
+  DEFAULT_TRUSTED_GEO_HEADER,
+  type TrustedGeoHeaderName,
+} from './utils/clientGeo';
 import { extractTraceHeader } from './utils/errors';
-import { loungeLogger, sanitizeLogInput } from './utils/logger';
-
-/**
- * Default emotion-to-avatar mapping resolved dynamically for the active persona.
- */
-export function buildDefaultEmotionAvatarPaths(): Record<LoungeEmotionState, string> {
-  return {
-    NEUTRAL: 'assets/avatars/persona_neutral.png',
-    HAPPY: 'assets/avatars/persona_happy.png',
-    TEASING: 'assets/avatars/persona_teasing.png',
-    SHY: 'assets/avatars/persona_shy.png',
-    EXCITED: 'assets/avatars/persona_excited.png',
-    THOUGHTFUL: 'assets/avatars/persona_thoughtful.png',
-    SURPRISED: 'assets/avatars/persona_surprised.png',
-  };
-}
-
-/**
- * Resolves package version string dynamically from environment or workspace `package.json`.
- */
-export function resolveLoungeAppVersion(env: NodeJS.ProcessEnv = process.env): string {
-  const configured = env['APP_VERSION']?.trim();
-  if (configured) {
-    return configured.startsWith('v') ? configured : `v${configured}`;
-  }
-  try {
-    const pkgPath = path.resolve(__dirname, '..', 'package.json');
-    const raw = fs.readFileSync(pkgPath, 'utf8');
-    const parsed = JSON.parse(raw) as { version?: unknown };
-    if (typeof parsed.version === 'string' && parsed.version.trim()) {
-      return `v${parsed.version.trim()}`;
-    }
-  } catch {
-    // Fallback below if running from bundled path without adjacent package.json
-  }
-  const npmVer = env['npm_package_version']?.trim();
-  return npmVer ? `v${npmVer}` : 'v0.0.0';
-}
-
-/**
- * Resolves the active positive integer disclaimer version from `DISCLAIMER_VERSION` env var,
- * falling back cleanly to `CURRENT_LOUNGE_DISCLAIMER_VERSION`.
- */
-export function resolveDisclaimerVersion(env: NodeJS.ProcessEnv = process.env): number {
-  const raw = env['DISCLAIMER_VERSION']?.trim();
-  if (!raw) {
-    return CURRENT_LOUNGE_DISCLAIMER_VERSION;
-  }
-  const parsed = Number(raw);
-  if (Number.isInteger(parsed) && parsed >= 1) {
-    return parsed;
-  }
-  return CURRENT_LOUNGE_DISCLAIMER_VERSION;
-}
+import { loungeLogger, toSingleLineLog } from './utils/logger';
 
 /**
  * Dependency injection container for wiring the Private Lounge BFF Express application.
@@ -173,45 +121,19 @@ export interface LoungeAppDependencies {
   readonly appVersion: string;
   readonly disclaimerVersion: number;
   readonly personaBranding: LoungePersonaBranding;
+  readonly legalUrls?: LoungeLegalUrlsDto;
   readonly defaultGeoCountryCode?: string;
+  readonly trustedGeoHeader?: TrustedGeoHeaderName;
   readonly firebaseWebConfig?: LoungeFirebaseWebConfig;
   readonly phase2EeaEnabled?: boolean;
+  readonly allowDefaultGeoFallback?: boolean;
+  readonly isCloudRun?: boolean;
   readonly noAuth?: boolean;
   readonly nodeEnv?: string;
   readonly authEmulatorHost?: string;
   readonly useEmulators?: boolean;
-}
-
-function createFailClosedProductionStripeGateway(): ILoungeStripeGatewayPort {
-  const fail = (): never => {
-    throw new Error('STRIPE_SECRET_KEY must be configured in production');
-  };
-  return {
-    ensureCustomer: fail,
-    createCheckoutSession: fail,
-    retrieveCheckoutSession: fail,
-    createPortalSession: fail,
-    retrieveSubscription: fail,
-    listCharges: fail,
-    retrieveCharge: fail,
-    resolveInvoiceByPaymentIntent: fail,
-    createFullRefund: fail,
-    cancelSubscriptionImmediately: fail,
-    cancelAndDeleteCustomer: fail,
-    constructWebhookEvent: fail,
-  };
-}
-
-function createFailClosedProductionAiAdapter() {
-  const fail = (): never => {
-    throw new Error('GEMINI_API_KEY must be configured in production');
-  };
-  return {
-    embedQuery: fail,
-    classifyEmotion: fail,
-    generateReply: fail,
-    generateDreaming: fail,
-  };
+  readonly billingEnabled?: boolean;
+  readonly contactEmail?: string | null;
 }
 
 /**
@@ -220,7 +142,7 @@ function createFailClosedProductionAiAdapter() {
  * and `@rebecca/memory` Nightly Batch Dreaming.
  */
 export function createProductionLoungeDependencies(
-  env: NodeJS.ProcessEnv = process.env,
+  env: NodeJS.ProcessEnv = {},
   overrides: {
     readonly config?: LoungeRuntimeEnvironmentConfig;
     readonly firestore?: Firestore;
@@ -228,10 +150,7 @@ export function createProductionLoungeDependencies(
     readonly authVerifier?: ILoungeAuthVerifierPort;
   } = {},
 ): LoungeAppDependencies {
-  const appVersion = resolveLoungeAppVersion(env);
-  const disclaimerVersion = resolveDisclaimerVersion(env);
-  const config =
-    overrides.config ?? loadLoungeRuntimeConfig(env, appVersion, disclaimerVersion);
+  const config = overrides.config ?? loadLoungeRuntimeConfig(env);
 
   const firestore =
     overrides.firestore ??
@@ -242,58 +161,71 @@ export function createProductionLoungeDependencies(
   const personaBranding: LoungePersonaBranding = {
     displayName: activePersona.metadata.displayName,
     englishName: activePersona.metadata.englishName,
-    brandName: activePersona.metadata.brandName,
-    avatarPath: 'assets/persona_cutout.webp',
-    chatIconPath: 'assets/avatars/persona_icon.png',
-    emotionAvatarPaths: buildDefaultEmotionAvatarPaths(),
+    brandName: activePersona.metadata.lounge.brandName,
+    avatarPath: activePersona.metadata.lounge.avatarPath,
+    chatIconPath: activePersona.metadata.lounge.chatIconPath,
+    emotionAvatarPaths: activePersona.metadata.lounge.emotionAvatarPaths,
   };
 
-  const useEmulators = Boolean(config.authEmulatorHost || config.firestoreEmulatorHost);
-  const firebaseAuthClient = resolveFirebaseLoungeAuthClient(
+  const useEmulators = config.isLocalEmulatorMode && !config.isProd && !config.isCloudRun;
+  const firebaseAuthClient = createFirebaseIdentityClient(
     config.projectId,
     config.firebaseTenantId,
   );
   const authVerifier: ILoungeAuthVerifierPort =
     overrides.authVerifier ??
-    new FirebaseLoungeAuthVerifier(firebaseAuthClient, Boolean(config.authEmulatorHost));
+    new FirebaseLoungeAuthVerifier(firebaseAuthClient, useEmulators);
 
-  const aiAdapter = config.geminiApiKey
-    ? new GeminiLoungeAiAdapter({
-        apiKey: config.geminiApiKey,
-        chatModel: config.geminiChatModel,
-        searchModel: config.geminiSearchModel,
-        embeddingModel: config.geminiEmbeddingModel,
-        maxOutputTokens: config.geminiMaxOutputTokens,
-        activePersonaId: config.activePersonaId,
-      })
-    : config.isProd
-      ? createFailClosedProductionAiAdapter()
-      : new LocalEmulatorLoungeAiAdapter();
+  let aiAdapter: GeminiLoungeAiAdapter | LocalEmulatorLoungeAiAdapter;
+  if (config.geminiApiKey) {
+    aiAdapter = new GeminiLoungeAiAdapter({
+      apiKey: config.geminiApiKey,
+      chatModel: config.geminiChatModel,
+      searchModel: config.geminiSearchModel,
+      embeddingModel: config.geminiEmbeddingModel,
+      maxOutputTokens: config.geminiMaxOutputTokens,
+      activePersonaId: config.activePersonaId,
+    });
+  } else if (useEmulators) {
+    aiAdapter = new LocalEmulatorLoungeAiAdapter();
+  } else {
+    throw new Error('GEMINI_API_KEY is required outside local emulator mode');
+  }
 
   const embeddingPort: ILoungeEmbeddingPort = aiAdapter;
   const emotionClassifier: ILoungeEmotionClassifierPort = aiAdapter;
   const chatPipeline: ILoungeChatPipelinePort = aiAdapter;
+  const imageMatcher: ILoungeImageMatcherPort = aiAdapter;
 
   const publicXMemoryPort: IPublicXMemoryReadPort = new FirestorePublicXMemoryReadAdapter(
     firestore,
     collections,
-    Boolean(config.firestoreEmulatorHost),
+    useEmulators,
   );
   const botImageSearchPort: IBotImageAssetSearchPort = new FirestoreBotImageVectorSearchAdapter(
     firestore,
     collections,
     embeddingPort,
     config.imageSimilarityThreshold,
-    Boolean(config.firestoreEmulatorHost),
+    useEmulators,
+  );
+  const illustrationMatcher = new LoungeIllustrationMatcherService(
+    botImageSearchPort,
+    imageMatcher,
   );
 
-  const stripeGateway: ILoungeStripeGatewayPort =
-    overrides.stripeGateway ??
-    (config.stripeSecretKey
-      ? new StripeSdkGatewayAdapter(config.stripeSecretKey)
-      : config.isProd
-        ? createFailClosedProductionStripeGateway()
-        : new LocalTestStripeGatewayAdapter(config.loungePublicOrigin));
+  let stripeGateway: ILoungeStripeGatewayPort;
+  if (overrides.stripeGateway) {
+    stripeGateway = overrides.stripeGateway;
+  } else if (config.stripeSecretKey) {
+    stripeGateway = new StripeSdkGatewayAdapter(config.stripeSecretKey);
+  } else if (useEmulators) {
+    stripeGateway = new LocalTestStripeGatewayAdapter(config.loungePublicOrigin);
+  } else if (!config.billingEnabled) {
+    stripeGateway = new DisabledLoungeStripeGatewayAdapter();
+  } else {
+    throw new Error('STRIPE_SECRET_KEY is required outside local emulator mode');
+  }
 
   const authRepository: ILoungeAuthRepository = new LoungeAuthRepository(
     firestore,
@@ -308,16 +240,16 @@ export function createProductionLoungeDependencies(
   const sessionRepository: ILoungeSessionRepository = new LoungeSessionRepository(
     firestore,
     collections,
-    Boolean(config.firestoreEmulatorHost),
+    useEmulators,
   );
   const galleryRepository: ILoungeGalleryRepository = new LoungeGalleryRepository(
     firestore,
     collections,
   );
 
+  const billingRepository = new FirestoreLoungeBillingRepository(firestore, collections);
   const billingUseCase = new LoungeBillingUseCase(
-    firestore,
-    collections,
+    billingRepository,
     stripeGateway,
     config,
   );
@@ -331,8 +263,15 @@ export function createProductionLoungeDependencies(
   );
   const batchAuth = createLoungeBatchAuthMiddleware({
     nodeEnv: config.nodeEnv,
+    isCloudRun: config.isCloudRun,
     batchSecretKey: config.batchSecretKey,
+    expectedAudience: config.batchOidcAudience,
+    expectedServiceAccountEmail: config.batchOidcServiceAccountEmail,
   });
+  const geoPolicy = {
+    phase2EeaEnabled: config.phase2EeaEnabled,
+    allowDefaultGeoFallback: config.allowDefaultGeoFallback,
+  };
 
   return {
     authVerifier,
@@ -342,6 +281,7 @@ export function createProductionLoungeDependencies(
       config.appVersion,
       config.disclaimerVersion,
       config.globalDailySignupCap,
+      geoPolicy,
     ),
     accountUseCase: new LoungeAccountUseCase(
       authRepository,
@@ -349,9 +289,10 @@ export function createProductionLoungeDependencies(
       galleryRepository,
       sessionRepository,
       config.appVersion,
+      stripeGateway,
       personaBranding,
       config.disclaimerVersion,
-      stripeGateway,
+      config.phase2EeaEnabled,
     ),
     sessionUseCase: new LoungeSessionUseCase(
       sessionRepository,
@@ -362,9 +303,10 @@ export function createProductionLoungeDependencies(
       publicXMemoryPort,
       emotionClassifier,
       chatPipeline,
-      botImageSearchPort,
+      illustrationMatcher,
       config.disclaimerVersion,
       config.globalDailyTurnCap,
+      geoPolicy,
     ),
     galleryUseCase: new LoungeGalleryUseCase(galleryRepository, authRepository),
     billingUseCase,
@@ -373,13 +315,19 @@ export function createProductionLoungeDependencies(
     appVersion: config.appVersion,
     disclaimerVersion: config.disclaimerVersion,
     personaBranding,
+    legalUrls: config.legalUrls,
     defaultGeoCountryCode: config.defaultGeoCountryCode,
+    trustedGeoHeader: config.trustedGeoHeader,
     firebaseWebConfig: config.firebaseWebConfig,
     phase2EeaEnabled: config.phase2EeaEnabled,
+    allowDefaultGeoFallback: config.allowDefaultGeoFallback,
+    isCloudRun: config.isCloudRun,
     noAuth: config.noAuth,
     nodeEnv: config.nodeEnv,
     authEmulatorHost: config.authEmulatorHost,
     useEmulators,
+    billingEnabled: config.billingEnabled,
+    contactEmail: config.contactEmail,
   };
 }
 
@@ -399,7 +347,7 @@ export function createLoungeApp(deps: LoungeAppDependencies): Express {
           return;
         }
         loungeLogger.warn('Rejected CORS request from disallowed origin', {
-          origin: sanitizeLogInput(requestOrigin),
+          origin: toSingleLineLog(requestOrigin),
         });
         callback(null, false);
       },
@@ -412,8 +360,13 @@ export function createLoungeApp(deps: LoungeAppDependencies): Express {
     next();
   });
 
+  const trustedGeoHeader = deps.trustedGeoHeader ?? DEFAULT_TRUSTED_GEO_HEADER;
   const billingController = deps.billingUseCase
-    ? new LoungeBillingController(deps.billingUseCase, deps.defaultGeoCountryCode ?? 'JP')
+    ? new LoungeBillingController(
+        deps.billingUseCase,
+        deps.defaultGeoCountryCode ?? 'JP',
+        trustedGeoHeader,
+      )
     : null;
 
   // CRITICAL: Stripe webhooks require unparsed raw body bytes BEFORE express.json() and global IP rate limiting.
@@ -439,6 +392,7 @@ export function createLoungeApp(deps: LoungeAppDependencies): Express {
     verifier: deps.authVerifier,
     noAuth: deps.noAuth,
     nodeEnv: deps.nodeEnv,
+    isCloudRun: deps.isCloudRun,
     authEmulatorHost: deps.authEmulatorHost,
   });
 
@@ -455,12 +409,15 @@ export function createLoungeApp(deps: LoungeAppDependencies): Express {
       appVersion: deps.appVersion,
       disclaimerVersion: deps.disclaimerVersion,
       persona: deps.personaBranding,
+      ...(deps.legalUrls ? { legalUrls: deps.legalUrls } : {}),
       ...(deps.firebaseWebConfig ? { firebase: deps.firebaseWebConfig } : {}),
       ...(deps.useEmulators !== undefined ? { useEmulators: deps.useEmulators } : {}),
       ...(deps.nodeEnv !== undefined ? { production: deps.nodeEnv === 'production' } : {}),
       ...(deps.phase2EeaEnabled !== undefined
         ? { phase2EeaEnabled: deps.phase2EeaEnabled }
         : {}),
+      ...(deps.billingEnabled !== undefined ? { billingEnabled: deps.billingEnabled } : {}),
+      ...(deps.contactEmail !== undefined ? { contactEmail: deps.contactEmail } : {}),
     };
     res.status(200).json(configPayload);
   });
@@ -468,9 +425,14 @@ export function createLoungeApp(deps: LoungeAppDependencies): Express {
   const authController = new LoungeAuthController(
     deps.authUseCase,
     deps.defaultGeoCountryCode ?? 'JP',
+    trustedGeoHeader,
   );
   const accountController = new LoungeAccountController(deps.accountUseCase);
-  const sessionController = new LoungeSessionController(deps.sessionUseCase);
+  const sessionController = new LoungeSessionController(
+    deps.sessionUseCase,
+    deps.defaultGeoCountryCode ?? 'JP',
+    trustedGeoHeader,
+  );
   const galleryController = new LoungeGalleryController(deps.galleryUseCase);
 
   app.use('/api/v1/lounge/auth', createLoungeAuthRouter(authController, requireAuth));
@@ -503,7 +465,7 @@ export function createLoungeApp(deps: LoungeAppDependencies): Express {
     if (err instanceof SyntaxError && bodyErrType === 'entity.parse.failed') {
       loungeLogger.warn(
         'Rejected malformed JSON payload',
-        { path: sanitizeLogInput(req.path) },
+        { path: toSingleLineLog(req.path) },
         traceHeader,
       );
       res.status(400).json({ error: 'Malformed JSON request body' });
@@ -512,7 +474,7 @@ export function createLoungeApp(deps: LoungeAppDependencies): Express {
     if (bodyErrType === 'entity.too.large' || bodyErrStatus === 413) {
       loungeLogger.warn(
         'Rejected oversized request payload',
-        { path: sanitizeLogInput(req.path) },
+        { path: toSingleLineLog(req.path) },
         traceHeader,
       );
       res.status(413).json({ error: 'Request payload too large' });
@@ -523,7 +485,7 @@ export function createLoungeApp(deps: LoungeAppDependencies): Express {
     loungeLogger.error(
       'Unhandled Express middleware error',
       normalized,
-      { path: sanitizeLogInput(req.path) },
+      { path: toSingleLineLog(req.path) },
       traceHeader,
     );
     res.status(500).json({ error: 'Internal server error' });

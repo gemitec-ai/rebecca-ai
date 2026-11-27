@@ -1,28 +1,14 @@
 import type { Request, Response, NextFunction } from 'express';
+import type {
+  ILoungeAuthVerifierPort,
+  LoungeVerifiedIdentity,
+} from '../features/auth/ports/loungeAuthVerifier.port';
 import {
   LoungeAuthError,
   LoungeHttpError,
   extractTraceHeader,
   handleLoungeControllerError,
 } from '../utils/errors';
-
-/**
- * Verified identity extracted from a Firebase/X-linked Bearer ID token.
- */
-export interface LoungeVerifiedIdentity {
-  readonly uid: string;
-  readonly xUserId: string;
-  readonly xHandle: string;
-  readonly displayName: string;
-  readonly avatarUrl: string;
-}
-
-/**
- * Hexagonal port for validating Private Lounge client ID tokens.
- */
-export interface ILoungeAuthVerifierPort {
-  verifyBearerToken(idToken: string): Promise<LoungeVerifiedIdentity>;
-}
 
 /**
  * Express request augmented with the authenticated Private Lounge user identity.
@@ -63,29 +49,32 @@ export function extractBearerTokenFromHeader(authHeader: unknown): string {
  * Options configuring the Private Lounge authentication middleware.
  */
 export interface LoungeAuthMiddlewareOptions {
-  /** Verifier port implementation (Firebase Admin Auth in production). */
+  /** Verifier port implementation (Firebase Identity client in production). */
   readonly verifier: ILoungeAuthVerifierPort;
-  /** Local emulator-only auth bypass flag; ignored unless explicitly local dev/emulator and non-production. */
+  /** Local emulator-only auth bypass flag; ignored unless running outside Cloud Run and production. */
   readonly noAuth?: boolean;
   /** Current Node environment string (`production` blocks bypass unconditionally). */
   readonly nodeEnv?: string;
-  /** Firebase Auth emulator host indicator required alongside `NO_AUTH` unless running in test/development. */
+  /** Cloud Run indicator injected from validated startup configuration (`true` blocks bypass unconditionally). */
+  readonly isCloudRun?: boolean;
+  /** Firebase Auth emulator host indicator required alongside `NO_AUTH` unless running in `test`. */
   readonly authEmulatorHost?: string;
 }
 
 /**
  * Creates Express middleware enforcing verified Private Lounge user identity.
- * Ensures `NO_AUTH` cannot bypass token verification in production or misconfigured staging builds.
+ * Ensures `NO_AUTH` cannot bypass token verification in production, Cloud Run, or staging builds.
  */
 export function createLoungeAuthMiddleware(
   options: LoungeAuthMiddlewareOptions,
 ): (req: LoungeAuthenticatedRequest, res: Response, next: NextFunction) => Promise<void> {
-  const isLocalEnv =
-    options.nodeEnv === 'development' ||
-    options.nodeEnv === 'test' ||
-    Boolean(options.authEmulatorHost?.trim());
+  const hasEmulatorOrTestEnv =
+    Boolean(options.authEmulatorHost?.trim()) || options.nodeEnv === 'test';
   const allowLocalBypass =
-    options.noAuth === true && options.nodeEnv !== 'production' && isLocalEnv;
+    options.noAuth === true &&
+    options.nodeEnv !== 'production' &&
+    !options.isCloudRun &&
+    hasEmulatorOrTestEnv;
 
   return async (
     req: LoungeAuthenticatedRequest,

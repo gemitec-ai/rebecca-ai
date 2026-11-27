@@ -1,8 +1,8 @@
 openapi: 3.0.3
 info:
-  title: Gemitec Private Lounge BFF API
+  title: Rebecca Private Lounge BFF API
   description: |
-    Isolated Backend-for-Frontend (BFF) REST contract for the Gemitec Private Lounge.
+    Isolated Backend-for-Frontend (BFF) REST contract for Rebecca Private Lounge.
     Enforces 1 X account = 1 Private Lounge account = 1 continuous conversation session.
     Stores user data in dedicated `lounge_*` Firestore collections separated from Public X Bot and Admin Dashboard tables.
     Public X memory access (user profile, recent turns, vector RAG, and the active persona's Layer 1/2/3 post memories)
@@ -54,9 +54,9 @@ paths:
       summary: Register a Private Lounge user via X OAuth after scroll-verified disclaimer consent (1 account per X account)
       security: []
       description: |
-        Requires verified Firebase/X OAuth identity in body (`idToken`, `xOAuthCode`) and explicit acceptance
-        of Gemini training usage, zero-PII prohibition, and session isolation after scrolling to bottom.
-        Returns 409 Conflict if the X account or Firebase UID is already registered.
+        Requires verified Firebase/X OAuth identity in body (`idToken`, optional `xOAuthCode`) and explicit acceptance
+        of Gemini training usage, zero-PII prohibition, session isolation, and Phase 1 non-EEA/UK/CH eligibility after scrolling to bottom.
+        Returns 403 Forbidden (`GEO_BLOCKED` / `GEO_UNAVAILABLE`) when Geo-IP checks fail, or 409 Conflict if the X account or Firebase UID is already registered.
       requestBody:
         required: true
         content:
@@ -74,6 +74,8 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '409':
           $ref: '#/components/responses/Conflict'
 
@@ -373,12 +375,17 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/LoungeSubscriptionDetailResponseDto'
+        '400':
+          $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
 
   /billing/eu-withdrawal:
     post:
       summary: Execute Phase 2 EEA statutory 14-day electronic contract withdrawal
+      description: |
+        Supports active Stripe subscriptions (`targetType: SUBSCRIPTION` with Stripe subscription ID or `'ACTIVE_SUBSCRIPTION'` alias)
+        and unconsumed paid credit lots (`targetType: CREDIT_LOT`). Refunds via Stripe before revoking local quota state.
       requestBody:
         required: true
         content:
@@ -396,6 +403,10 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '403':
           $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
 
   /billing/orders:
     get:
@@ -577,6 +588,19 @@ components:
           type: object
           additionalProperties:
             type: string
+    LoungeLegalUrlsDto:
+      type: object
+      required: [tosUrl, privacyUrl, legalUrl]
+      properties:
+        tosUrl:
+          type: string
+          format: uri
+        privacyUrl:
+          type: string
+          format: uri
+        legalUrl:
+          type: string
+          format: uri
     LoungeRuntimeConfigDto:
       type: object
       required: [appVersion, disclaimerVersion, persona]
@@ -588,6 +612,8 @@ components:
           minimum: 1
         persona:
           $ref: '#/components/schemas/LoungePersonaBranding'
+        legalUrls:
+          $ref: '#/components/schemas/LoungeLegalUrlsDto'
         firebase:
           type: object
           required: [apiKey, authDomain, projectId, appId]
@@ -608,6 +634,11 @@ components:
           type: boolean
         phase2EeaEnabled:
           type: boolean
+        billingEnabled:
+          type: boolean
+        contactEmail:
+          type: string
+          nullable: true
     LoungeUserDisclaimerConsent:
       type: object
       required:
@@ -626,6 +657,8 @@ components:
         agreedToZeroPiiProhibition:
           type: boolean
         agreedToOneWayMemoryIsolation:
+          type: boolean
+        agreedToNonEeaEligibility:
           type: boolean
         scrolledToBottomAt:
           type: string
@@ -846,7 +879,7 @@ components:
           type: string
     LoungeSignUpRequestDto:
       type: object
-      required: [idToken, xOAuthCode, disclaimerConsent]
+      required: [idToken, disclaimerConsent]
       properties:
         idToken:
           type: string
@@ -972,7 +1005,7 @@ components:
 
     LoungeBillingProductDto:
       type: object
-      required: [productId, mode, currency, unitAmountMinor, formattedPrice, grantedTurns, validityDays, taxInclusive, promotionCodesAllowed, eligible]
+      required: [productId, mode, currency, unitAmountMinor, formattedPrice, grantedTurns, validityDays, taxInclusive, promotionCodesAllowed, available, eligible]
       properties:
         productId:
           type: string
@@ -996,11 +1029,13 @@ components:
           type: boolean
         promotionCodesAllowed:
           type: boolean
+        available:
+          type: boolean
         eligible:
           type: boolean
         ineligibleReason:
           type: string
-          enum: [TRIAL_ALREADY_USED, SUBSCRIPTION_ALREADY_ACTIVE, GEO_BLOCKED]
+          enum: [COMING_SOON, TRIAL_ALREADY_USED, SUBSCRIPTION_ALREADY_ACTIVE, GEO_BLOCKED]
     LoungeBillingCatalogDto:
       type: object
       required: [currency, currencyLocked, countryCode, isEeaResident, phase2EeaEnabled, trialEligible, subscriptionStatus, products]
@@ -1161,15 +1196,18 @@ components:
           enum: [SUBSCRIPTION, CREDIT_LOT]
         targetId:
           type: string
+          description: Stripe subscription ID (or `ACTIVE_SUBSCRIPTION` alias) when `targetType` is `SUBSCRIPTION`; `LoungeCreditLot` ID when `targetType` is `CREDIT_LOT`.
         confirmedWithdrawal:
           type: boolean
     LoungeEuWithdrawalResponseDto:
       type: object
-      required: [withdrawnAt, refundedAmountMinor, currency, revokedTurns, receiptEmailDispatched, subscription]
+      required: [withdrawnAt, refundId, refundedAmountMinor, currency, revokedTurns, confirmationChannel, subscription]
       properties:
         withdrawnAt:
           type: string
           format: date-time
+        refundId:
+          type: string
         refundedAmountMinor:
           type: integer
         currency:
@@ -1177,8 +1215,9 @@ components:
           enum: [JPY, USD]
         revokedTurns:
           type: integer
-        receiptEmailDispatched:
-          type: boolean
+        confirmationChannel:
+          type: string
+          enum: [STRIPE_RECEIPT_AND_IN_APP]
         subscription:
           $ref: '#/components/schemas/LoungeSubscription'
     LoungeBillingOrderItemDto:

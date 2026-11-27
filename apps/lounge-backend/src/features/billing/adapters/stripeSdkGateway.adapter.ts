@@ -1,6 +1,6 @@
 import Stripe from 'stripe';
 import type { LoungeCurrency, LoungePortalFlow } from '@rebecca/types';
-import { LoungeAuthError } from '../../../utils/errors';
+import { LoungeAuthError, LoungeNotFoundError } from '../../../utils/errors';
 import type {
   CreateLoungeStripeCheckoutInput,
   ILoungeStripeGatewayPort,
@@ -11,19 +11,49 @@ import type {
   LoungeStripeWebhookEvent,
 } from '../ports/loungeStripe.port';
 
-function normalizeCurrency(raw: string | null | undefined): LoungeCurrency | undefined {
-  if (!raw) {
-    return undefined;
+const STRIPE_SUBSCRIPTION_STATUS_MAP: Readonly<
+  Record<Stripe.Subscription.Status, LoungeStripeSubscriptionSnapshot['status']>
+> = {
+  active: 'active',
+  trialing: 'trialing',
+  past_due: 'past_due',
+  canceled: 'canceled',
+  unpaid: 'unpaid',
+  incomplete: 'incomplete',
+  incomplete_expired: 'incomplete_expired',
+  paused: 'past_due',
+};
+
+function requireSupportedCurrency(
+  raw: string | null | undefined,
+  fieldName: string,
+): LoungeCurrency {
+  if (typeof raw === 'string') {
+    const upper = raw.trim().toUpperCase();
+    if (upper === 'JPY') return 'JPY';
+    if (upper === 'USD') return 'USD';
   }
-  const upper = raw.trim().toUpperCase();
-  return upper === 'JPY' ? 'JPY' : upper === 'USD' ? 'USD' : undefined;
+  throw new Error(`Unsupported or missing Stripe currency "${String(raw)}" for ${fieldName}`);
 }
 
-function unixToIso(seconds: number | null | undefined): string {
+function optionalSupportedCurrency(
+  raw: string | null | undefined,
+  fieldName: string,
+): LoungeCurrency | undefined {
+  if (raw === null || raw === undefined || raw === '') {
+    return undefined;
+  }
+  return requireSupportedCurrency(raw, fieldName);
+}
+
+function requireUnixTimestampIso(
+  seconds: number | null | undefined,
+  fieldName: string,
+): string {
   if (typeof seconds === 'number' && Number.isFinite(seconds) && seconds > 0) {
     return new Date(seconds * 1000).toISOString();
   }
-  return new Date().toISOString();
+  throw new Error(`Stripe payload missing valid positive timestamp for "${fieldName}"`);
 }
 
 function extractStringMetadata(
@@ -52,6 +82,13 @@ function isStripeResourceMissing(err: unknown): boolean {
 
 function mapStripeSubscription(sub: Stripe.Subscription): LoungeStripeSubscriptionSnapshot {
   const periodEndUnix = sub.items.data[0]?.current_period_end;
+  const currentPeriodEndIso = requireUnixTimestampIso(
+    periodEndUnix,
+    'subscription.items.data[0].current_period_end',
+  );
+  if (!Object.prototype.hasOwnProperty.call(STRIPE_SUBSCRIPTION_STATUS_MAP, sub.status)) {
+    throw new Error(`Unrecognized Stripe subscription status "${String(sub.status)}"`);
+  }
   const latestInvoiceId =
     typeof sub.latest_invoice === 'string'
       ? sub.latest_invoice
@@ -59,29 +96,21 @@ function mapStripeSubscription(sub: Stripe.Subscription): LoungeStripeSubscripti
   const scheduleId =
     typeof sub.schedule === 'string' ? sub.schedule : sub.schedule?.id;
   const customerId =
-    typeof sub.customer === 'string' ? sub.customer : sub.customer.id;
-  const statusMap: Readonly<
-    Record<Stripe.Subscription.Status, LoungeStripeSubscriptionSnapshot['status']>
-  > = {
-    active: 'active',
-    trialing: 'trialing',
-    past_due: 'past_due',
-    canceled: 'canceled',
-    unpaid: 'unpaid',
-    incomplete: 'incomplete',
-    incomplete_expired: 'incomplete_expired',
-    paused: 'past_due',
-  };
+    typeof sub.customer === 'string' ? sub.customer.trim() : sub.customer?.id?.trim();
+  if (!customerId) {
+    throw new Error(`Stripe subscription "${sub.id}" is missing customer identifier`);
+  }
+  const currency = optionalSupportedCurrency(sub.currency, 'subscription.currency');
 
   return {
     id: sub.id,
     customerId,
-    status: statusMap[sub.status] ?? 'active',
+    status: STRIPE_SUBSCRIPTION_STATUS_MAP[sub.status],
     cancelAtPeriodEnd: Boolean(sub.cancel_at_period_end),
-    currentPeriodEndIso: unixToIso(periodEndUnix),
+    currentPeriodEndIso,
     ...(latestInvoiceId ? { latestInvoiceId } : {}),
     ...(scheduleId ? { scheduleId } : {}),
-    ...(normalizeCurrency(sub.currency) ? { currency: normalizeCurrency(sub.currency) } : {}),
+    ...(currency ? { currency } : {}),
   };
 }
 
@@ -94,13 +123,17 @@ function mapStripeCharge(charge: Stripe.Charge): LoungeStripeChargeRecord {
     typeof charge.payment_intent === 'string'
       ? charge.payment_intent
       : charge.payment_intent?.id;
-  const currency = normalizeCurrency(charge.currency) ?? 'USD';
-  const status: LoungeStripeChargeRecord['status'] =
-    charge.status === 'succeeded'
-      ? 'succeeded'
-      : charge.status === 'failed'
-        ? 'failed'
-        : 'pending';
+  const currency = requireSupportedCurrency(charge.currency, 'charge.currency');
+  let status: LoungeStripeChargeRecord['status'];
+  if (charge.status === 'succeeded') {
+    status = 'succeeded';
+  } else if (charge.status === 'failed') {
+    status = 'failed';
+  } else if (charge.status === 'pending') {
+    status = 'pending';
+  } else {
+    throw new Error(`Unrecognized Stripe charge status "${String(charge.status)}"`);
+  }
 
   return {
     id: charge.id,
@@ -111,7 +144,7 @@ function mapStripeCharge(charge: Stripe.Charge): LoungeStripeChargeRecord {
     refunded: charge.refunded,
     disputed: charge.disputed,
     currency,
-    createdIso: unixToIso(charge.created),
+    createdIso: requireUnixTimestampIso(charge.created, 'charge.created'),
     ...(paymentIntentId ? { paymentIntentId } : {}),
     ...(charge.receipt_url ? { receiptUrl: charge.receipt_url } : {}),
     metadata: extractStringMetadata(charge.metadata),
@@ -120,7 +153,7 @@ function mapStripeCharge(charge: Stripe.Charge): LoungeStripeChargeRecord {
 
 /**
  * Production Stripe SDK v23 (`2026-11-18.endive`) gateway adapter enforcing pre-created Customers,
- * `items.data[0].current_period_end`, `invoicePayments.list` refund attribution, and idempotency keys.
+ * `items.data[0].current_period_end`, `invoicePayments.list` refund attribution, and fail-fast schema parsing.
  */
 export class StripeSdkGatewayAdapter implements ILoungeStripeGatewayPort {
   private readonly stripe: Stripe;
@@ -197,13 +230,48 @@ export class StripeSdkGatewayAdapter implements ILoungeStripeGatewayPort {
   }
 
   public async retrieveCheckoutSession(sessionId: string): Promise<LoungeStripeCheckoutSession> {
-    const session = await this.stripe.checkout.sessions.retrieve(sessionId, {
-      expand: ['payment_intent', 'subscription'],
-    });
+    let session: Stripe.Checkout.Session;
+    try {
+      session = await this.stripe.checkout.sessions.retrieve(sessionId, {
+        expand: ['payment_intent', 'subscription'],
+      });
+    } catch (err) {
+      if (isStripeResourceMissing(err)) {
+        throw new LoungeNotFoundError(`Stripe Checkout Session "${sessionId}" was not found`, {
+          cause: err,
+        });
+      }
+      throw err;
+    }
+
     const customerId =
       typeof session.customer === 'string'
-        ? session.customer
-        : session.customer?.id ?? '';
+        ? session.customer.trim()
+        : session.customer?.id?.trim();
+    if (!customerId) {
+      throw new Error(`Stripe Checkout Session "${session.id}" is missing customer`);
+    }
+    let mode: 'payment' | 'subscription';
+    if (session.mode === 'payment') {
+      mode = 'payment';
+    } else if (session.mode === 'subscription') {
+      mode = 'subscription';
+    } else {
+      throw new Error(`Unsupported Stripe Checkout Session mode "${String(session.mode)}"`);
+    }
+    let paymentStatus: LoungeStripeCheckoutSession['paymentStatus'];
+    if (session.payment_status === 'paid') {
+      paymentStatus = 'paid';
+    } else if (session.payment_status === 'no_payment_required') {
+      paymentStatus = 'no_payment_required';
+    } else if (session.payment_status === 'unpaid') {
+      paymentStatus = 'unpaid';
+    } else {
+      throw new Error(
+        `Unsupported Stripe Checkout Session payment_status "${String(session.payment_status)}"`,
+      );
+    }
+
     const piObj =
       typeof session.payment_intent === 'object' && session.payment_intent !== null
         ? session.payment_intent
@@ -211,30 +279,24 @@ export class StripeSdkGatewayAdapter implements ILoungeStripeGatewayPort {
     const paymentIntentId =
       typeof session.payment_intent === 'string' ? session.payment_intent : piObj?.id;
     const paymentIntentCreatedIso = piObj?.created
-      ? unixToIso(piObj.created)
-      : unixToIso(session.created);
+      ? requireUnixTimestampIso(piObj.created, 'checkout_session.payment_intent.created')
+      : requireUnixTimestampIso(session.created, 'checkout_session.created');
     const subId =
       typeof session.subscription === 'string'
         ? session.subscription
         : session.subscription?.id;
+    const currency = requireSupportedCurrency(session.currency, 'checkout_session.currency');
 
     return {
       id: session.id,
       url: session.url ?? '',
       customerId,
-      mode: session.mode === 'subscription' ? 'subscription' : 'payment',
-      paymentStatus:
-        session.payment_status === 'paid'
-          ? 'paid'
-          : session.payment_status === 'no_payment_required'
-            ? 'no_payment_required'
-            : 'unpaid',
+      mode,
+      paymentStatus,
       ...(paymentIntentId ? { paymentIntentId } : {}),
       paymentIntentCreatedIso,
       ...(subId ? { subscriptionId: subId } : {}),
-      ...(normalizeCurrency(session.currency)
-        ? { currency: normalizeCurrency(session.currency) }
-        : {}),
+      currency,
       ...(session.amount_total !== null && session.amount_total !== undefined
         ? { amountTotal: session.amount_total }
         : {}),
@@ -284,10 +346,19 @@ export class StripeSdkGatewayAdapter implements ILoungeStripeGatewayPort {
   public async retrieveSubscription(
     subscriptionId: string,
   ): Promise<LoungeStripeSubscriptionSnapshot> {
-    const sub = await this.stripe.subscriptions.retrieve(subscriptionId, {
-      expand: ['schedule', 'latest_invoice'],
-    });
-    return mapStripeSubscription(sub);
+    try {
+      const sub = await this.stripe.subscriptions.retrieve(subscriptionId, {
+        expand: ['schedule', 'latest_invoice'],
+      });
+      return mapStripeSubscription(sub);
+    } catch (err) {
+      if (isStripeResourceMissing(err)) {
+        throw new LoungeNotFoundError(`Stripe subscription "${subscriptionId}" was not found`, {
+          cause: err,
+        });
+      }
+      throw err;
+    }
   }
 
   public async listCharges(params: {
@@ -307,8 +378,17 @@ export class StripeSdkGatewayAdapter implements ILoungeStripeGatewayPort {
   }
 
   public async retrieveCharge(chargeId: string): Promise<LoungeStripeChargeRecord> {
-    const charge = await this.stripe.charges.retrieve(chargeId);
-    return mapStripeCharge(charge);
+    try {
+      const charge = await this.stripe.charges.retrieve(chargeId);
+      return mapStripeCharge(charge);
+    } catch (err) {
+      if (isStripeResourceMissing(err)) {
+        throw new LoungeNotFoundError(`Stripe charge "${chargeId}" was not found`, {
+          cause: err,
+        });
+      }
+      throw err;
+    }
   }
 
   public async resolveInvoiceByPaymentIntent(
@@ -335,12 +415,35 @@ export class StripeSdkGatewayAdapter implements ILoungeStripeGatewayPort {
     }
     const parentSub = invoiceObj?.parent?.subscription_details?.subscription;
     const subscriptionId = typeof parentSub === 'string' ? parentSub : parentSub?.id;
-    const periodEndIso = invoiceObj?.period_end ? unixToIso(invoiceObj.period_end) : undefined;
+    const periodEndIso =
+      typeof invoiceObj?.period_end === 'number' && invoiceObj.period_end > 0
+        ? requireUnixTimestampIso(invoiceObj.period_end, 'invoice.period_end')
+        : undefined;
     return {
       id: invoiceId,
       ...(subscriptionId ? { subscriptionId } : {}),
       ...(periodEndIso ? { periodEndIso } : {}),
+      paymentIntentId,
     };
+  }
+
+  public async resolvePaymentIntentByInvoice(invoiceId: string): Promise<string | null> {
+    const list = await this.stripe.invoicePayments.list({
+      invoice: invoiceId,
+      limit: 5,
+    });
+    for (const entry of list.data) {
+      if (entry.status === 'paid' && entry.payment?.type === 'payment_intent') {
+        const pi = entry.payment.payment_intent;
+        if (typeof pi === 'string' && pi.trim()) {
+          return pi.trim();
+        }
+        if (typeof pi === 'object' && pi !== null && 'id' in pi && typeof pi.id === 'string') {
+          return pi.id;
+        }
+      }
+    }
+    return null;
   }
 
   public async createFullRefund(params: {

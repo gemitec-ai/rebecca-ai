@@ -7,7 +7,6 @@ import type {
   LoungeLanguage,
   LoungeSubscriptionDoc,
   LoungeTrialGrantDoc,
-  LoungeUser,
   LoungeUserDisclaimerConsent,
   LoungeUserDoc,
 } from '@rebecca/types';
@@ -15,46 +14,23 @@ import {
   DEFAULT_LOUNGE_TIMEZONE,
   LOUNGE_CREDIT_LOT_VALIDITY_DAYS,
   LOUNGE_DAILY_QUOTA_BY_TIER,
-  LOUNGE_TRIAL_GRANT_RETENTION_DAYS,
+  LOUNGE_WELCOME_BONUS_CREDITS,
+  computeTrialGrantRetainUntilIso,
+} from '../../billing/domain/loungeCatalog.constants';
+import { LoungeAuthError, LoungeConflictError, LoungeNotFoundError } from '../../../utils/errors';
+import { parseValidIanaTimezone } from '../../../utils/locale';
+import {
   computeActiveTrialGrantHash,
   computeAllTrialGrantHashes,
   type TrialHmacKeyring,
-} from '../../../config/loungeConfig';
-import { LoungeAuthError, LoungeConflictError, LoungeNotFoundError } from '../../../utils/errors';
+} from '../../../utils/trialGrantHmac';
 import {
   createQuotaLedgerEntry,
   nextLocalMidnightAfter,
 } from '../../billing/domain/loungeQuota.engine';
-import type { IFirebaseAdminAuthLike } from '../adapters/firebaseLoungeAuth.verifier';
+import type { IFirebaseIdentityClient } from '../ports/firebaseIdentity.port';
 
-const WELCOME_BONUS_TURNS = 20;
 const DAY_MS = 24 * 60 * 60 * 1000;
-
-/**
- * Strips server-only Dreaming memory fields (`coreProfile`, `episodicBuffer`, `lastDreamedAt`, `dailySearchCount`)
- * before returning an authenticated user profile across BFF HTTP responses.
- */
-export function toPublicLoungeUser(doc: LoungeUserDoc): LoungeUser {
-  return {
-    uid: doc.uid,
-    xUserId: doc.xUserId,
-    xHandle: doc.xHandle,
-    displayName: doc.displayName,
-    avatarUrl: doc.avatarUrl,
-    status: doc.status,
-    language: doc.language,
-    timezone: doc.timezone,
-    onboardingCompleted: doc.onboardingCompleted,
-    allowServiceImprovementAnalytics: doc.allowServiceImprovementAnalytics,
-    ...(doc.countryCode !== undefined ? { countryCode: doc.countryCode } : {}),
-    ...(doc.isEeaResident !== undefined ? { isEeaResident: doc.isEeaResident } : {}),
-    ...(doc.preferredCurrency !== undefined ? { preferredCurrency: doc.preferredCurrency } : {}),
-    disclaimerConsent: doc.disclaimerConsent,
-    createdAt: doc.createdAt,
-    updatedAt: doc.updatedAt,
-    lastLoginAt: doc.lastLoginAt,
-  };
-}
 
 /**
  * Parameters passed when persisting a newly onboarded X-linked Lounge user.
@@ -67,9 +43,9 @@ export interface CreateLoungeUserWithConsentInput {
   readonly avatarUrl: string;
   readonly disclaimerConsent: LoungeUserDisclaimerConsent;
   readonly onboardingCompleted: boolean;
+  readonly allowServiceImprovementAnalytics: boolean;
   readonly language?: LoungeLanguage;
   readonly timezone?: string;
-  readonly allowServiceImprovementAnalytics?: boolean;
   readonly countryCode?: string;
   readonly isEeaResident?: boolean;
   readonly preferredCurrency?: LoungeCurrency;
@@ -79,10 +55,33 @@ export interface CreateLoungeUserWithConsentInput {
  * Persistence boundary for isolated `lounge_users` authentication, preferences, and consent state.
  */
 export interface ILoungeAuthRepository {
+  /** Finds a Private Lounge user record by Firebase Auth `uid`, or returns `null` if absent. */
   findUserByUid(uid: string): Promise<LoungeUserDoc | null>;
+  /**
+   * Finds a Private Lounge user record by linked X user ID, or returns `null` if absent.
+   *
+   * @throws Error When `xUserId` is empty or whitespace.
+   */
   findUserByXUserId(xUserId: string): Promise<LoungeUserDoc | null>;
+  /**
+   * Atomically creates a user profile, initial `FREE` subscription, and non-PII welcome grant record.
+   *
+   * @throws LoungeConflictError When UID or X user ID is already registered (`409`).
+   * @throws LoungeAuthError When X identity hash carries an active `DISPUTE_BLOCKED` flag (`403`).
+   */
   createUserWithConsent(input: CreateLoungeUserWithConsentInput): Promise<LoungeUserDoc>;
+  /**
+   * Transactionally records login timestamp on an active user record.
+   *
+   * @throws LoungeNotFoundError When user document does not exist (`404`).
+   * @throws LoungeAuthError When user status is not `ACTIVE` (`403`).
+   */
   recordLoginTimestamp(uid: string, timestampIso: string): Promise<void>;
+  /**
+   * Updates user locale, onboarding status, or service-analytics consent transactionally.
+   *
+   * @throws LoungeNotFoundError When user document does not exist (`404`).
+   */
   updateUserPreferences(
     uid: string,
     language?: LoungeLanguage,
@@ -90,12 +89,28 @@ export interface ILoungeAuthRepository {
     onboardingCompleted?: boolean,
     allowServiceImprovementAnalytics?: boolean,
   ): Promise<LoungeUserDoc>;
+  /**
+   * Records accepted legal disclaimer version transactionally.
+   *
+   * @throws LoungeNotFoundError When user document does not exist (`404`).
+   */
   updateUserDisclaimerConsent(
     uid: string,
     disclaimerConsent: LoungeUserDisclaimerConsent,
   ): Promise<LoungeUserDoc>;
-  updateUserStatus?(uid: string, status: LoungeAccountStatus): Promise<void>;
+  /** Transitions lifecycle status (`ACTIVE`, `SUSPENDED`, or `DELETING`) transactionally. */
+  updateUserStatus(uid: string, status: LoungeAccountStatus): Promise<void>;
+  /**
+   * Revokes refresh tokens in Firebase Auth (tolerating missing accounts).
+   *
+   * @throws Error When Firebase Auth session revocation fails unexpectedly.
+   */
   revokeSession(uid: string): Promise<void>;
+  /**
+   * Deletes Firebase Auth credentials and `lounge_users/{uid}` profile record.
+   *
+   * @throws Error When Firebase Auth deletion fails unexpectedly.
+   */
   deleteUser(uid: string): Promise<void>;
 }
 
@@ -115,7 +130,7 @@ export class LoungeAuthRepository implements ILoungeAuthRepository {
       | 'loungeTrialGrants'
     >,
     private readonly trialHmacKeyring: TrialHmacKeyring,
-    private readonly firebaseAuth?: Pick<IFirebaseAdminAuthLike, 'revokeRefreshTokens' | 'deleteUser'>,
+    private readonly firebaseAuth: Pick<IFirebaseIdentityClient, 'revokeRefreshTokens' | 'deleteUser'>,
   ) {}
 
   /** Finds an isolated Private Lounge user record by Firebase Auth UID. */
@@ -147,18 +162,24 @@ export class LoungeAuthRepository implements ILoungeAuthRepository {
 
   /**
    * Transactionally registers a 1:1 X-linked user, creates an initial `FREE` subscription row,
-   * and grants the one-time `+20` welcome bonus lot unless previously claimed or dispute-blocked.
+   * and grants the one-time `+20` welcome bonus lot unless previously claimed or dispute-blocked
+   * within the active 3-year `lounge_trial_grants.retainUntil` retention window.
    *
    * @throws LoungeConflictError When UID or X user ID is already registered (`409`).
-   * @throws LoungeAuthError When the anonymized X hash carries `DISPUTE_BLOCKED` (`403`).
+   * @throws LoungeAuthError When an active non-expired X hash carries `DISPUTE_BLOCKED` (`403`).
    */
   public async createUserWithConsent(
     input: CreateLoungeUserWithConsentInput,
   ): Promise<LoungeUserDoc> {
     assertLoungeRecordOwnedByUid({ uid: input.uid }, input.uid, COLLECTIONS.LOUNGE_USERS);
     const now = new Date();
+    const nowMs = now.getTime();
     const nowIso = now.toISOString();
-    const timezone = input.timezone?.trim() || DEFAULT_LOUNGE_TIMEZONE;
+    const trimmedTimezone = input.timezone?.trim();
+    const timezone =
+      trimmedTimezone !== undefined && trimmedTimezone.length > 0
+        ? parseValidIanaTimezone(trimmedTimezone)
+        : DEFAULT_LOUNGE_TIMEZONE;
     const language = input.language ?? 'ja';
     const nextResetIso = nextLocalMidnightAfter(now, timezone);
 
@@ -182,12 +203,17 @@ export class LoungeAuthRepository implements ILoungeAuthRepository {
         throw new LoungeConflictError('An account linked to this X account is already registered');
       }
 
-      const existingGrants = grantSnaps
+      // Exclude grants past retainUntil even before Firestore's asynchronous TTL worker sweeps them.
+      const activeGrants = grantSnaps
         .filter((s) => s.exists)
         .map((s) => s.data())
-        .filter((d): d is LoungeTrialGrantDoc => d !== undefined);
+        .filter((d): d is LoungeTrialGrantDoc => {
+          if (!d) return false;
+          const retainMs = Date.parse(d.retainUntil);
+          return Number.isFinite(retainMs) && retainMs > nowMs;
+        });
 
-      if (existingGrants.some((g) => g.riskStatus === 'DISPUTE_BLOCKED')) {
+      if (activeGrants.some((g) => g.riskStatus === 'DISPUTE_BLOCKED')) {
         throw new LoungeAuthError(
           403,
           'Account registration is blocked due to prior unresolved payment dispute',
@@ -195,8 +221,8 @@ export class LoungeAuthRepository implements ILoungeAuthRepository {
         );
       }
 
-      const priorWelcomeAt = existingGrants.find((g) => Boolean(g.welcomeBonusGrantedAt))?.welcomeBonusGrantedAt;
-      const priorTrialAt = existingGrants.find((g) => Boolean(g.trialTicketGrantedAt))?.trialTicketGrantedAt;
+      const priorWelcomeAt = activeGrants.find((g) => Boolean(g.welcomeBonusGrantedAt))?.welcomeBonusGrantedAt;
+      const priorTrialAt = activeGrants.find((g) => Boolean(g.trialTicketGrantedAt))?.trialTicketGrantedAt;
       const grantWelcome = !priorWelcomeAt;
 
       const userDoc: LoungeUserDoc = {
@@ -209,7 +235,7 @@ export class LoungeAuthRepository implements ILoungeAuthRepository {
         language,
         timezone,
         onboardingCompleted: input.onboardingCompleted,
-        allowServiceImprovementAnalytics: input.allowServiceImprovementAnalytics ?? true,
+        allowServiceImprovementAnalytics: input.allowServiceImprovementAnalytics,
         ...(input.countryCode !== undefined ? { countryCode: input.countryCode } : {}),
         ...(input.isEeaResident !== undefined ? { isEeaResident: input.isEeaResident } : {}),
         ...(input.preferredCurrency !== undefined
@@ -222,10 +248,10 @@ export class LoungeAuthRepository implements ILoungeAuthRepository {
       };
 
       const welcomeExpiresIso = new Date(
-        now.getTime() + LOUNGE_CREDIT_LOT_VALIDITY_DAYS * DAY_MS,
+        nowMs + LOUNGE_CREDIT_LOT_VALIDITY_DAYS * DAY_MS,
       ).toISOString();
       const dailyQuota = LOUNGE_DAILY_QUOTA_BY_TIER.FREE;
-      const purchasedRemaining = grantWelcome ? WELCOME_BONUS_TURNS : 0;
+      const purchasedRemaining = grantWelcome ? LOUNGE_WELCOME_BONUS_CREDITS : 0;
 
       const subDoc: LoungeSubscriptionDoc = {
         uid: input.uid,
@@ -260,17 +286,15 @@ export class LoungeAuthRepository implements ILoungeAuthRepository {
           uid: input.uid,
           productId: 'WELCOME_BONUS_20',
           isPaid: false,
-          initialTurns: WELCOME_BONUS_TURNS,
-          remainingTurns: WELCOME_BONUS_TURNS,
+          initialTurns: LOUNGE_WELCOME_BONUS_CREDITS,
+          remainingTurns: LOUNGE_WELCOME_BONUS_CREDITS,
           currency: 'NONE',
           unitAmount: 0,
           status: 'ACTIVE',
           purchasedAt: nowIso,
           expiresAt: welcomeExpiresIso,
         };
-        const retainUntil = new Date(
-          now.getTime() + LOUNGE_TRIAL_GRANT_RETENTION_DAYS * DAY_MS,
-        ).toISOString();
+        const retainUntil = computeTrialGrantRetainUntilIso(now);
         const trialGrant: LoungeTrialGrantDoc = {
           xUserIdHash: activeHash.hash,
           keyVersion: activeHash.keyVersion,
@@ -283,7 +307,7 @@ export class LoungeAuthRepository implements ILoungeAuthRepository {
           uid: input.uid,
           deltaType: 'GRANT_WELCOME',
           deltaDaily: 0,
-          deltaPurchased: WELCOME_BONUS_TURNS,
+          deltaPurchased: LOUNGE_WELCOME_BONUS_CREDITS,
           balanceTotalAfter: subDoc.remainingChatTurns,
           lotId: welcomeLotId,
           referenceId: welcomeLotId,
@@ -299,16 +323,26 @@ export class LoungeAuthRepository implements ILoungeAuthRepository {
     });
   }
 
-  /** Updates the `lastLoginAt` audit timestamp on `lounge_users`. */
+  /**
+   * Transactionally updates `lastLoginAt` on `lounge_users` while verifying the account remains `ACTIVE`.
+   *
+   * @throws LoungeNotFoundError When `lounge_users/{uid}` does not exist (`404`).
+   * @throws LoungeAuthError When account status is not `ACTIVE` (`403`).
+   */
   public async recordLoginTimestamp(uid: string, timestampIso: string): Promise<void> {
     assertLoungeRecordOwnedByUid({ uid }, uid, COLLECTIONS.LOUNGE_USERS);
     const ref = this.collections.loungeUsers.doc(uid);
-    const snap = await ref.get();
-    const existing = snap.data();
-    if (!snap.exists || !existing) {
-      throw new LoungeNotFoundError(`Private Lounge user "${uid}" not found`);
-    }
-    await ref.set({ ...existing, lastLoginAt: timestampIso });
+    await this.firestore.runTransaction(async (tx: Transaction) => {
+      const snap = await tx.get(ref);
+      const existing = snap.data();
+      if (!snap.exists || !existing) {
+        throw new LoungeNotFoundError(`Private Lounge user "${uid}" not found`);
+      }
+      if (existing.status !== 'ACTIVE') {
+        throw new LoungeAuthError(403, 'Private Lounge account is suspended');
+      }
+      tx.set(ref, { ...existing, lastLoginAt: timestampIso });
+    });
   }
 
   /** Persists updated language, IANA timezone, onboarding completion, or analytics opt-out on `lounge_users`. */
@@ -386,9 +420,6 @@ export class LoungeAuthRepository implements ILoungeAuthRepository {
   /** Revokes active Private Lounge refresh tokens via Firebase Auth (ignores missing user on cleanup). */
   public async revokeSession(uid: string): Promise<void> {
     assertLoungeRecordOwnedByUid({ uid }, uid, COLLECTIONS.LOUNGE_USERS);
-    if (!this.firebaseAuth) {
-      return;
-    }
     try {
       await this.firebaseAuth.revokeRefreshTokens(uid);
     } catch (err) {
@@ -399,21 +430,22 @@ export class LoungeAuthRepository implements ILoungeAuthRepository {
     }
   }
 
-  /** Permanently deletes `lounge_users/{uid}` and the linked Firebase Auth account (tolerating missing user). */
+  /**
+   * Permanently deletes Firebase Auth credentials BEFORE deleting `lounge_users/{uid}` so
+   * interrupted deletions remain authorized for idempotent retries.
+   *
+   * @throws Error When Firebase Auth deletion fails for reasons other than `auth/user-not-found`.
+   */
   public async deleteUser(uid: string): Promise<void> {
     assertLoungeRecordOwnedByUid({ uid }, uid, COLLECTIONS.LOUNGE_USERS);
-    await this.collections.loungeUsers.doc(uid).delete();
-    if (!this.firebaseAuth) {
-      return;
-    }
     try {
       await this.firebaseAuth.deleteUser(uid);
     } catch (err) {
-      if (isFirebaseUserNotFoundError(err)) {
-        return;
+      if (!isFirebaseUserNotFoundError(err)) {
+        throw new Error(`Failed to delete Firebase Auth user "${uid}"`, { cause: err });
       }
-      throw new Error(`Failed to delete Firebase Auth user "${uid}"`, { cause: err });
     }
+    await this.collections.loungeUsers.doc(uid).delete();
   }
 }
 

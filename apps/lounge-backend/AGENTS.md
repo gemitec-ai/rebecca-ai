@@ -1,6 +1,6 @@
 # AGENTS.md — `apps/lounge-backend`
 
-Scoped architectural and contract rules for the **Gemitec Private Lounge** Backend-for-Frontend (BFF) API (`Express 5`). Inherits all global invariants from root `../../AGENTS.md`.
+Scoped architectural and contract rules for the **Rebecca Private Lounge** Backend-for-Frontend (BFF) API (`Express 5`). Inherits all global invariants from root `../../AGENTS.md`.
 
 ## 1. Architecture, Isolation & Security Invariants
 
@@ -11,8 +11,11 @@ Scoped architectural and contract rules for the **Gemitec Private Lounge** Backe
 - **Two-Layer Memory & Strict Table Isolation (`lounge_*` Only for Writes)**:
   - Never mutate `users`, `conversation_logs`, `rag_memories`, `timeline_history`, `system/persona`, `admin_users`, or any Public Bot / Admin collection from `lounge-backend`.
   - Maintain independent per-user Private Lounge Dreaming (`coreProfile`), vectorized RAG (`lounge_rag_memories`), and raw messages separately in `lounge_*`, while reading Public X Bot user context + Layer 1/2/3 self-post memories strictly read-only through `IPublicXMemoryReadPort` and illustrations through `IBotImageAssetSearchPort`.
-- **Scroll-Gated Sign-Up Consent Enforcement**:
-  - Reject `/api/v1/lounge/auth/signup` unless `agreedToGeminiTrainingUsage`, `agreedToZeroPiiProhibition`, `agreedToOneWayMemoryIsolation`, valid `scrolledToBottomAt`, and valid `consentedAt` are explicitly verified at the domain boundary.
+- **Scroll-Gated Sign-Up Consent & Geo-IP Phase Enforcement**:
+  - Enforce Phase 1 EEA/UK/CH blocking (`403 GEO_BLOCKED`) and Geo-IP unavailability blocking (`403 GEO_UNAVAILABLE` when `ALLOW_GEO_FALLBACK_COUNTRY` is false) across `/auth/signup`, `/auth/login`, `/session/messages`, and `/billing/checkout`.
+  - Reject `/api/v1/lounge/auth/signup` and `/api/v1/lounge/account/consent` unless `agreedToGeminiTrainingUsage`, `agreedToZeroPiiProhibition`, `agreedToOneWayMemoryIsolation`, `agreedToNonEeaEligibility` (while Phase 1 is active), valid `scrolledToBottomAt`, and valid `consentedAt` are explicitly verified at the domain boundary.
+- **Configuration Isolation**:
+  - Centralize startup environment variable parsing in `src/config/loungeConfig.ts`, imported exclusively by `src/index.ts`, `src/app.ts`, and config unit tests. Zero `process.env` reads elsewhere in `src/`.
 - **Locale & Time-of-Day Prompt Injection**:
   - Validate the 8 supported Lounge languages (`ja`, `en`, `de`, `pt`, `es`, `zh-HK`, `vi`, `th`) and IANA timezones strictly on `PATCH /api/v1/lounge/account/preferences`, and inject resolved local time and language directives into the AI pipeline.
 - **Mandatory Bounded Pagination**:

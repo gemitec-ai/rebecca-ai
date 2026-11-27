@@ -1,7 +1,7 @@
 {
   "name": "lounge-backend",
   "version": "1.45.2",
-  "description": "Isolated Private Lounge Backend-for-Frontend (BFF) REST API for Gemitec Private Lounge",
+  "description": "Isolated Private Lounge Backend-for-Frontend (BFF) REST API for Rebecca Private Lounge",
   "main": "dist/index.js",
   "scripts": {
     "build": "tsc",

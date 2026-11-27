@@ -3,14 +3,14 @@ import {
   type LoungePaginationQueryDto,
 } from '@rebecca/types';
 import type { Request, Response } from 'express';
-import { loungeLogger, sanitizeLogInput } from './logger';
+import { loungeLogger, toSingleLineLog } from './logger';
 
 /**
- * Extracts and sanitizes Google Cloud Trace context header if present on the incoming HTTP request.
+ * Extracts single-line Google Cloud Trace context header if present on the incoming HTTP request.
  */
 export function extractTraceHeader(req: Request): string | undefined {
   const value = req.headers['x-cloud-trace-context'];
-  return typeof value === 'string' ? sanitizeLogInput(value) : undefined;
+  return typeof value === 'string' ? toSingleLineLog(value) : undefined;
 }
 
 /**
@@ -75,6 +75,17 @@ export class LoungeAuthError extends LoungeHttpError {
 }
 
 /**
+ * Raised when policy, regional eligibility, or feature gates forbid an operation (HTTP 403).
+ */
+export class LoungeForbiddenError extends LoungeHttpError {
+  public override readonly statusCode = 403;
+
+  constructor(message: string, options?: LoungeHttpErrorOptions) {
+    super(403, message, options);
+  }
+}
+
+/**
  * Raised when a user's accepted legal disclaimer version is older than the required BFF version (`HTTP 403`).
  */
 export class LoungeDisclaimerReconsentRequiredError extends LoungeAuthError {
@@ -115,15 +126,6 @@ export class LoungeNotFoundError extends LoungeHttpError {
 export class LoungeQuotaExhaustedError extends LoungeHttpError {
   constructor(message: string, options?: LoungeHttpErrorOptions) {
     super(429, message, options);
-  }
-}
-
-/**
- * Raised by architecture skeleton stub methods awaiting concrete Firestore/AI wiring (HTTP 501).
- */
-export class LoungeNotImplementedError extends LoungeHttpError {
-  constructor(methodName: string, options?: LoungeHttpErrorOptions) {
-    super(501, `${methodName} is an architecture skeleton stub awaiting implementation`, options);
   }
 }
 
@@ -195,13 +197,18 @@ export function handleLoungeControllerError(
   operation: string,
   traceHeader?: string,
 ): void {
+  // Format operation and reason unconditionally before branching to keep log safety uniform.
+  const safeOperation = toSingleLineLog(operation);
+  const safeReason =
+    err instanceof Error ? toSingleLineLog(err.message) : toSingleLineLog(String(err));
+
   if (err instanceof LoungeHttpError && err.statusCode < 500) {
     loungeLogger.warn(
-      `Client or business rejection in ${sanitizeLogInput(operation)}`,
+      `Client or business rejection in ${safeOperation}`,
       {
         statusCode: err.statusCode,
         ...(err.code ? { code: err.code } : {}),
-        reason: sanitizeLogInput(err.message),
+        reason: safeReason,
       },
       traceHeader,
     );
@@ -213,21 +220,11 @@ export function handleLoungeControllerError(
     return;
   }
 
-  if (err instanceof LoungeNotImplementedError) {
-    loungeLogger.warn(
-      `Skeleton stub invoked for ${sanitizeLogInput(operation)}`,
-      { statusCode: err.statusCode, reason: sanitizeLogInput(err.message) },
-      traceHeader,
-    );
-    res.status(err.statusCode).json({ error: err.message });
-    return;
-  }
-
   if (err instanceof LoungeHttpError) {
     loungeLogger.error(
-      `HTTP error invariant breach in ${sanitizeLogInput(operation)}`,
+      `HTTP error invariant breach in ${safeOperation}`,
       err,
-      { statusCode: err.statusCode, operation: sanitizeLogInput(operation) },
+      { statusCode: err.statusCode, operation: safeOperation },
       traceHeader,
     );
     res.status(err.statusCode).json({
@@ -240,11 +237,11 @@ export function handleLoungeControllerError(
   const normalizedError =
     err instanceof Error
       ? err
-      : new Error(`Unexpected failure during ${operation}`, { cause: err });
+      : new Error(`Unexpected failure during ${safeOperation}`, { cause: err });
   loungeLogger.error(
-    `Unhandled failure in ${sanitizeLogInput(operation)}`,
+    `Unhandled failure in ${safeOperation}`,
     normalizedError,
-    { operation: sanitizeLogInput(operation) },
+    { operation: safeOperation },
     traceHeader,
   );
   res.status(500).json({ error: 'Internal server error' });

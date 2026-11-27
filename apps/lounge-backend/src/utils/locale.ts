@@ -1,17 +1,20 @@
-import type { LoungeLanguage } from '@rebecca/types';
+import { LOUNGE_SUPPORTED_LANGUAGES, type LoungeLanguage } from '@rebecca/types';
 import { LoungeValidationError } from './errors';
 
-/** All languages supported across the Private Lounge UI and AI prompt injection. */
-export const SUPPORTED_LOUNGE_LANGUAGES: readonly LoungeLanguage[] = [
-  'ja',
-  'en',
-  'de',
-  'pt',
-  'es',
-  'zh-HK',
-  'vi',
-  'th',
-];
+/** All languages supported across the Private Lounge UI and AI prompt injection (re-exported SSOT). */
+export const SUPPORTED_LOUNGE_LANGUAGES: readonly LoungeLanguage[] = LOUNGE_SUPPORTED_LANGUAGES;
+
+/** Human-readable language directive labels shared across Lounge prompt synthesis and locale rules. */
+export const LOUNGE_LANGUAGE_LABELS: Readonly<Record<LoungeLanguage, string>> = {
+  ja: 'Japanese (日本語)',
+  en: 'English',
+  de: 'German (Deutsch)',
+  pt: 'Portuguese (Português)',
+  es: 'Spanish (Español)',
+  'zh-HK': 'Traditional Chinese with Hong Kong Cantonese nuance (繁體中文・香港)',
+  vi: 'Vietnamese (Tiếng Việt)',
+  th: 'Thai (ภาษาไทย)',
+};
 
 const ISO_DATE_TIME_PATTERN =
   /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$/;
@@ -52,6 +55,22 @@ export function parseValidIanaTimezone(raw: unknown): string {
     throw new LoungeValidationError(`Invalid IANA timezone identifier "${tz}"`);
   }
   return tz;
+}
+
+/**
+ * Returns a trimmed, ICU-valid IANA timezone identifier, falling back to `fallback` when blank or invalid.
+ */
+export function normalizeIanaTimezoneOrDefault(timezone: string, fallback: string): string {
+  const trimmed = timezone.trim();
+  if (!trimmed) {
+    return fallback;
+  }
+  try {
+    new Intl.DateTimeFormat('en-US', { timeZone: trimmed }).format(new Date());
+    return trimmed;
+  } catch {
+    return fallback;
+  }
 }
 
 /**

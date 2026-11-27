@@ -3,27 +3,34 @@ import { FieldValue, type Firestore, type Transaction } from '@google-cloud/fire
 import {
   COLLECTIONS,
   assertLoungeRecordOwnedByUid,
-  createUserScopedLoungeDb,
+  createUserScopedLoungeSessionDb,
   type DbCollections,
 } from '@rebecca/db';
-import type {
-  ConversationLogEntry,
-  LoungeEmotionState,
-  LoungeMemoryCategory,
-  LoungeMessage,
-  LoungeMessageDoc,
-  LoungeMessageListResponseDto,
-  LoungePaginationQueryDto,
-  LoungeRagMemory,
-  LoungeRagMemoryDoc,
-  LoungeSession,
-  LoungeSessionDoc,
-  LoungeTokenUsage,
+import {
+  toPublicLoungeMessage,
+  type ConversationLogEntry,
+  type LoungeEmotionState,
+  type LoungeMemoryCategory,
+  type LoungeMessage,
+  type LoungeMessageDoc,
+  type LoungeMessageListResponseDto,
+  type LoungePaginationQueryDto,
+  type LoungeRagMemory,
+  type LoungeRagMemoryDoc,
+  type LoungeSession,
+  type LoungeSessionDoc,
+  type LoungeTokenUsage,
 } from '@rebecca/types';
-import { normalizePaginationLimit, normalizePaginationQuery } from '../../../utils/errors';
+import {
+  LoungeAuthError,
+  LoungeValidationError,
+  normalizePaginationLimit,
+  normalizePaginationQuery,
+} from '../../../utils/errors';
 import { deleteQueryInBatches } from '../../../utils/firestoreBatch';
 
 const MAX_EPISODIC_BUFFER_ENTRIES = 40;
+const MAX_LOUNGE_RAG_MEMORIES = 100;
 
 /** Computes normalized cosine similarity in `[-1, 1]` between equal-length vectors. */
 export function computeCosineSimilarity(
@@ -56,10 +63,12 @@ export interface AppendLoungeMessagePairInput {
   readonly userContent: string;
   readonly userEmotion: LoungeEmotionState;
   readonly assistantContent: string;
+  readonly assistantThought?: string;
   readonly assistantEmotion: LoungeEmotionState;
   readonly assistantTokenUsage: LoungeTokenUsage;
   readonly imageAssetId?: string;
   readonly imageUrl?: string;
+  readonly publicXMemorySyncedAt?: string;
 }
 
 /**
@@ -76,19 +85,39 @@ export interface AppendLoungeMessagePairResult {
  * (`lounge_sessions`, `lounge_messages`, and vectorized `lounge_rag_memories`).
  */
 export interface ILoungeSessionRepository {
+  /** Retrieves the caller's existing singleton session, or `null` if none exists yet. */
+  findSessionByUid(uid: string): Promise<LoungeSession | null>;
+  /** Retrieves or atomically creates the single persistent session owned 1:1 by `uid`. */
   getOrCreateSingletonSession(uid: string, publicXMemorySyncedAt: string): Promise<LoungeSession>;
+  /**
+   * Lists paginated public messages ordered chronologically (`[oldest..newest]`) per page.
+   *
+   * @throws LoungeValidationError When an explicit `cursor` does not exist or belongs to another user (`400`).
+   */
   listMessages(
     uid: string,
     query?: LoungePaginationQueryDto,
   ): Promise<LoungeMessageListResponseDto>;
-  listRecentMessages(uid: string, limit?: number): Promise<LoungeMessage[]>;
+  /** Queries the latest internal message documents returned oldest-to-newest for LLM continuity. */
+  listRecentMessages(uid: string, limit?: number): Promise<LoungeMessageDoc[]>;
+  /**
+   * Executes cosine vector search over isolated `lounge_rag_memories` owned by `uid`.
+   *
+   * @throws Error When production vector search fails unexpectedly.
+   */
   searchPrivateRagMemoriesByVector(
     uid: string,
     queryEmbedding: readonly number[],
     limit?: number,
   ): Promise<LoungeRagMemory[]>;
+  /**
+   * Atomically appends user and assistant turns while verifying `lounge_users/{uid}` remains `ACTIVE`.
+   *
+   * @throws LoungeAuthError When the owning user record is missing or no longer `ACTIVE` (`403`).
+   */
   appendMessagePair(input: AppendLoungeMessagePairInput): Promise<AppendLoungeMessagePairResult>;
-  indexPrivateTurnMemory?(input: {
+  /** Stores turn vector embedding, prunes overflow memories, and appends Dreaming episodic entries. */
+  indexPrivateTurnMemory(input: {
     readonly uid: string;
     readonly sessionId: string;
     readonly category: LoungeMemoryCategory;
@@ -97,6 +126,7 @@ export interface ILoungeSessionRepository {
     readonly salienceScore: number;
     readonly episodicEntries: ReadonlyArray<ConversationLogEntry>;
   }): Promise<void>;
+  /** Permanently deletes session metadata, messages, and RAG memories owned by `uid`. */
   deleteAllUserSessionData(uid: string): Promise<void>;
 }
 
@@ -109,21 +139,18 @@ export class LoungeSessionRepository implements ILoungeSessionRepository {
     private readonly firestore: Firestore,
     private readonly collections: Pick<
       DbCollections,
-      | 'loungeUsers'
-      | 'loungeSubscriptions'
-      | 'loungeSessions'
-      | 'loungeMessages'
-      | 'loungeRagMemories'
-      | 'loungeGallery'
-      | 'loungeCreditLots'
-      | 'loungeQuotaLedger'
+      'loungeUsers' | 'loungeSessions' | 'loungeMessages' | 'loungeRagMemories'
     >,
-    private readonly isEmulator: boolean = Boolean(process.env['FIRESTORE_EMULATOR_HOST']),
+    private readonly isEmulator: boolean = false,
   ) {}
 
-  /** Enforces `[1, 100]` pagination limit clamping for message queries. */
-  public clampLimit(limit?: number): number {
-    return normalizePaginationLimit(limit);
+  /** Retrieves the caller's existing singleton session document, or `null` when not yet initialized. */
+  public async findSessionByUid(uid: string): Promise<LoungeSession | null> {
+    assertLoungeRecordOwnedByUid({ uid }, uid, COLLECTIONS.LOUNGE_SESSIONS);
+    const scoped = createUserScopedLoungeSessionDb(this.collections, uid);
+    const snap = await scoped.sessionDoc().get();
+    const existing = snap.data();
+    return snap.exists && existing ? scoped.assertOwned(existing, COLLECTIONS.LOUNGE_SESSIONS) : null;
   }
 
   /** Fetches or provisions the single persistent conversation session owned 1:1 by `uid`. */
@@ -132,7 +159,7 @@ export class LoungeSessionRepository implements ILoungeSessionRepository {
     publicXMemorySyncedAt: string,
   ): Promise<LoungeSession> {
     assertLoungeRecordOwnedByUid({ uid }, uid, COLLECTIONS.LOUNGE_SESSIONS);
-    const scoped = createUserScopedLoungeDb(this.collections, uid);
+    const scoped = createUserScopedLoungeSessionDb(this.collections, uid);
     const sessionRef = scoped.sessionDoc();
 
     return this.firestore.runTransaction(async (tx: Transaction) => {
@@ -159,8 +186,10 @@ export class LoungeSessionRepository implements ILoungeSessionRepository {
   }
 
   /**
-   * Lists paginated messages ordered chronologically (`[oldest..newest]`) per page for `uid`'s single session.
-   * Supports backward cursor pagination (`cursor = oldestLoadedMessageId`) and numbered page offset fallback.
+   * Lists paginated public messages ordered chronologically (`[oldest..newest]`) per page
+   * with server-only internal thoughts stripped.
+   *
+   * @throws LoungeValidationError When an explicit `cursor` does not exist or belongs to another user (`400`).
    */
   public async listMessages(
     uid: string,
@@ -168,7 +197,17 @@ export class LoungeSessionRepository implements ILoungeSessionRepository {
   ): Promise<LoungeMessageListResponseDto> {
     assertLoungeRecordOwnedByUid({ uid }, uid, COLLECTIONS.LOUNGE_MESSAGES);
     const safeQuery = normalizePaginationQuery(query);
-    const scoped = createUserScopedLoungeDb(this.collections, uid);
+    const scoped = createUserScopedLoungeSessionDb(this.collections, uid);
+
+    let cursorSnap:
+      | Awaited<ReturnType<ReturnType<DbCollections['loungeMessages']['doc']>['get']>>
+      | undefined;
+    if (safeQuery.cursor) {
+      cursorSnap = await this.collections.loungeMessages.doc(safeQuery.cursor).get();
+      if (!cursorSnap.exists || cursorSnap.data()?.uid !== uid) {
+        throw new LoungeValidationError('Invalid message pagination cursor');
+      }
+    }
 
     const countSnap = await scoped.messagesQuery().count().get();
     const totalItems = countSnap.data().count;
@@ -193,11 +232,8 @@ export class LoungeSessionRepository implements ILoungeSessionRepository {
       .orderBy('createdAt', 'desc')
       .orderBy('__name__', 'desc');
 
-    if (safeQuery.cursor) {
-      const cursorSnap = await this.collections.loungeMessages.doc(safeQuery.cursor).get();
-      if (cursorSnap.exists && cursorSnap.data()?.uid === uid) {
-        descQuery = descQuery.startAfter(cursorSnap);
-      }
+    if (cursorSnap) {
+      descQuery = descQuery.startAfter(cursorSnap);
     } else if (safeQuery.page > 1) {
       const offsetCount = (safeQuery.page - 1) * safeQuery.limit;
       descQuery = descQuery.offset(offsetCount);
@@ -207,7 +243,7 @@ export class LoungeSessionRepository implements ILoungeSessionRepository {
     const hasMore = snap.docs.length > safeQuery.limit;
     const pageDocs = snap.docs
       .slice(0, safeQuery.limit)
-      .map((d) => scoped.assertOwned(d.data(), COLLECTIONS.LOUNGE_MESSAGES));
+      .map((d) => toPublicLoungeMessage(scoped.assertOwned(d.data(), COLLECTIONS.LOUNGE_MESSAGES)));
 
     // Flip newest-first Firestore slice into chronological order `[oldest..newest]`
     const chronological = [...pageDocs].reverse();
@@ -227,11 +263,11 @@ export class LoungeSessionRepository implements ILoungeSessionRepository {
     };
   }
 
-  /** Queries the latest `limit` messages (`createdAt DESC` index) returned oldest-to-newest for LLM context. */
-  public async listRecentMessages(uid: string, limit?: number): Promise<LoungeMessage[]> {
+  /** Queries the latest `limit` internal message docs (`createdAt DESC`) returned oldest-to-newest for LLM context. */
+  public async listRecentMessages(uid: string, limit?: number): Promise<LoungeMessageDoc[]> {
     assertLoungeRecordOwnedByUid({ uid }, uid, COLLECTIONS.LOUNGE_MESSAGES);
-    const safeLimit = this.clampLimit(limit);
-    const scoped = createUserScopedLoungeDb(this.collections, uid);
+    const safeLimit = normalizePaginationLimit(limit);
+    const scoped = createUserScopedLoungeSessionDb(this.collections, uid);
     const snap = await scoped
       .messagesQuery()
       .orderBy('createdAt', 'desc')
@@ -243,15 +279,19 @@ export class LoungeSessionRepository implements ILoungeSessionRepository {
       .reverse();
   }
 
-  /** Executes cosine vector search over isolated `lounge_rag_memories` owned by `uid`. */
+  /**
+   * Executes cosine vector search over isolated `lounge_rag_memories` owned by `uid`.
+   *
+   * @throws Error When vector search fails outside local Firestore Emulator mode.
+   */
   public async searchPrivateRagMemoriesByVector(
     uid: string,
     queryEmbedding: readonly number[],
     limit?: number,
   ): Promise<LoungeRagMemory[]> {
     assertLoungeRecordOwnedByUid({ uid }, uid, COLLECTIONS.LOUNGE_RAG_MEMORIES);
-    const safeLimit = Math.min(this.clampLimit(limit), 10);
-    const scoped = createUserScopedLoungeDb(this.collections, uid);
+    const safeLimit = Math.min(normalizePaginationLimit(limit), 10);
+    const scoped = createUserScopedLoungeSessionDb(this.collections, uid);
 
     if (queryEmbedding.length === 0) {
       const snap = await scoped
@@ -298,12 +338,17 @@ export class LoungeSessionRepository implements ILoungeSessionRepository {
       .map((entry) => entry.mem);
   }
 
-  /** Appends user and assistant message documents atomically and updates singleton session metadata. */
+  /**
+   * Appends user and assistant message documents atomically while verifying `lounge_users/{uid}`
+   * remains `ACTIVE` inside the transaction so concurrent account deletion aborts cleanly.
+   *
+   * @throws LoungeAuthError When `lounge_users/{uid}` is missing or not `ACTIVE` (`403`).
+   */
   public async appendMessagePair(
     input: AppendLoungeMessagePairInput,
   ): Promise<AppendLoungeMessagePairResult> {
     assertLoungeRecordOwnedByUid({ uid: input.uid }, input.uid, COLLECTIONS.LOUNGE_MESSAGES);
-    const scoped = createUserScopedLoungeDb(this.collections, input.uid);
+    const scoped = createUserScopedLoungeSessionDb(this.collections, input.uid);
     const sessionRef = scoped.sessionDoc();
 
     const nowMs = Date.now();
@@ -320,12 +365,14 @@ export class LoungeSessionRepository implements ILoungeSessionRepository {
       createdAt: userCreatedAt,
     };
 
+    const trimmedThought = input.assistantThought?.trim();
     const assistantMessage: LoungeMessageDoc = {
       id: `msg_${nowMs + 1}_a_${crypto.randomUUID().slice(0, 8)}`,
       sessionId: input.sessionId,
       uid: input.uid,
       role: 'ASSISTANT',
       content: input.assistantContent,
+      ...(trimmedThought ? { thought: trimmedThought } : {}),
       emotion: input.assistantEmotion,
       ...(input.imageAssetId ? { imageAssetId: input.imageAssetId } : {}),
       ...(input.imageUrl ? { imageUrl: input.imageUrl } : {}),
@@ -334,7 +381,12 @@ export class LoungeSessionRepository implements ILoungeSessionRepository {
     };
 
     const session = await this.firestore.runTransaction(async (tx: Transaction) => {
-      const snap = await tx.get(sessionRef);
+      const [userSnap, snap] = await Promise.all([tx.get(scoped.userDoc()), tx.get(sessionRef)]);
+      const userDoc = userSnap.data();
+      if (!userSnap.exists || !userDoc || userDoc.status !== 'ACTIVE') {
+        throw new LoungeAuthError(403, 'Private Lounge account is not active');
+      }
+
       const existing = snap.data();
       const baseSession: LoungeSessionDoc =
         snap.exists && existing
@@ -345,7 +397,7 @@ export class LoungeSessionRepository implements ILoungeSessionRepository {
               title: 'Private Lounge',
               messageCount: 0,
               currentEmotion: 'NEUTRAL',
-              publicXMemorySyncedAt: userCreatedAt,
+              publicXMemorySyncedAt: input.publicXMemorySyncedAt ?? userCreatedAt,
               lastMessagePreview: '',
               createdAt: userCreatedAt,
               updatedAt: userCreatedAt,
@@ -356,6 +408,9 @@ export class LoungeSessionRepository implements ILoungeSessionRepository {
         messageCount: baseSession.messageCount + 2,
         currentEmotion: input.assistantEmotion,
         lastMessagePreview: input.assistantContent.slice(0, 120),
+        ...(input.publicXMemorySyncedAt
+          ? { publicXMemorySyncedAt: input.publicXMemorySyncedAt }
+          : {}),
         updatedAt: assistantCreatedAt,
       };
 
@@ -367,14 +422,14 @@ export class LoungeSessionRepository implements ILoungeSessionRepository {
 
     return {
       session,
-      userMessage,
-      assistantMessage,
+      userMessage: toPublicLoungeMessage(userMessage),
+      assistantMessage: toPublicLoungeMessage(assistantMessage),
     };
   }
 
   /**
-   * Asynchronously indexes a single turn summary vector in `lounge_rag_memories` and appends
-   * recent turns to `lounge_users.episodicBuffer` for Nightly Batch Dreaming consolidation.
+   * Indexes a turn summary vector in `lounge_rag_memories` and appends turns to `lounge_users.episodicBuffer`
+   * for Nightly Batch Dreaming consolidation.
    */
   public async indexPrivateTurnMemory(input: {
     readonly uid: string;
@@ -387,6 +442,7 @@ export class LoungeSessionRepository implements ILoungeSessionRepository {
   }): Promise<void> {
     assertLoungeRecordOwnedByUid({ uid: input.uid }, input.uid, COLLECTIONS.LOUNGE_RAG_MEMORIES);
     const nowIso = new Date().toISOString();
+    const scoped = createUserScopedLoungeSessionDb(this.collections, input.uid);
 
     if (input.embedding.length > 0 && input.summary.trim().length > 0) {
       const ragDoc: LoungeRagMemoryDoc = {
@@ -401,6 +457,18 @@ export class LoungeSessionRepository implements ILoungeSessionRepository {
         updatedAt: nowIso,
       };
       await this.collections.loungeRagMemories.doc(ragDoc.id).set(ragDoc);
+      const overflowSnap = await scoped
+        .ragMemoriesQuery()
+        .orderBy('updatedAt', 'desc')
+        .limit(MAX_LOUNGE_RAG_MEMORIES + 20)
+        .get();
+      if (overflowSnap.docs.length > MAX_LOUNGE_RAG_MEMORIES) {
+        const pruneBatch = this.firestore.batch();
+        for (const staleDoc of overflowSnap.docs.slice(MAX_LOUNGE_RAG_MEMORIES)) {
+          pruneBatch.delete(staleDoc.ref);
+        }
+        await pruneBatch.commit();
+      }
     }
 
     if (input.episodicEntries.length > 0) {
@@ -429,7 +497,7 @@ export class LoungeSessionRepository implements ILoungeSessionRepository {
    */
   public async deleteAllUserSessionData(uid: string): Promise<void> {
     assertLoungeRecordOwnedByUid({ uid }, uid, COLLECTIONS.LOUNGE_SESSIONS);
-    const scoped = createUserScopedLoungeDb(this.collections, uid);
+    const scoped = createUserScopedLoungeSessionDb(this.collections, uid);
     await deleteQueryInBatches(this.firestore, scoped.messagesQuery());
     await deleteQueryInBatches(this.firestore, scoped.ragMemoriesQuery());
     await scoped.sessionDoc().delete();

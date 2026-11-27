@@ -12,6 +12,11 @@ import type {
  * isolated `lounge_rag_memories` and read-only Public X `rag_memories`.
  */
 export interface ILoungeEmbeddingPort {
+  /**
+   * Computes a 768-dimension semantic embedding vector for `text` (returns `[]` when blank).
+   *
+   * @throws Error When the embedding provider request fails.
+   */
   embedQuery(text: string): Promise<number[]>;
 }
 
@@ -21,56 +26,104 @@ export interface ILoungeEmbeddingPort {
  * and the active persona's Layer 1/2/3 self-post context without any write-back capability.
  */
 export interface IPublicXMemoryReadPort {
+  /**
+   * Reads read-only Public X profile, recent dialogue turns, vector memories formatted in `userTimezone`,
+   * and Layer 1/2/3 persona timeline context for `xUserId`, or returns `null` when unavailable.
+   */
   readPublicXMemorySnapshot(
     xUserId: string,
     queryEmbedding: readonly number[],
+    userTimezone?: string,
   ): Promise<LoungePublicXMemorySnapshot | null>;
 }
 
 /**
- * Hexagonal port for classifying the active persona's emotional state for avatar icons and matching.
+ * Hexagonal port for classifying the assistant's post-reply emotional state for avatar expressions.
  */
 export interface ILoungeEmotionClassifierPort {
-  classifyEmotion(content: string): Promise<LoungeEmotionState>;
+  /**
+   * Selects the matching Lounge avatar expression emotion for a completed turn and reports token usage.
+   *
+   * @throws Error When the classifier returns malformed or unrecognized JSON output.
+   */
+  classifyEmotion(input: {
+    readonly userPrompt: string;
+    readonly thought: string;
+    readonly replyText: string;
+    readonly onTokenUsage?: (usage: LoungeTokenUsage) => void;
+  }): Promise<LoungeEmotionState>;
 }
 
 /**
- * Matched Bot illustration asset (`images` collection) returned during reply generation.
+ * Matched Bot illustration candidate (`images` collection) returned during 3-stage image matching.
  */
 export interface MatchedBotImageAsset {
   readonly assetId: string;
   readonly imageUrl: string;
+  readonly caption: string;
 }
 
 /**
- * Hexagonal port reusing the Bot backend image vector search to match relevant illustrations
- * for an assistant response; any matched image displayed in chat is saved to the user's Gallery.
+ * Hexagonal port querying `collections.images` via semantic vectors while excluding
+ * assets already displayed in the caller's recent turns.
  */
 export interface IBotImageAssetSearchPort {
-  findBestMatchingImage(
-    replyText: string,
-    emotion: LoungeEmotionState,
-  ): Promise<MatchedBotImageAsset | null>;
+  /** Returns up to `limit` verified `SUCCESS` illustration candidates matching `searchQuery`. */
+  findCandidateImages(
+    searchQuery: string,
+    excludeAssetIds: ReadonlySet<string>,
+    limit?: number,
+  ): Promise<MatchedBotImageAsset[]>;
+}
+
+/**
+ * Hexagonal port performing LLM Stage 1 query inference and Stage 3 semantic image relevance verification.
+ */
+export interface ILoungeImageMatcherPort {
+  /**
+   * Infers whether an illustration enhances the reply and returns a concise query or `null`.
+   *
+   * @throws Error When planner output JSON is missing or malformed.
+   */
+  planImageSearch(input: {
+    readonly userPrompt: string;
+    readonly thought: string;
+    readonly replyText: string;
+    readonly onTokenUsage?: (usage: LoungeTokenUsage) => void;
+  }): Promise<string | null>;
+
+  /**
+   * Verifies semantic consistency between candidate illustration caption and reply context.
+   *
+   * @throws Error When verifier output JSON is missing or malformed.
+   */
+  verifyImageRelevance(input: {
+    readonly candidateCaption: string;
+    readonly replyText: string;
+    readonly thought: string;
+    readonly onTokenUsage?: (usage: LoungeTokenUsage) => void;
+  }): Promise<boolean>;
 }
 
 /**
  * Input context supplied to the Private Lounge Gemini dialogue generation pipeline.
- * Production pipelines consume `privateMemory.recentRawMessages` directly as typed dialogue turns
- * alongside `memoryPromptDirective` (which supplies Dreaming profile, RAG vectors, and read-only Public X context).
  */
 export interface LoungeChatPipelineInput {
   readonly uid: string;
   readonly session: LoungeSession;
   readonly userPrompt: string;
-  /** Independent `lounge_*` memory snapshot; `recentRawMessages` provides ordered raw dialogue turns. */
+  /** User display name supplied to `@rebecca/prompt` Interlocutor Account Info. */
+  readonly userDisplayName?: string;
+  /** User X handle supplied to `@rebecca/prompt` Interlocutor Account Info. */
+  readonly userXHandle?: string;
+  /** Pre-computed query vector reused to anchor 120-pattern situational few-shot selection without extra API calls. */
+  readonly queryEmbedding?: readonly number[];
+  /** Independent `lounge_*` memory snapshot; `recentRawMessages` preserves internal `thought` strings. */
   readonly privateMemory: LoungePrivateMemorySnapshot;
   /** Read-only Public X memory snapshot (null when user has no linked Public X history). */
   readonly publicXMemory: LoungePublicXMemorySnapshot | null;
-  /** Delimiter-isolated prompt directive summarizing Private RAG and read-only Public X memories. */
-  readonly memoryPromptDirective: string;
   readonly responseLanguage: LoungeLanguage;
   readonly userTimezone: string;
-  readonly localePromptDirective: string;
   readonly allowWebSearch?: boolean;
 }
 
@@ -78,8 +131,8 @@ export interface LoungeChatPipelineInput {
  * Result returned from generating an assistant reply in the Private Lounge.
  */
 export interface LoungeChatPipelineOutput {
+  readonly thought: string;
   readonly replyText: string;
-  readonly emotion: LoungeEmotionState;
   readonly tokenUsage: LoungeTokenUsage;
   readonly usedWebSearch?: boolean;
 }
@@ -88,5 +141,10 @@ export interface LoungeChatPipelineOutput {
  * Hexagonal port abstracting LLM prompt assembly and reply generation for Private Lounge turns.
  */
 export interface ILoungeChatPipelinePort {
+  /**
+   * Composes persona/memory prompts and generates structured `{ thought, replyText }` output plus metering.
+   *
+   * @throws Error When the dialogue model returns empty or malformed structured output.
+   */
   generateReply(input: LoungeChatPipelineInput): Promise<LoungeChatPipelineOutput>;
 }

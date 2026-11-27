@@ -1,22 +1,45 @@
 import type { Request, Response } from 'express';
-import { resolveClientGeo } from '../../../config/loungeConfig';
 import {
   requireLoungeIdentity,
   type LoungeAuthenticatedRequest,
 } from '../../../middleware/loungeAuth';
 import {
+  DEFAULT_TRUSTED_GEO_HEADER,
+  resolveClientGeo,
+  type TrustedGeoHeaderName,
+} from '../../../utils/clientGeo';
+import {
   extractTraceHeader,
   handleLoungeControllerError,
   LoungeValidationError,
 } from '../../../utils/errors';
+import type { ILoungeBillingUseCase } from '../usecases/loungeBilling.usecase';
 import {
   parseAndValidateCreateCheckoutRequest,
   parseAndValidateEuWithdrawalRequest,
   parseAndValidatePortalRequest,
   parseAndValidateVerifyCheckoutRequest,
   parseOrdersQueryParams,
-  type ILoungeBillingUseCase,
-} from '../usecases/loungeBilling.usecase';
+} from '../validators/loungeBilling.validator';
+
+/** Strictly parses `portalReturn` query string (`0`, `1`, `true`, `false`, or omitted). */
+export function parseSubscriptionQueryParams(
+  rawQuery: Readonly<Record<string, unknown>>,
+): { readonly portalReturn: boolean } {
+  const raw = rawQuery['portalReturn'];
+  if (raw === undefined) {
+    return { portalReturn: false };
+  }
+  if (raw === '1' || raw === 'true') {
+    return { portalReturn: true };
+  }
+  if (raw === '0' || raw === 'false') {
+    return { portalReturn: false };
+  }
+  throw new LoungeValidationError(
+    'Query parameter "portalReturn" must be one of: 0, 1, true, false',
+  );
+}
 
 /**
  * HTTP controller exposing the 9 Private Lounge Stripe billing, portal, order history, and webhook routes.
@@ -25,6 +48,7 @@ export class LoungeBillingController {
   constructor(
     private readonly billingUseCase: ILoungeBillingUseCase,
     private readonly defaultGeoCountryCode: string = 'JP',
+    private readonly trustedGeoHeader: TrustedGeoHeaderName = DEFAULT_TRUSTED_GEO_HEADER,
   ) {}
 
   /** Handles `GET /api/v1/lounge/billing/catalog`. */
@@ -33,6 +57,7 @@ export class LoungeBillingController {
     try {
       const { uid } = requireLoungeIdentity(req);
       const geo = resolveClientGeo(req.headers as Readonly<Record<string, unknown>>, {
+        trustedGeoHeader: this.trustedGeoHeader,
         defaultCountryCode: this.defaultGeoCountryCode,
       });
       const result = await this.billingUseCase.getCatalog(uid, geo);
@@ -49,9 +74,10 @@ export class LoungeBillingController {
       const { uid } = requireLoungeIdentity(req);
       const payload = parseAndValidateCreateCheckoutRequest(req.body);
       const geo = resolveClientGeo(req.headers as Readonly<Record<string, unknown>>, {
+        trustedGeoHeader: this.trustedGeoHeader,
         defaultCountryCode: this.defaultGeoCountryCode,
       });
-      const result = await this.billingUseCase.createCheckoutSession(uid, payload, geo);
+      const result = await this.billingUseCase.createCheckoutSession(uid, payload, geo, traceHeader);
       res.status(200).json(result);
     } catch (err) {
       handleLoungeControllerError(res, err, 'POST /billing/checkout', traceHeader);
@@ -64,7 +90,7 @@ export class LoungeBillingController {
     try {
       const { uid } = requireLoungeIdentity(req);
       const { sessionId } = parseAndValidateVerifyCheckoutRequest(req.body);
-      const result = await this.billingUseCase.verifyCheckoutSession(uid, sessionId);
+      const result = await this.billingUseCase.verifyCheckoutSession(uid, sessionId, traceHeader);
       res.status(200).json(result);
     } catch (err) {
       handleLoungeControllerError(res, err, 'POST /billing/checkout/verify', traceHeader);
@@ -90,12 +116,15 @@ export class LoungeBillingController {
     try {
       const { uid } = requireLoungeIdentity(req);
       const geo = resolveClientGeo(req.headers as Readonly<Record<string, unknown>>, {
+        trustedGeoHeader: this.trustedGeoHeader,
         defaultCountryCode: this.defaultGeoCountryCode,
       });
-      const portalReturn = req.query['portalReturn'] === '1' || req.query['portalReturn'] === 'true';
+      const { portalReturn } = parseSubscriptionQueryParams(
+        req.query as Readonly<Record<string, unknown>>,
+      );
       const result = await this.billingUseCase.getSubscriptionDetail(uid, {
         portalReturn,
-        isEeaResident: geo.isEeaResident,
+        clientGeo: geo,
       });
       res.status(200).json(result);
     } catch (err) {
@@ -110,9 +139,10 @@ export class LoungeBillingController {
       const { uid } = requireLoungeIdentity(req);
       const payload = parseAndValidateEuWithdrawalRequest(req.body);
       const geo = resolveClientGeo(req.headers as Readonly<Record<string, unknown>>, {
+        trustedGeoHeader: this.trustedGeoHeader,
         defaultCountryCode: this.defaultGeoCountryCode,
       });
-      const result = await this.billingUseCase.withdrawEuContract(uid, payload, geo);
+      const result = await this.billingUseCase.withdrawEuContract(uid, payload, geo, traceHeader);
       res.status(200).json(result);
     } catch (err) {
       handleLoungeControllerError(res, err, 'POST /billing/eu-withdrawal', traceHeader);
@@ -159,7 +189,7 @@ export class LoungeBillingController {
       if (!Buffer.isBuffer(req.body)) {
         throw new LoungeValidationError('Webhook payload must be raw unparsed bytes');
       }
-      const result = await this.billingUseCase.handleStripeWebhook(req.body, signature);
+      const result = await this.billingUseCase.handleStripeWebhook(req.body, signature, traceHeader);
       res.status(200).json(result);
     } catch (err) {
       handleLoungeControllerError(res, err, 'POST /webhooks/stripe', traceHeader);

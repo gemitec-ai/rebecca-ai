@@ -7,12 +7,12 @@ import {
   extractTraceHeader,
   handleLoungeControllerError,
 } from '../../../utils/errors';
+import type { ILoungeAccountUseCase } from '../usecases/loungeAccount.usecase';
 import {
   parseAndValidateDeleteAccountRequest,
   parseAndValidatePreferencesRequest,
   parseAndValidateReconsentRequest,
-  type ILoungeAccountUseCase,
-} from '../usecases/loungeAccount.usecase';
+} from '../validators/loungeAccount.validator';
 
 /**
  * HTTP controller handling `/api/v1/lounge/account` endpoints.
@@ -38,7 +38,7 @@ export class LoungeAccountController {
     try {
       const { uid } = requireLoungeIdentity(req);
       const payload = parseAndValidatePreferencesRequest(req.body);
-      const updatedUser = await this.accountUseCase.updatePreferences(uid, payload);
+      const updatedUser = await this.accountUseCase.updatePreferences(uid, payload, traceHeader);
       res.status(200).json(updatedUser);
     } catch (err) {
       handleLoungeControllerError(res, err, 'PATCH /account/preferences', traceHeader);
@@ -51,7 +51,11 @@ export class LoungeAccountController {
     try {
       const { uid } = requireLoungeIdentity(req);
       const payload = parseAndValidateReconsentRequest(req.body);
-      const updatedUser = await this.accountUseCase.updateDisclaimerConsent(uid, payload);
+      const updatedUser = await this.accountUseCase.updateDisclaimerConsent(
+        uid,
+        payload,
+        traceHeader,
+      );
       res.status(200).json(updatedUser);
     } catch (err) {
       handleLoungeControllerError(res, err, 'POST /account/consent', traceHeader);
@@ -64,7 +68,7 @@ export class LoungeAccountController {
     try {
       const { uid } = requireLoungeIdentity(req);
       const payload = parseAndValidateDeleteAccountRequest(req.body);
-      await this.accountUseCase.deleteAccount(uid, payload);
+      await this.accountUseCase.deleteAccount(uid, payload, traceHeader);
       res.status(204).send();
     } catch (err) {
       handleLoungeControllerError(res, err, 'DELETE /account', traceHeader);

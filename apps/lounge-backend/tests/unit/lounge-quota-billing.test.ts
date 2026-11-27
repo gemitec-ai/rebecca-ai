@@ -12,31 +12,37 @@ import type {
 import { createLoungeApp, createProductionLoungeDependencies } from '../../src/app';
 import {
   assertSafeStripeKeyConfiguration,
+  loadLoungeRuntimeConfig,
+  loadTrialHmacKeyring,
+} from '../../src/config/loungeConfig';
+import { StripeSdkGatewayAdapter } from '../../src/features/billing/adapters/stripeSdkGateway.adapter';
+import {
+  computeTrialGrantRetainUntilIso,
+  LOUNGE_TRIAL_GRANT_RETENTION_YEARS,
+} from '../../src/features/billing/domain/loungeCatalog.constants';
+import { resolveClientGeo } from '../../src/utils/clientGeo';
+import {
   computeActiveTrialGrantHash,
   computeAllTrialGrantHashes,
   computeTrialHmacDigest,
-  loadLoungeRuntimeConfig,
-  loadTrialHmacKeyring,
-  resolveClientGeo,
-} from '../../src/config/loungeConfig';
-import { StripeSdkGatewayAdapter } from '../../src/features/billing/adapters/stripeSdkGateway.adapter';
+} from '../../src/utils/trialGrantHmac';
 import {
   applySubscriptionTransition,
   buildQuotaBreakdownAndWarning,
   evaluateLazyQuotaState,
-  LoungeQuotaEngine,
   nextLocalMidnightAfter,
   resolveNextDailyResetIso,
 } from '../../src/features/billing/domain/loungeQuota.engine';
-import { LocalTestStripeGatewayAdapter } from '../../src/features/billing/ports/loungeStripe.port';
+import { FirestoreLoungeQuotaRepository } from '../../src/features/billing/repositories/loungeQuota.repository';
+import { LocalTestStripeGatewayAdapter } from '../../src/features/billing/adapters/localTestStripeGateway.adapter';
+import { maskCheckoutSessionId } from '../../src/features/billing/usecases/loungeBilling.usecase';
 import {
-  maskCheckoutSessionId,
   parseAndValidateCreateCheckoutRequest,
   parseAndValidateEuWithdrawalRequest,
   parseAndValidatePortalRequest,
   parseAndValidateVerifyCheckoutRequest,
   parseOrdersQueryParams,
-} from '../../src/features/billing/usecases/loungeBilling.usecase';
+} from '../../src/features/billing/validators/loungeBilling.validator';
 
 jest.mock('firebase-admin/app', () => ({
   initializeApp: jest.fn().mockReturnValue({ name: 'lounge-bff-auth' }),
@@ -349,6 +355,7 @@ function validConsent(version = 1): LoungeUserDisclaimerConsent {
     agreedToGeminiTrainingUsage: true,
     agreedToZeroPiiProhibition: true,
     agreedToOneWayMemoryIsolation: true,
+    agreedToNonEeaEligibility: true,
     scrolledToBottomAt: '2026-11-22T12:00:00.000Z',
     consentedAt: '2026-11-22T12:00:05.000Z',
   };
@@ -405,23 +412,57 @@ describe('Private Lounge Config, Hybrid Quota Engine & Stripe Billing Lifecycle'
           STRIPE_SECRET_KEY: 'sk_live_prod_only',
         }),
       ).not.toThrow();
+      expect(() =>
+        assertSafeStripeKeyConfiguration({
+          NODE_ENV: 'production',
+          STRIPE_SECRET_KEY: 'sk_test_forbidden_in_prod',
+        }),
+      ).toThrow(/Refusing test Stripe key/);
+      expect(() =>
+        assertSafeStripeKeyConfiguration({
+          NODE_ENV: 'production',
+          STRIPE_PUBLISHABLE_KEY: 'pk_test_forbidden_in_prod',
+        }),
+      ).toThrow(/Refusing test Stripe key/);
     });
 
-    it('resolves Geo-IP countries, EEA flags, currency locks, and rotated HMAC keyrings', () => {
+    it('resolves Geo-IP countries via single trusted header, EEA flags, currency locks, and rotated HMAC keyrings', () => {
       expect(resolveClientGeo({ 'x-client-country': 'jp' })).toEqual({
         countryCode: 'JP',
         isEeaResident: false,
         currency: 'JPY',
+        hasTrustedGeoHeader: true,
       });
-      expect(resolveClientGeo({ 'cf-ipcountry': 'de' })).toEqual({
+      expect(
+        resolveClientGeo({ 'cf-ipcountry': 'de' }, { trustedGeoHeader: 'cf-ipcountry' }),
+      ).toEqual({
         countryCode: 'DE',
         isEeaResident: true,
         currency: 'USD',
+        hasTrustedGeoHeader: true,
+      });
+      // Unconfigured fallback headers are ignored even if present (anti-header-spoofing)
+      expect(
+        resolveClientGeo({ 'cf-ipcountry': 'DE', 'x-client-country': 'JP' }),
+      ).toEqual({
+        countryCode: 'JP',
+        isEeaResident: false,
+        currency: 'JPY',
+        hasTrustedGeoHeader: true,
+      });
+      expect(
+        resolveClientGeo({ 'cf-ipcountry': 'DE' }),
+      ).toEqual({
+        countryCode: 'JP',
+        isEeaResident: false,
+        currency: 'JPY',
+        hasTrustedGeoHeader: false,
       });
       expect(resolveClientGeo({ 'x-client-country': 'invalid' }, { defaultCountryCode: 'GB' })).toEqual({
         countryCode: 'GB',
         isEeaResident: true,
         currency: 'USD',
+        hasTrustedGeoHeader: false,
       });
       expect(
         resolveClientGeo({ 'x-client-country': 'US' }, { existingPreferredCurrency: 'JPY' }),
@@ -429,6 +470,7 @@ describe('Private Lounge Config, Hybrid Quota Engine & Stripe Billing Lifecycle'
         countryCode: 'US',
         isEeaResident: false,
         currency: 'JPY',
+        hasTrustedGeoHeader: true,
       });
 
       expect(() =>
@@ -441,7 +483,7 @@ describe('Private Lounge Config, Hybrid Quota Engine & Stripe Billing Lifecycle'
         loadTrialHmacKeyring({ NODE_ENV: 'test', LOUNGE_TRIAL_HMAC_KEYS: '{"0":"abc"}' }),
       ).toThrow(/Invalid HMAC key entry/);
       expect(() => loadTrialHmacKeyring({ NODE_ENV: 'production' })).toThrow(
-        /required in production/,
+        /required outside local emulator mode/,
       );
 
       const rotated = loadTrialHmacKeyring({
@@ -458,53 +500,161 @@ describe('Private Lounge Config, Hybrid Quota Engine & Stripe Billing Lifecycle'
       ).toThrow(/Missing HMAC secret/);
     });
 
-    it('validates runtime env config bounds, production projectId, and origin protocols', () => {
-      expect(() =>
-        loadLoungeRuntimeConfig({ NODE_ENV: 'production', LOUNGE_TRIAL_HMAC_SECRET_V1: 'sec' }, '1.0.0', 1),
-      ).toThrow(/GCP_PROJECT_ID/);
+    it('validates runtime env config fail-fast rules, production secrets, placeholders, and origin protocols', () => {
+      const validProdEnv: NodeJS.ProcessEnv = {
+        NODE_ENV: 'production',
+        GCP_PROJECT_ID: 'proj-1',
+        CORS_ALLOWED_ORIGINS: 'https://lounge.example.com',
+        LOUNGE_PUBLIC_ORIGIN: 'https://lounge.example.com/',
+        LOUNGE_TRIAL_HMAC_SECRET_V1: 'sec',
+        LOUNGE_BATCH_OIDC_AUDIENCE: 'https://lounge.example.com/api/v1/lounge/batch',
+        LOUNGE_BATCH_OIDC_SERVICE_ACCOUNT_EMAIL: 'scheduler@example.iam.gserviceaccount.com',
+        FIREBASE_WEB_API_KEY: 'api-key-1',
+        FIREBASE_WEB_APP_ID: 'app-id-1',
+        LOUNGE_FIREBASE_TENANT_ID: 'tenant-lounge',
+        STRIPE_SECRET_KEY: 'sk_live_prod_secret',
+        STRIPE_WEBHOOK_SECRET: 'whsec_prod_secret',
+        STRIPE_PRICE_TRIAL_JPY: 'price_prod_trial_jpy',
+        STRIPE_PRICE_CHARGE_JPY: 'price_prod_charge_jpy',
+        STRIPE_PRICE_STANDARD_JPY: 'price_prod_standard_jpy',
+        STRIPE_PRICE_TRIAL_USD: 'price_prod_trial_usd',
+        STRIPE_PRICE_CHARGE_USD: 'price_prod_charge_usd',
+        STRIPE_PRICE_STANDARD_USD: 'price_prod_standard_usd',
+        GEMINI_API_KEY: 'gemini-prod-key',
+      };
 
-      expect(() =>
-        loadLoungeRuntimeConfig(
-          {
-            NODE_ENV: 'production',
-            GCP_PROJECT_ID: 'proj-1',
-            LOUNGE_PUBLIC_ORIGIN: 'ftp://invalid.example.com',
-            LOUNGE_TRIAL_HMAC_SECRET_V1: 'sec',
-          },
-          '1.0.0',
-          1,
-        ),
-      ).toThrow(/Invalid LOUNGE_PUBLIC_ORIGIN/);
-
-      const cfg = loadLoungeRuntimeConfig(
-        {
-          NODE_ENV: 'production',
-          GCP_PROJECT_ID: 'proj-1',
-          LOUNGE_PUBLIC_ORIGIN: 'https://lounge.example.com/',
-          LOUNGE_TRIAL_HMAC_SECRET_V1: 'sec',
-          FIREBASE_WEB_API_KEY: 'api-key-1',
-          FIREBASE_WEB_APP_ID: 'app-id-1',
-          LOUNGE_FIREBASE_TENANT_ID: 'tenant-lounge',
-          LOUNGE_MAX_OUTPUT_TOKENS: '999',
-          LOUNGE_IMAGE_SIMILARITY_THRESHOLD: 'NaN',
-          NO_AUTH: 'true',
-          BATCH_SECRET_KEY: 'ignored-in-prod',
-          PORT: 'invalid',
-        },
-        '1.45.2',
-        2,
+      expect(() => loadLoungeRuntimeConfig({ K_SERVICE: 'lounge-bff' })).toThrow(
+        /NODE_ENV is required when running on Cloud Run/,
       );
+      expect(() =>
+        loadLoungeRuntimeConfig({ ...validProdEnv, ALLOW_GEO_FALLBACK_COUNTRY: 'true' }),
+      ).toThrow(/ALLOW_GEO_FALLBACK_COUNTRY=true is forbidden/);
+      expect(() =>
+        loadLoungeRuntimeConfig({ ...validProdEnv, FIRESTORE_EMULATOR_HOST: '127.0.0.1:8080' }),
+      ).toThrow(/Refusing local emulator environment variable FIRESTORE_EMULATOR_HOST/);
+      expect(() =>
+        loadLoungeRuntimeConfig({ ...validProdEnv, FIREBASE_AUTH_EMULATOR_HOST: '127.0.0.1:9099' }),
+      ).toThrow(/Refusing local emulator environment variable FIREBASE_AUTH_EMULATOR_HOST/);
+      expect(() =>
+        loadLoungeRuntimeConfig({ ...validProdEnv, USE_FIREBASE_EMULATORS: 'true' }),
+      ).toThrow(/USE_FIREBASE_EMULATORS=true is forbidden/);
+      expect(() =>
+        loadLoungeRuntimeConfig({ ...validProdEnv, LOUNGE_BATCH_OIDC_AUDIENCE: undefined }),
+      ).toThrow(/LOUNGE_BATCH_OIDC_AUDIENCE and LOUNGE_BATCH_OIDC_SERVICE_ACCOUNT_EMAIL are required/);
+      expect(() =>
+        loadLoungeRuntimeConfig({
+          ...validProdEnv,
+          LOUNGE_BATCH_OIDC_SERVICE_ACCOUNT_EMAIL: undefined,
+        }),
+      ).toThrow(/LOUNGE_BATCH_OIDC_AUDIENCE and LOUNGE_BATCH_OIDC_SERVICE_ACCOUNT_EMAIL are required/);
+      expect(() =>
+        loadLoungeRuntimeConfig({
+          ...validProdEnv,
+          LOUNGE_BATCH_OIDC_SERVICE_ACCOUNT_EMAIL: 'not-an-email',
+        }),
+      ).toThrow(/must contain comma-separated valid service account emails/);
+      expect(() =>
+        loadLoungeRuntimeConfig({ ...validProdEnv, LOUNGE_TRUSTED_GEO_HEADER: 'x-untrusted' }),
+      ).toThrow(/Unsupported LOUNGE_TRUSTED_GEO_HEADER/);
+      expect(
+        loadLoungeRuntimeConfig({ ...validProdEnv, LOUNGE_TRUSTED_GEO_HEADER: 'cf-ipcountry' })
+          .trustedGeoHeader,
+      ).toBe('cf-ipcountry');
+      expect(() =>
+        loadLoungeRuntimeConfig({ ...validProdEnv, CORS_ALLOWED_ORIGINS: 'http://lounge.example.com' }),
+      ).toThrow(/CORS_ALLOWED_ORIGINS must use https:\/\/ in production/);
+
+      // Free-only launch (all STRIPE_* omitted in production) boots cleanly with COMING_SOON catalog
+      const freeOnlyProdEnv: NodeJS.ProcessEnv = {
+        NODE_ENV: 'production',
+        GCP_PROJECT_ID: 'proj-free',
+        CORS_ALLOWED_ORIGINS: 'https://lounge.example.com',
+        LOUNGE_PUBLIC_ORIGIN: 'https://lounge.example.com',
+        LOUNGE_TRIAL_HMAC_SECRET_V1: 'sec',
+        LOUNGE_BATCH_OIDC_AUDIENCE: 'https://lounge.example.com/api/v1/lounge/batch',
+        LOUNGE_BATCH_OIDC_SERVICE_ACCOUNT_EMAIL: 'scheduler@example.iam.gserviceaccount.com',
+        FIREBASE_WEB_API_KEY: 'api-key-1',
+        FIREBASE_WEB_APP_ID: 'app-id-1',
+        GEMINI_API_KEY: 'gemini-prod-key',
+        SUPPORT_CONTACT_EMAIL: 'support@example.com',
+      };
+      const freeOnlyCfg = loadLoungeRuntimeConfig(freeOnlyProdEnv);
+      expect(freeOnlyCfg.billingEnabled).toBe(false);
+      expect(freeOnlyCfg.contactEmail).toBe('support [at mark] example.com');
+      expect(freeOnlyCfg.stripePriceIds.JPY.STANDARD_MONTHLY).toBeNull();
+
+      // Partial Stripe config (e.g. Trial+Charge active while Standard Monthly is unset -> null/COMING_SOON)
+      const partialProdCfg = loadLoungeRuntimeConfig({
+        ...freeOnlyProdEnv,
+        STRIPE_SECRET_KEY: 'sk_live_partial',
+        STRIPE_WEBHOOK_SECRET: 'whsec_partial',
+        STRIPE_PRICE_TRIAL_JPY: 'price_live_trial',
+        STRIPE_PRICE_CHARGE_JPY: 'price_live_charge',
+      });
+      expect(partialProdCfg.billingEnabled).toBe(true);
+      expect(partialProdCfg.stripePriceIds.JPY.TRIAL_TICKET_100).toBe('price_live_trial');
+      expect(partialProdCfg.stripePriceIds.JPY.STANDARD_MONTHLY).toBeNull();
+      expect(() =>
+        loadLoungeRuntimeConfig({ NODE_ENV: 'production', LOUNGE_TRIAL_HMAC_SECRET_V1: 'sec' }),
+      ).toThrow(/GCP_PROJECT_ID/);
+      expect(() =>
+        loadLoungeRuntimeConfig({
+          ...validProdEnv,
+          LOUNGE_PUBLIC_ORIGIN: 'ftp://invalid.example.com',
+        }),
+      ).toThrow(/Invalid URL protocol/);
+      expect(() =>
+        loadLoungeRuntimeConfig({
+          ...validProdEnv,
+          CORS_ALLOWED_ORIGINS: 'https://lounge.example.com, *',
+        }),
+      ).toThrow(/wildcard/);
+      expect(() =>
+        loadLoungeRuntimeConfig({
+          ...validProdEnv,
+          STRIPE_PRICE_TRIAL_JPY: 'price_test_trial_jpy',
+        }),
+      ).toThrow(/Refusing placeholder Stripe Price ID/);
+      expect(() => loadLoungeRuntimeConfig({ ...validProdEnv, PORT: 'invalid' })).toThrow(
+        /Invalid positive integer/,
+      );
+      expect(() =>
+        loadLoungeRuntimeConfig({ ...validProdEnv, LOUNGE_IMAGE_SIMILARITY_THRESHOLD: 'NaN' }),
+      ).toThrow(/Invalid number/);
+      expect(() =>
+        loadLoungeRuntimeConfig({ ...validProdEnv, LOUNGE_PHASE2_EEA_ENABLED: 'maybe' }),
+      ).toThrow(/Invalid boolean value/);
+      expect(() =>
+        loadLoungeRuntimeConfig({ ...validProdEnv, LOUNGE_IMAGE_SIMILARITY_THRESHOLD: '1.5' }),
+      ).toThrow(/Invalid number/);
+      expect(() => loadLoungeRuntimeConfig({ ...validProdEnv, GEMINI_API_KEY: undefined })).toThrow(
+        /GEMINI_API_KEY is required/,
+      );
+
+      const cfg = loadLoungeRuntimeConfig({
+        ...validProdEnv,
+        LOUNGE_MAX_OUTPUT_TOKENS: '999',
+        NO_AUTH: 'true',
+        BATCH_SECRET_KEY: 'ignored-in-prod',
+        LOUNGE_DISCLAIMER_VERSION: '2',
+        ALLOW_GEO_FALLBACK_COUNTRY: 'false',
+        LOUNGE_IMAGE_SIMILARITY_THRESHOLD: '0.75',
+      });
       expect(cfg.port).toBe(8083);
       expect(cfg.geminiMaxOutputTokens).toBe(450);
-      expect(cfg.imageSimilarityThreshold).toBe(0.45);
+      expect(cfg.disclaimerVersion).toBe(2);
+      expect(cfg.imageSimilarityThreshold).toBe(0.75);
       expect(cfg.noAuth).toBe(false);
       expect(cfg.batchSecretKey).toBeUndefined();
+      expect(cfg.allowDefaultGeoFallback).toBe(false);
       expect(cfg.loungePublicOrigin).toBe('https://lounge.example.com');
+      expect(cfg.legalUrls.tosUrl).toBe('https://rebecca-ai.net/tos');
+      expect(cfg.firebaseWebConfig?.projectId).toBe('proj-1');
       expect(cfg.firebaseWebConfig?.tenantId).toBe('tenant-lounge');
     });
   });
 
-  describe('LoungeQuotaEngine (DST, TZ-Change Clamp, FIFO, Midday Transitions & Compensation)', () => {
+  describe('FirestoreLoungeQuotaRepository & pure quota domain (DST, TZ-Change Clamp, FIFO, Midday Transitions & Compensation)', () => {
     it('computes DST spring-forward local midnights and enforces 24h anti-TZ-hop clamps', () => {
       // America/Los_Angeles enters DST on 2026-03-08 (UTC-8 -> UTC-7); midnight is 08:00Z
       const beforeDstMidnight = new Date('2026-03-07T18:00:00.000Z');
@@ -536,7 +686,7 @@ describe('Private Lounge Config, Hybrid Quota Engine & Stripe Billing Lifecycle'
     it('handles lazy rollover, CANCELING period-end downgrade, intraday expiry, and FIFO reserve/compensate', async () => {
       const { firestore } = createInMemoryFirestore();
       const cols = getCollections(firestore);
-      const engine = new LoungeQuotaEngine(firestore, cols);
+      const engine = new FirestoreLoungeQuotaRepository(firestore, cols);
       const uid = 'uid_quota_001';
 
       expect(await engine.syncLazyState(uid, 'Asia/Tokyo')).toBeNull();
@@ -979,17 +1129,13 @@ describe('Private Lounge Config, Hybrid Quota Engine & Stripe Billing Lifecycle'
     function setupBillingAppHarness(envOverrides: NodeJS.ProcessEnv = {}) {
       const { firestore } = createInMemoryFirestore();
       const stripeGateway = new LocalTestStripeGatewayAdapter('http://localhost:4300');
-      const config = loadLoungeRuntimeConfig(
-        {
-          NODE_ENV: 'test',
-          GCP_PROJECT_ID: 'demo-rebecca-lounge',
-          STRIPE_WEBHOOK_SECRET: 'whsec_test_secret',
-          LOUNGE_TRIAL_HMAC_KEYS: '{"1":"old-hmac-secret","2":"active-hmac-secret"}',
-          ...envOverrides,
-        },
-        '1.45.2',
-        1,
-      );
+      const config = loadLoungeRuntimeConfig({
+        NODE_ENV: 'test',
+        GCP_PROJECT_ID: 'demo-rebecca-lounge',
+        STRIPE_WEBHOOK_SECRET: 'whsec_test_secret',
+        LOUNGE_TRIAL_HMAC_KEYS: '{"1":"old-hmac-secret","2":"active-hmac-secret"}',
+        ...envOverrides,
+      });
 
       const deps = createProductionLoungeDependencies(undefined, {
         config,
@@ -1019,7 +1165,7 @@ describe('Private Lounge Config, Hybrid Quota Engine & Stripe Billing Lifecycle'
       const cols = getCollections(firestore);
       const app = createLoungeApp(deps);
 
-      return { app, firestore, cols, stripeGateway, config };
+      return { app, firestore, cols, stripeGateway, config, deps };
     }
 
     it('validates billing input helpers thoroughly', () => {
@@ -1081,28 +1227,41 @@ describe('Private Lounge Config, Hybrid Quota Engine & Stripe Billing Lifecycle'
       expect(catRes.body.currency).toBe('JPY');
       expect(catRes.body.trialEligible).toBe(true);
 
-      // Phase 1 EEA geo-block verification
-      const regB = await request(app)
+      // Phase 1 EEA geo-block verification across signup, catalog, and checkout
+      const regBlockedDe = await request(app)
         .post('/api/v1/lounge/auth/signup')
         .set('x-client-country', 'DE')
         .send({
           idToken: 'uid_b',
-          xOAuthCode: 'x_oauth_test_code_b',
           language: 'de',
           timezone: 'Europe/Berlin',
+          disclaimerConsent: validConsent(1),
+        });
+      expect(regBlockedDe.status).toBe(403);
+      expect(regBlockedDe.body.code).toBe('GEO_BLOCKED');
+
+      const regB = await request(app)
+        .post('/api/v1/lounge/auth/signup')
+        .set('x-client-country', 'US')
+        .send({
+          idToken: 'uid_b',
+          language: 'en',
+          timezone: 'America/New_York',
           disclaimerConsent: validConsent(1),
         });
       expect(regB.status).toBe(201);
 
       const eeaCat = await request(app)
         .get('/api/v1/lounge/billing/catalog')
-        .set('Authorization', 'Bearer uid_b');
+        .set('Authorization', 'Bearer uid_b')
+        .set('x-client-country', 'DE');
       expect(eeaCat.body.products.every((p: { ineligibleReason?: string }) => p.ineligibleReason === 'GEO_BLOCKED')).toBe(
         true,
       );
       const eeaBlockedCheckout = await request(app)
         .post('/api/v1/lounge/billing/checkout')
         .set('Authorization', 'Bearer uid_b')
+        .set('x-client-country', 'DE')
         .send({
           productId: 'TRIAL_TICKET_100',
           acceptedPurchaseDisclosure: true,
@@ -1165,12 +1324,16 @@ describe('Private Lounge Config, Hybrid Quota Engine & Stripe Billing Lifecycle'
       };
       await cols.loungeTrialGrants.doc(oldV1Hash).set(legacyGrant);
 
+      const trialPriceId = config.stripePriceIds.JPY.TRIAL_TICKET_100;
+      if (!trialPriceId) {
+        throw new Error('Expected JPY TRIAL_TICKET_100 price ID');
+      }
       const raceSession = await stripeGateway.createCheckoutSession({
         customerId: (await cols.loungeSubscriptions.doc('uid_user_a').get()).data()!.stripeCustomerId!,
         uid: 'uid_user_a',
         productId: 'TRIAL_TICKET_100',
         mode: 'payment',
-        priceId: config.stripePriceIds.JPY.TRIAL_TICKET_100,
+        priceId: trialPriceId,
         currency: 'JPY',
         successUrl: 'http://localhost:4300/?checkout=success&session_id={CHECKOUT_SESSION_ID}',
         cancelUrl: 'http://localhost:4300/?checkout=cancel',
@@ -1529,6 +1692,22 @@ describe('Private Lounge Config, Hybrid Quota Engine & Stripe Billing Lifecycle'
         .set('Authorization', 'Bearer uid_b')
         .send({ sessionId: frSid });
 
+      // Failed Stripe refund rolls back provisional CREDIT_LOT revocation cleanly
+      jest
+        .spyOn(p2Stripe, 'createFullRefund')
+        .mockRejectedValueOnce(new Error('Stripe transient refund outage'));
+      const euWithdrawRollbackRes = await request(p2App)
+        .post('/api/v1/lounge/billing/eu-withdrawal')
+        .set('Authorization', 'Bearer uid_b')
+        .send({
+          targetType: 'CREDIT_LOT',
+          targetId: frSid,
+          confirmedWithdrawal: true,
+        });
+      expect(euWithdrawRollbackRes.status).toBe(500);
+      expect((await p2Cols.loungeCreditLots.doc(frSid).get()).data()!.status).toBe('ACTIVE');
+      expect((await p2Cols.loungeCreditLots.doc(frSid).get()).data()!.remainingTurns).toBe(100);
+
       // Phase 2 EEA withdrawal on CREDIT_LOT refunds 100% and revokes lot
       const euWithdrawRes = await request(p2App)
         .post('/api/v1/lounge/billing/eu-withdrawal')
@@ -1540,6 +1719,8 @@ describe('Private Lounge Config, Hybrid Quota Engine & Stripe Billing Lifecycle'
         });
       expect(euWithdrawRes.status).toBe(200);
       expect(euWithdrawRes.body.revokedTurns).toBe(100);
+      expect(euWithdrawRes.body.refundId).toMatch(/^re_/);
+      expect(euWithdrawRes.body.confirmationChannel).toBe('STRIPE_RECEIPT_AND_IN_APP');
       expect((await p2Cols.loungeCreditLots.doc(frSid).get()).data()!.status).toBe('REVOKED');
 
       // Phase 2 EEA withdrawal on STANDARD_MONTHLY subscription cancels immediately & downgrades
@@ -1559,15 +1740,20 @@ describe('Private Lounge Config, Hybrid Quota Engine & Stripe Billing Lifecycle'
         .send({ sessionId: frSubSid });
       const frSubId = (await p2Cols.loungeSubscriptions.doc('uid_user_b').get()).data()!
         .stripeSubscriptionId!;
+      const cancelSubSpy = jest.spyOn(p2Stripe, 'cancelSubscriptionImmediately');
       const euSubWithdrawRes = await request(p2App)
         .post('/api/v1/lounge/billing/eu-withdrawal')
         .set('Authorization', 'Bearer uid_b')
         .send({
           targetType: 'SUBSCRIPTION',
-          targetId: frSubId,
+          targetId: 'ACTIVE_SUBSCRIPTION',
           confirmedWithdrawal: true,
         });
       expect(euSubWithdrawRes.status).toBe(200);
+      expect(cancelSubSpy).toHaveBeenCalledWith(frSubId);
+      cancelSubSpy.mockRestore();
+      expect(euSubWithdrawRes.body.refundId).toMatch(/^re_/);
+      expect(euSubWithdrawRes.body.confirmationChannel).toBe('STRIPE_RECEIPT_AND_IN_APP');
       expect(euSubWithdrawRes.body.subscription.tier).toBe('FREE');
       expect(euSubWithdrawRes.body.subscription.status).toBe('CANCELED');
 
@@ -1858,6 +2044,7 @@ describe('Private Lounge Config, Hybrid Quota Engine & Stripe Billing Lifecycle'
         mode: 'payment',
         paymentStatus: 'unpaid',
         paymentIntentCreatedIso: '2026-11-24T00:00:00.000Z',
+        currency: 'JPY',
         metadata: { uid: 'uid_user_a', productId: 'CHARGE_TICKET_100' },
       });
       const unpaidVerifyRes = await request(app)
@@ -1937,86 +2124,213 @@ describe('Private Lounge Config, Hybrid Quota Engine & Stripe Billing Lifecycle'
       expect((await request(app).get('/api/v1/lounge/billing/catalog').set('Authorization', 'Bearer uid_a')).status).toBe(403);
     });
 
-    it('covers Stripe string-id fallbacks, non-404 error rethrows, dispute-blocked checkout, expired EU lot, and nested invoice webhooks', async () => {
+    it('enforces fail-fast Stripe schema guards, timing-safe test-sig, expired retainUntil grants, portalReturn bounds, and withdrawal contracts', async () => {
+      const notFoundErr = Object.assign(new Error('No such customer'), {
+        statusCode: 404,
+        code: 'resource_missing',
+      });
       const mockStripeStr = {
         customers: {
-          retrieve: jest.fn().mockRejectedValueOnce({ statusCode: 500, message: 'stripe down' }),
-          create: jest.fn(),
-          del: jest.fn().mockRejectedValueOnce({ statusCode: 500, message: 'del fail' }),
+          retrieve: jest
+            .fn()
+            .mockRejectedValueOnce({ statusCode: 500, message: 'stripe down' })
+            .mockRejectedValueOnce(notFoundErr),
+          create: jest.fn().mockResolvedValueOnce({ id: 'cus_recreated' }),
+          del: jest
+            .fn()
+            .mockRejectedValueOnce({ statusCode: 500, message: 'del fail' })
+            .mockRejectedValueOnce(notFoundErr),
         },
         checkout: {
           sessions: {
             create: jest.fn(),
-            retrieve: jest.fn().mockResolvedValueOnce({
-              id: 'cs_str',
-              url: null,
-              customer: 'cus_str',
-              mode: 'subscription',
-              payment_status: 'no_payment_required',
-              payment_intent: 'pi_str',
-              subscription: 'sub_str',
-              created: 0,
-              currency: null,
-              amount_total: null,
-              metadata: null,
-            }),
+            retrieve: jest
+              .fn()
+              .mockResolvedValueOnce({
+                id: 'cs_str',
+                url: null,
+                customer: 'cus_str',
+                mode: 'subscription',
+                payment_status: 'no_payment_required',
+                payment_intent: 'pi_str',
+                subscription: 'sub_str',
+                created: 1700000000,
+                currency: 'usd',
+                amount_total: null,
+                metadata: null,
+              })
+              .mockResolvedValueOnce({
+                id: 'cs_bad_cur',
+                url: null,
+                customer: 'cus_str',
+                mode: 'payment',
+                payment_status: 'paid',
+                created: 1700000000,
+                currency: null,
+                metadata: {},
+              })
+              .mockResolvedValueOnce({
+                id: 'cs_bad_mode',
+                url: null,
+                customer: 'cus_str',
+                mode: 'setup',
+                payment_status: 'paid',
+                created: 1700000000,
+                currency: 'usd',
+                metadata: {},
+              }),
             list: jest.fn().mockReturnValue((async function* () {})()),
           },
         },
         subscriptions: {
-          retrieve: jest.fn().mockResolvedValueOnce({
-            id: 'sub_str',
-            customer: 'cus_str',
-            status: 'incomplete_expired',
-            cancel_at_period_end: false,
-            latest_invoice: 'in_str',
-            schedule: 'sched_str',
-            currency: 'eur',
-            items: { data: [{ current_period_end: 0 }] },
-          }),
+          retrieve: jest
+            .fn()
+            .mockResolvedValueOnce({
+              id: 'sub_str',
+              customer: 'cus_str',
+              status: 'incomplete_expired',
+              cancel_at_period_end: false,
+              latest_invoice: 'in_str',
+              schedule: 'sched_str',
+              currency: 'usd',
+              items: { data: [{ current_period_end: 1798000000 }] },
+            })
+            .mockResolvedValueOnce({
+              id: 'sub_bad_cur',
+              customer: 'cus_str',
+              status: 'active',
+              cancel_at_period_end: false,
+              currency: 'eur',
+              items: { data: [{ current_period_end: 1798000000 }] },
+            })
+            .mockResolvedValueOnce({
+              id: 'sub_zero_ts',
+              customer: 'cus_str',
+              status: 'active',
+              cancel_at_period_end: false,
+              currency: 'usd',
+              items: { data: [{ current_period_end: 0 }] },
+            })
+            .mockRejectedValueOnce(notFoundErr),
           list: jest.fn().mockReturnValue((async function* () {})()),
           cancel: jest.fn().mockRejectedValueOnce({ statusCode: 500, message: 'cancel fail' }),
         },
         subscriptionSchedules: { list: jest.fn().mockReturnValue((async function* () {})()) },
-        invoices: { list: jest.fn().mockReturnValue((async function* () {})()) },
+        invoices: {
+          list: jest.fn().mockReturnValue((async function* () {})()),
+        },
         charges: {
           list: jest.fn().mockResolvedValueOnce({ data: [], has_more: false }),
-          retrieve: jest.fn(),
+          retrieve: jest
+            .fn()
+            .mockResolvedValueOnce({
+              id: 'ch_ok',
+              customer: 'cus_str',
+              status: 'pending',
+              amount: 500,
+              amount_refunded: 0,
+              refunded: false,
+              disputed: false,
+              currency: 'jpy',
+              created: 1700000000,
+              receipt_url: 'https://pay.stripe.com/receipts/ch_ok',
+              metadata: {},
+            })
+            .mockRejectedValueOnce(notFoundErr),
         },
         invoicePayments: {
-          list: jest.fn().mockResolvedValueOnce({
-            data: [
-              {
-                invoice: {
-                  id: 'in_str_parent',
-                  period_end: 1798000000,
-                  parent: { subscription_details: { subscription: 'sub_parent_str' } },
+          list: jest
+            .fn()
+            .mockResolvedValueOnce({
+              data: [
+                {
+                  invoice: {
+                    id: 'in_str_parent',
+                    period_end: 1798000000,
+                    parent: { subscription_details: { subscription: 'sub_parent_str' } },
+                  },
                 },
-              },
-            ],
-          }),
+              ],
+            })
+            .mockResolvedValueOnce({
+              data: [{ status: 'paid', payment: { type: 'payment_intent', payment_intent: 'pi_resolved_1' } }],
+            }),
         },
         refunds: { create: jest.fn() },
-        webhooks: { constructEvent: jest.fn() },
+        webhooks: {
+          constructEvent: jest
+            .fn()
+            .mockReturnValueOnce({ id: 'evt_sdk_1', type: 'invoice.paid', data: { object: { id: 'in_1' } } })
+            .mockImplementationOnce(() => {
+              throw new Error('Bad signature');
+            }),
+        },
       };
       const strAdapter = new StripeSdkGatewayAdapter('sk_test_str', mockStripeStr as unknown as Stripe);
       await expect(
         strAdapter.ensureCustomer({ existingCustomerId: 'cus_err', uid: 'u', xHandle: '@u', countryCode: 'JP' }),
       ).rejects.toMatchObject({ statusCode: 500 });
+      await expect(
+        strAdapter.ensureCustomer({ existingCustomerId: 'cus_missing', uid: 'u', xHandle: '@u', countryCode: 'JP' }),
+      ).resolves.toEqual({ customerId: 'cus_recreated' });
       await expect(strAdapter.cancelSubscriptionImmediately('sub_err')).rejects.toMatchObject({ statusCode: 500 });
       await expect(strAdapter.cancelAndDeleteCustomer('cus_err')).rejects.toMatchObject({ statusCode: 500 });
+      await expect(strAdapter.cancelAndDeleteCustomer('cus_missing')).resolves.toBeUndefined();
+      expect(await strAdapter.listCharges({ customerId: 'cus_str', limit: 5, startingAfter: 'ch_0' })).toEqual({
+        charges: [],
+        hasMore: false,
+      });
+      expect((await strAdapter.retrieveCharge('ch_ok')).status).toBe('pending');
+      await expect(strAdapter.retrieveCharge('ch_missing')).rejects.toMatchObject({ statusCode: 404 });
+      expect(
+        strAdapter.constructWebhookEvent(Buffer.from('{}'), 't=1,v1=sig', 'whsec_test').id,
+      ).toBe('evt_sdk_1');
+      expect(() => strAdapter.constructWebhookEvent(Buffer.from('{}'), 'bad', 'whsec_test')).toThrow(
+        /Invalid Stripe webhook signature/,
+      );
       const strSession = await strAdapter.retrieveCheckoutSession('cs_str');
       expect(strSession.customerId).toBe('cus_str');
       expect(strSession.paymentStatus).toBe('no_payment_required');
+      expect(strSession.currency).toBe('USD');
+      await expect(strAdapter.retrieveCheckoutSession('cs_bad_cur')).rejects.toThrow(
+        /Unsupported or missing Stripe currency/,
+      );
+      await expect(strAdapter.retrieveCheckoutSession('cs_bad_mode')).rejects.toThrow(/Unsupported Stripe Checkout Session mode/);
       const strSub = await strAdapter.retrieveSubscription('sub_str');
       expect(strSub.status).toBe('incomplete_expired');
       expect(strSub.latestInvoiceId).toBe('in_str');
+      expect(strSub.currency).toBe('USD');
+      await expect(strAdapter.retrieveSubscription('sub_bad_cur')).rejects.toThrow(
+        /Unsupported or missing Stripe currency/,
+      );
+      await expect(strAdapter.retrieveSubscription('sub_zero_ts')).rejects.toThrow(
+        /missing valid positive timestamp/,
+      );
+      await expect(strAdapter.retrieveSubscription('sub_missing')).rejects.toMatchObject({ statusCode: 404 });
       expect(await strAdapter.resolveInvoiceByPaymentIntent('pi_str')).toMatchObject({
         id: 'in_str_parent',
         subscriptionId: 'sub_parent_str',
       });
+      expect(await strAdapter.resolvePaymentIntentByInvoice('in_sub_pi')).toBe('pi_resolved_1');
 
-      const { app, cols, stripeGateway, config } = setupBillingAppHarness({
+      // LocalTestStripeGatewayAdapter test-sig-<hex> & malformed JSON validation
+      const localStripeSig = new LocalTestStripeGatewayAdapter('http://localhost:4300');
+      const evtPayload = Buffer.from(JSON.stringify({ id: 'evt_test_sig', type: 'invoice.paid', data: { object: {} } }), 'utf8');
+      const expectedHex = crypto
+        .createHmac('sha256', 'whsec_test')
+        .update(evtPayload)
+        .digest('hex');
+      expect(
+        localStripeSig.constructWebhookEvent(evtPayload, `test-sig-${expectedHex}`, 'whsec_test').id,
+      ).toBe('evt_test_sig');
+      expect(() =>
+        localStripeSig.constructWebhookEvent(evtPayload, 'whsec_test', 'whsec_test'),
+      ).toThrow(/Invalid Stripe webhook signature/);
+      expect(() =>
+        localStripeSig.constructWebhookEvent(Buffer.from('{broken', 'utf8'), `test-sig-${crypto.createHmac('sha256', 'whsec_test').update('{broken').digest('hex')}`, 'whsec_test'),
+      ).toThrow(/Malformed Stripe webhook JSON/);
+
+      const { app, cols, stripeGateway, config, firestore, deps } = setupBillingAppHarness({
         LOUNGE_PHASE2_EEA_ENABLED: 'true',
       });
       await request(app)
@@ -2024,11 +2338,74 @@ describe('Private Lounge Config, Hybrid Quota Engine & Stripe Billing Lifecycle'
         .set('x-client-country', 'DE')
         .send({
           idToken: 'uid_b',
-          xOAuthCode: 'x_oauth_b_branch',
           language: 'en',
           timezone: 'Europe/Berlin',
           disclaimerConsent: validConsent(1),
         });
+
+      // Query validation for portalReturn ('0', '1', 'true', 'false', vs invalid)
+      expect(
+        (
+          await request(app)
+            .get('/api/v1/lounge/billing/subscription?portalReturn=0')
+            .set('Authorization', 'Bearer uid_b')
+        ).status,
+      ).toBe(200);
+      expect(
+        (
+          await request(app)
+            .get('/api/v1/lounge/billing/subscription?portalReturn=false')
+            .set('Authorization', 'Bearer uid_b')
+        ).status,
+      ).toBe(200);
+      expect(
+        (
+          await request(app)
+            .get('/api/v1/lounge/billing/subscription?portalReturn=invalid')
+            .set('Authorization', 'Bearer uid_b')
+        ).status,
+      ).toBe(400);
+
+      // Expired 3-year trial grant (retainUntil <= now) does NOT block trial checkout eligibility
+      expect(LOUNGE_TRIAL_GRANT_RETENTION_YEARS).toBe(3);
+      expect(computeTrialGrantRetainUntilIso(new Date('2024-02-29T12:00:00.000Z'))).toBe(
+        '2027-02-28T12:00:00.000Z',
+      );
+      const grantHash = computeActiveTrialGrantHash('x_999002', config.trialHmacKeyring);
+      await cols.loungeTrialGrants.doc(grantHash.hash).set({
+        xUserIdHash: grantHash.hash,
+        keyVersion: grantHash.keyVersion,
+        riskStatus: 'DISPUTE_BLOCKED',
+        trialTicketGrantedAt: '2020-01-01T00:00:00.000Z',
+        retainUntil: '2023-01-01T00:00:00.000Z',
+      });
+      const catExpiredGrant = await request(app)
+        .get('/api/v1/lounge/billing/catalog')
+        .set('Authorization', 'Bearer uid_b');
+      expect(catExpiredGrant.body.trialEligible).toBe(true);
+
+      // Unconsumed paid CREDIT_LOT lacking stripePaymentIntentId throws fail-fast invariant 500 error
+      await cols.loungeCreditLots.doc('lot_no_pi').set({
+        id: 'lot_no_pi',
+        uid: 'uid_user_b',
+        productId: 'CHARGE_TICKET_100',
+        isPaid: true,
+        initialTurns: 100,
+        remainingTurns: 100,
+        currency: 'USD',
+        unitAmount: 350,
+        status: 'ACTIVE',
+        purchasedAt: new Date(Date.now() - 60_000).toISOString(),
+        expiresAt: '2027-01-01T00:00:00.000Z',
+      });
+      expect(
+        (
+          await request(app)
+            .post('/api/v1/lounge/billing/eu-withdrawal')
+            .set('Authorization', 'Bearer uid_b')
+            .send({ targetType: 'CREDIT_LOT', targetId: 'lot_no_pi', confirmedWithdrawal: true })
+        ).status,
+      ).toBe(500);
 
       // Expired 14d credit lot throws 409 on EU withdrawal
       await cols.loungeCreditLots.doc('lot_old_eu').set({
@@ -2053,8 +2430,7 @@ describe('Private Lounge Config, Hybrid Quota Engine & Stripe Billing Lifecycle'
         ).status,
       ).toBe(409);
 
-      // Dispute blocked trial checkout returns 403 DISPUTE_BLOCKED
-      const grantHash = computeActiveTrialGrantHash('x_999002', config.trialHmacKeyring);
+      // Dispute blocked trial checkout returns 403 DISPUTE_BLOCKED (overwrite expired grant)
       await cols.loungeTrialGrants.doc(grantHash.hash).set({
         xUserIdHash: grantHash.hash,
         keyVersion: grantHash.keyVersion,
@@ -2148,6 +2524,54 @@ describe('Private Lounge Config, Hybrid Quota Engine & Stripe Billing Lifecycle'
             .send(nestedFailMissing.rawText)
         ).body.ignored,
       ).toBe(true);
+
+      // Unconfigured / Coming Soon Stripe product & Free-only DisabledLoungeStripeGatewayAdapter
+      const freeOnlyEnv = loadLoungeRuntimeConfig({
+        NODE_ENV: 'production',
+        GCP_PROJECT_ID: 'proj-coming-soon',
+        LOUNGE_PHASE2_EEA_ENABLED: 'true',
+        CORS_ALLOWED_ORIGINS: 'https://lounge.example.com',
+        LOUNGE_PUBLIC_ORIGIN: 'https://lounge.example.com',
+        LOUNGE_TRIAL_HMAC_SECRET_V1: 'sec-coming-soon',
+        LOUNGE_BATCH_OIDC_AUDIENCE: 'https://lounge.example.com/api/v1/lounge/batch',
+        LOUNGE_BATCH_OIDC_SERVICE_ACCOUNT_EMAIL: 'scheduler@example.iam.gserviceaccount.com',
+        FIREBASE_WEB_API_KEY: 'web-key',
+        FIREBASE_WEB_APP_ID: 'web-app',
+        GEMINI_API_KEY: 'gem-key',
+      });
+      const freeOnlyDeps = createProductionLoungeDependencies({}, {
+        config: freeOnlyEnv,
+        firestore,
+        authVerifier: deps.authVerifier,
+      });
+      const freeOnlyApp = createLoungeApp(freeOnlyDeps);
+      const freeCfgRes = await request(freeOnlyApp).get('/api/v1/lounge/config');
+      expect(freeCfgRes.body.billingEnabled).toBe(false);
+
+      const comingSoonCat = await request(freeOnlyApp)
+        .get('/api/v1/lounge/billing/catalog')
+        .set('x-client-country', 'DE')
+        .set('Authorization', 'Bearer uid_b');
+      expect(comingSoonCat.status).toBe(200);
+      expect(
+        comingSoonCat.body.products.every(
+          (p: { available: boolean; eligible: boolean; ineligibleReason?: string }) =>
+            p.available === false && p.eligible === false && p.ineligibleReason === 'COMING_SOON',
+        ),
+      ).toBe(true);
+
+      const comingSoonCheckout = await request(freeOnlyApp)
+        .post('/api/v1/lounge/billing/checkout')
+        .set('x-client-country', 'DE')
+        .set('Authorization', 'Bearer uid_b')
+        .send({
+          productId: 'STANDARD_MONTHLY',
+          acceptedPurchaseDisclosure: true,
+          acceptedAutoRenewalOptIn: true,
+          confirmedAdultOrParentalConsent: true,
+        });
+      expect(comingSoonCheckout.status).toBe(409);
+      expect(comingSoonCheckout.body.code).toBe('COMING_SOON');
     });
   });
 });

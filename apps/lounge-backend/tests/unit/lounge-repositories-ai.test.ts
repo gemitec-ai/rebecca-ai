@@ -2,9 +2,11 @@ import crypto from 'node:crypto';
 import type { GoogleGenAI } from '@google/genai';
 import { Timestamp, type Firestore } from '@google-cloud/firestore';
 import express from 'express';
+import rateLimit from 'express-rate-limit';
 import { getApp, getApps, initializeApp } from 'firebase-admin/app';
 import { getAuth } from 'firebase-admin/auth';
 import request from 'supertest';
+import { getActivePersona } from '@rebecca/persona';
 import { COLLECTIONS, getCollections } from '@rebecca/db';
 import {
   AssetStatus,
@@ -13,8 +15,8 @@ import {
 import { loadTrialHmacKeyring } from '../../src/config/loungeConfig';
 import { LoungeAccountRepository } from '../../src/features/account/repositories/loungeAccount.repository';
 import {
+  createFirebaseIdentityClient,
   FirebaseLoungeAuthVerifier,
-  resolveFirebaseLoungeAuthClient,
 } from '../../src/features/auth/adapters/firebaseLoungeAuth.verifier';
 import { LoungeAuthRepository } from '../../src/features/auth/repositories/loungeAuth.repository';
 import {
@@ -23,13 +25,21 @@ import {
   LoungeDreamingBatchService,
 } from '../../src/features/dreaming/loungeDreaming.service';
 import { LoungeGalleryRepository } from '../../src/features/gallery/repositories/loungeGallery.repository';
+import { FirestoreBotImageVectorSearchAdapter } from '../../src/features/sessions/adapters/firestoreBotImageVectorSearch.adapter';
+import { FirestorePublicXMemoryReadAdapter } from '../../src/features/sessions/adapters/firestorePublicXMemoryRead.adapter';
+import {
+  GeminiLoungeAiAdapter,
+  parseAndNormalizeCoreProfile,
+} from '../../src/features/sessions/adapters/geminiLoungeAi.adapters';
 import {
   buildDeterministicTestEmbedding,
-  FirestoreBotImageVectorSearchAdapter,
-  FirestorePublicXMemoryReadAdapter,
-  GeminiLoungeAiAdapter,
   LocalEmulatorLoungeAiAdapter,
-} from '../../src/features/sessions/adapters/geminiLoungeAi.adapters';
+} from '../../src/features/sessions/adapters/localEmulatorLoungeAi.adapter';
+import { LoungeIllustrationMatcherService } from '../../src/features/sessions/domain/loungeIllustrationMatcher.service';
+import {
+  buildLoungeChannelGuidelines,
+  composeLoungeDialoguePrompt,
+} from '../../src/features/sessions/domain/loungePrompt.composer';
 import {
   computeCosineSimilarity,
   LoungeSessionRepository,
@@ -83,6 +93,15 @@ function cloneFirestoreValue<V>(val: V): V {
   }
   if (val instanceof Date) {
     return new Date(val.getTime()) as unknown as V;
+  }
+  if (
+    typeof val === 'object' &&
+    val !== null &&
+    'toArray' in val &&
+    typeof (val as { toArray?: unknown }).toArray === 'function'
+  ) {
+    const arr = [...(val as { toArray(): number[] }).toArray()];
+    return { toArray: () => [...arr] } as unknown as V;
   }
   if (Array.isArray(val)) {
     return val.map((item) => cloneFirestoreValue(item)) as unknown as V;
@@ -396,17 +415,17 @@ function createConsent(version = 1): LoungeUserDisclaimerConsent {
 
 describe('Private Lounge Repositories, Auth Verifier, Batch Auth, AI Adapters & Dreaming', () => {
   describe('FirebaseLoungeAuthVerifier & Cloud Scheduler Batch Auth', () => {
-    it('resolves tenant-aware Firebase Admin Auth clients and verifies X identities & emulator tokens', async () => {
+    it('resolves tenant-aware Firebase Identity clients and verifies X identities & emulator tokens', async () => {
       (getApps as jest.Mock).mockReturnValueOnce([]);
-      resolveFirebaseLoungeAuthClient('proj-1', 'tenant-lounge');
+      createFirebaseIdentityClient('proj-1', 'tenant-lounge');
       expect(initializeApp).toHaveBeenCalledWith({ projectId: 'proj-1' }, 'lounge-bff-auth');
 
       (getApps as jest.Mock).mockReturnValueOnce([{ name: 'lounge-bff-auth' }]);
-      resolveFirebaseLoungeAuthClient('proj-1');
+      createFirebaseIdentityClient('proj-1');
       expect(getAuth).toHaveBeenCalled();
 
       (getApps as jest.Mock).mockReturnValue([{ name: '[DEFAULT]' }]);
-      resolveFirebaseLoungeAuthClient('');
+      createFirebaseIdentityClient('');
       expect(getApp).toHaveBeenCalled();
       (getApps as jest.Mock).mockReset().mockReturnValue([]);
 
@@ -450,9 +469,10 @@ describe('Private Lounge Repositories, Auth Verifier, Batch Auth, AI Adapters & 
       expect(emuIdentity.xHandle).toMatch(/^@member_/);
     });
 
-    it('authenticates non-prod timing-safe x-batch-secret and production Google OIDC tokens', async () => {
+    it('authenticates non-prod timing-safe x-batch-secret and production/Cloud Run Google OIDC tokens', async () => {
       const verifyIdToken = jest.fn();
       const nonProdApp = express();
+      nonProdApp.use(rateLimit({ windowMs: 60_000, max: 100 }));
       nonProdApp.post(
         '/run',
         createLoungeBatchAuthMiddleware({
@@ -474,14 +494,17 @@ describe('Private Lounge Repositories, Auth Verifier, Batch Auth, AI Adapters & 
         (await request(nonProdApp).post('/run').set('x-batch-secret', 'super-secret-batch')).status,
       ).toBe(200);
 
-      // Production ignores x-batch-secret and enforces Bearer OIDC verification
+      // Production & Cloud Run ignore x-batch-secret and enforce Bearer OIDC verification
       const prodApp = express();
+      prodApp.use(rateLimit({ windowMs: 60_000, max: 100 }));
       prodApp.post(
         '/run',
         createLoungeBatchAuthMiddleware({
           nodeEnv: 'production',
+          isCloudRun: true,
           batchSecretKey: 'super-secret-batch',
           expectedAudience: 'https://lounge.example.com',
+          expectedServiceAccountEmail: 'scheduler@example.iam.gserviceaccount.com',
           oidcClient: { verifyIdToken } as unknown as NonNullable<
             Parameters<typeof createLoungeBatchAuthMiddleware>[0]['oidcClient']
           >,
@@ -501,10 +524,54 @@ describe('Private Lounge Repositories, Auth Verifier, Batch Auth, AI Adapters & 
         (await request(prodApp).post('/run').set('Authorization', 'Bearer oidc-bad')).status,
       ).toBe(401);
 
-      verifyIdToken.mockResolvedValueOnce({});
+      verifyIdToken.mockResolvedValueOnce({
+        getPayload: () => ({
+          iss: 'https://evil.example.com',
+          email: 'scheduler@example.iam.gserviceaccount.com',
+          email_verified: true,
+        }),
+      });
+      expect(
+        (await request(prodApp).post('/run').set('Authorization', 'Bearer oidc-bad-iss')).status,
+      ).toBe(401);
+
+      verifyIdToken.mockResolvedValueOnce({
+        getPayload: () => ({
+          iss: 'https://accounts.google.com',
+          email: 'other@example.iam.gserviceaccount.com',
+          email_verified: true,
+        }),
+      });
+      expect(
+        (await request(prodApp).post('/run').set('Authorization', 'Bearer oidc-wrong-sa')).status,
+      ).toBe(403);
+
+      verifyIdToken.mockResolvedValueOnce({
+        getPayload: () => ({
+          iss: 'https://accounts.google.com',
+          email: 'SCHEDULER@example.iam.gserviceaccount.com',
+          email_verified: true,
+        }),
+      });
       expect(
         (await request(prodApp).post('/run').set('Authorization', 'Bearer oidc-good')).status,
       ).toBe(200);
+
+      // Fail-closed when OIDC audience or service account email is missing in production
+      const unconfiguredBatchApp = express();
+      unconfiguredBatchApp.use(rateLimit({ windowMs: 60_000, max: 100 }));
+      unconfiguredBatchApp.post(
+        '/run',
+        createLoungeBatchAuthMiddleware({
+          nodeEnv: 'production',
+          isCloudRun: true,
+          expectedAudience: 'https://lounge.example.com',
+        }),
+        (_req, res) => res.status(200).json({ ok: true }),
+      );
+      expect(
+        (await request(unconfiguredBatchApp).post('/run').set('Authorization', 'Bearer oidc-good')).status,
+      ).toBe(401);
     });
   });
 
@@ -512,7 +579,7 @@ describe('Private Lounge Repositories, Auth Verifier, Batch Auth, AI Adapters & 
     it('executes auth, account, gallery, and chunked deletion lifecycle cleanly', async () => {
       const { firestore } = createVectorCapableFirestore();
       const cols = getCollections(firestore);
-      const keyring = loadTrialHmacKeyring({ NODE_ENV: 'test' });
+      const keyring = loadTrialHmacKeyring({ NODE_ENV: 'test' }, true);
       const authMock = {
         revokeRefreshTokens: jest.fn().mockResolvedValue(undefined),
         deleteUser: jest.fn().mockResolvedValue(undefined),
@@ -530,12 +597,18 @@ describe('Private Lounge Repositories, Auth Verifier, Batch Auth, AI Adapters & 
         avatarUrl: 'assets/gemitec_icon.svg',
         disclaimerConsent: createConsent(1),
         onboardingCompleted: false,
+        allowServiceImprovementAnalytics: true,
         preferredCurrency: 'JPY',
       });
       expect(created.uid).toBe('uid_repo_1');
       expect((await authRepo.findUserByUid('uid_repo_1'))?.xUserId).toBe('x_repo_1');
       expect((await authRepo.findUserByXUserId('x_repo_1'))?.uid).toBe('uid_repo_1');
       expect(await authRepo.findUserByXUserId('missing_x')).toBeNull();
+
+      // Verify trial grant retains a 3-year (~1095d) retainUntil TTL field
+      const grantMap = Array.from((await cols.loungeTrialGrants.get()).docs).map((d) => d.data());
+      expect(grantMap[0]?.retainUntil).toBeDefined();
+      expect(Date.parse(grantMap[0].retainUntil)).toBeGreaterThan(Date.now() + 1000 * 86400 * 1090);
 
       await expect(
         authRepo.createUserWithConsent({
@@ -546,6 +619,7 @@ describe('Private Lounge Repositories, Auth Verifier, Batch Auth, AI Adapters & 
           avatarUrl: 'assets/gemitec_icon.svg',
           disclaimerConsent: createConsent(1),
           onboardingCompleted: false,
+          allowServiceImprovementAnalytics: true,
         }),
       ).rejects.toMatchObject({ statusCode: 409 });
 
@@ -561,12 +635,20 @@ describe('Private Lounge Repositories, Auth Verifier, Batch Auth, AI Adapters & 
       await authRepo.updateUserDisclaimerConsent('uid_repo_1', createConsent(2));
       await authRepo.updateUserStatus('uid_repo_1', 'ACTIVE');
 
-      // Account repository search counter, quota decrement & lot lookup
-      await accountRepo.incrementDailySearchCount('uid_repo_1');
+      // Account repository search counter with quota-aligned local-midnight rollover, decrement & lot lookup
+      const now = new Date();
+      const sameDayLater = new Date(now.getTime() + 1_000);
+      const nextDay = new Date(now.getTime() + 26 * 60 * 60 * 1000);
+      await accountRepo.incrementDailySearchCount('uid_repo_1', now);
+      expect((await accountRepo.getSubscriptionDocByUid('uid_repo_1'))?.todaysSearchCount).toBe(1);
+      await accountRepo.incrementDailySearchCount('uid_repo_1', sameDayLater);
+      expect((await accountRepo.getSubscriptionDocByUid('uid_repo_1'))?.todaysSearchCount).toBe(2);
+      await accountRepo.incrementDailySearchCount('uid_repo_1', nextDay);
       expect((await accountRepo.getSubscriptionDocByUid('uid_repo_1'))?.todaysSearchCount).toBe(1);
       expect((await accountRepo.listActiveCreditLotsByUid('uid_repo_1'))).toHaveLength(1);
-      const decSub = await accountRepo.decrementRemainingTurns('uid_repo_1');
-      expect(decSub.dailyRemainingTurns).toBe(4);
+      const reservedTurn = await accountRepo.reserveTurnForSession('uid_repo_1', 'turn_repo_check');
+      expect(reservedTurn.subscription.dailyRemainingTurns).toBe(4);
+      expect(reservedTurn.todaysSearchCount).toBe(1);
 
       // Gallery repository excludes FAILED/PROCESSING/PENDING catalog assets
       await cols.images.doc('img_ready').set({
@@ -603,15 +685,23 @@ describe('Private Lounge Repositories, Auth Verifier, Batch Auth, AI Adapters & 
         'assets/ready.webp',
         'uid_repo_1',
       );
-      expect(unlocked.unlocked).toBe(true);
+      expect(unlocked?.unlocked).toBe(true);
       // Idempotent unlock
       expect(
-        (await galleryRepo.unlockGalleryItem('uid_repo_1', 'img_ready', 'assets/ready.webp', 'uid_repo_1')).id,
-      ).toBe(unlocked.id);
+        (await galleryRepo.unlockGalleryItem('uid_repo_1', 'img_ready', 'assets/ready.webp', 'uid_repo_1'))?.id,
+      ).toBe(unlocked?.id);
 
       const listRes = await galleryRepo.listGalleryByUid('uid_repo_1', { page: 1, limit: 10 });
       expect(listRes.summary).toEqual({ unlockedCount: 1, totalCount: 1 });
       expect(listRes.data).toHaveLength(1);
+      await expect(
+        galleryRepo.listGalleryByUid('uid_repo_1', { cursor: 'missing_gallery_cursor' }),
+      ).rejects.toMatchObject({ statusCode: 400 });
+
+      // deleteUser retains lounge_users/{uid} if Firebase Auth deletion fails transiently, enabling retries
+      authMock.deleteUser.mockRejectedValueOnce(new Error('transient auth outage'));
+      await expect(authRepo.deleteUser('uid_repo_1')).rejects.toThrow(/Failed to delete/);
+      expect((await cols.loungeUsers.doc('uid_repo_1').get()).exists).toBe(true);
 
       // deleteQueryInBatches across multiple chunks
       for (let i = 0; i < 5; i += 1) {
@@ -719,6 +809,28 @@ describe('Private Lounge Repositories, Auth Verifier, Batch Auth, AI Adapters & 
 
       const page2Offset = await prodSessionRepo.listMessages('uid_sess_1', { page: 2, limit: 2 });
       expect(page2Offset.data.map((m) => m.content)).toEqual(['First question', 'First answer']);
+      await expect(
+        prodSessionRepo.listMessages('uid_sess_1', { cursor: 'nonexistent_msg_id' }),
+      ).rejects.toMatchObject({ statusCode: 400 });
+      expect(await prodSessionRepo.findSessionByUid('uid_sess_1')).not.toBeNull();
+      expect(await prodSessionRepo.findSessionByUid('uid_missing_session')).toBeNull();
+
+      // Deleting/non-active user aborts appendMessagePair cleanly with 403 without writing turns
+      await prodCols.loungeUsers.doc('uid_sess_1').set({
+        ...(await prodCols.loungeUsers.doc('uid_sess_1').get()).data()!,
+        status: 'DELETING',
+      });
+      await expect(
+        prodSessionRepo.appendMessagePair({
+          uid: 'uid_sess_1',
+          sessionId: 'uid_sess_1',
+          userContent: 'Should abort',
+          userEmotion: 'NEUTRAL',
+          assistantContent: 'Should not persist',
+          assistantEmotion: 'NEUTRAL',
+          assistantTokenUsage: { promptTokens: 1, candidatesTokens: 1, totalTokens: 2 },
+        }),
+      ).rejects.toMatchObject({ statusCode: 403 });
 
       const recent = await prodSessionRepo.listRecentMessages('uid_sess_1', 2);
       expect(recent.map((m) => m.content)).toEqual(['Second question', 'Second answer']);
@@ -811,7 +923,8 @@ describe('Private Lounge Repositories, Auth Verifier, Batch Auth, AI Adapters & 
 
       const snapshot = await publicXReader.readPublicXMemorySnapshot('x_reader_1', [1, 0, 0]);
       expect(snapshot?.personaLayer1ExtendedPrompt).toBe('Layer 1 Ext');
-      expect(snapshot?.userVectorMemories).toEqual(['Loves city pop vinyl']);
+      expect(snapshot?.userVectorMemories).toHaveLength(1);
+      expect(snapshot?.userVectorMemories[0]).toContain('Loves city pop vinyl');
       expect(snapshot?.userRecentTurns).toHaveLength(2);
 
       // Image vector adapter: empty embedding returns null, emulator skips FAILED/PENDING and picks READY
@@ -836,10 +949,14 @@ describe('Private Lounge Repositories, Auth Verifier, Batch Auth, AI Adapters & 
       });
 
       const imgAdapter = new FirestoreBotImageVectorSearchAdapter(emuFs, emuCols, embedPort, 0.45, true);
-      expect(await imgAdapter.findBestMatchingImage('Coffee chat!', 'HAPPY')).toEqual({
-        assetId: 'img_good',
-        imageUrl: 'assets/good.webp',
-      });
+      expect(await imgAdapter.findCandidateImages('Coffee chat!', new Set(), 3)).toEqual([
+        {
+          assetId: 'img_good',
+          imageUrl: 'assets/good.webp',
+          caption: 'Success',
+        },
+      ]);
+      expect(await imgAdapter.findCandidateImages('Coffee chat!', new Set(['img_good']), 3)).toEqual([]);
 
       // Production findNearest path
       const { firestore: prodFs } = createVectorCapableFirestore({ failFindNearest: false });
@@ -868,40 +985,47 @@ describe('Private Lounge Repositories, Auth Verifier, Batch Auth, AI Adapters & 
         embedding: [1, 0, 0],
       });
       const prodImgAdapter = new FirestoreBotImageVectorSearchAdapter(prodFs, prodCols, embedPort, 0.45, false);
-      expect(await prodImgAdapter.findBestMatchingImage('Coffee!', 'HAPPY')).toEqual({
-        assetId: 'img_prod',
-        imageUrl: 'assets/prod.webp',
-      });
+      expect(await prodImgAdapter.findCandidateImages('Coffee!', new Set(), 3)).toEqual([
+        {
+          assetId: 'img_prod',
+          imageUrl: 'assets/prod.webp',
+          caption: 'Prod image',
+        },
+      ]);
       embedPort.embedQuery.mockResolvedValueOnce([]);
-      expect(await prodImgAdapter.findBestMatchingImage('Empty embed', 'NEUTRAL')).toBeNull();
+      expect(await prodImgAdapter.findCandidateImages('Empty embed', new Set(), 3)).toEqual([]);
       const nonEmuBrokenImg = new FirestoreBotImageVectorSearchAdapter(emuFs, emuCols, embedPort, 0.45, false);
-      expect(await nonEmuBrokenImg.findBestMatchingImage('Coffee!', 'HAPPY')).toBeNull();
+      expect(await nonEmuBrokenImg.findCandidateImages('Coffee!', new Set(), 3)).toEqual([]);
     });
 
-    it('invokes Gemini Flash-Lite search_web tool loop, fallback retry, LocalEmulator adapter & Dreaming endpoint', async () => {
+    it('invokes Gemini Flash-Lite ReAct search_web tool loop without schema collision, post-reply emotion, 3-stage image match, LocalEmulator adapter & Dreaming endpoint', async () => {
       const embedContent = jest.fn().mockResolvedValue({
         embeddings: [{ values: buildDeterministicTestEmbedding('coffee') }],
       });
       const generateContent = jest
         .fn()
-        // classifyEmotion response
+        // 1) post-reply classifyEmotion response
         .mockResolvedValueOnce({ text: '{"emotion":"EXCITED"}' })
-        // Round 1 of chat dialogue loop: triggers search_web tool
+        // 2) planImageSearch -> attach image query
+        .mockResolvedValueOnce({ text: '{"shouldAttachImage":true,"searchQuery":"Rebecca smiling outdoors sunny"}' })
+        // 3) verifyImageRelevance -> relevant
+        .mockResolvedValueOnce({ text: '{"relevant":true}' })
+        // 4) Round 1 of chat dialogue loop: triggers search_web tool (MUST NOT combine tools + responseSchema)
         .mockResolvedValueOnce({
           functionCalls: [{ name: 'search_web', args: { query: 'Tokyo weather' } }],
           candidates: [{ content: { role: 'model', parts: [{ functionCall: { name: 'search_web' } }] } }],
           usageMetadata: { promptTokenCount: 20, candidatesTokenCount: 5, totalTokenCount: 25 },
         })
-        // executeWebSearch Google Search grounding call
+        // 5) executeWebSearch Google Search grounding call
         .mockResolvedValueOnce({ text: 'Clear skies 18C in Tokyo.' })
-        // Round 2 final JSON reply
+        // 6) Round 2 synthesis structured JSON reply
         .mockResolvedValueOnce({
-          text: '{"thought":"warm reply","reply":"東京は18℃で晴れみたいだよ！","emotion":"HAPPY"}',
+          text: '{"thought":"warm reply after checking forecast","reply":"東京は18℃で晴れみたいだよ！"}',
           usageMetadata: { promptTokenCount: 30, candidatesTokenCount: 15, totalTokenCount: 45 },
         })
-        // Dreaming synthesis JSON response
+        // 7) Dreaming synthesis JSON response
         .mockResolvedValueOnce({
-          text: '{"interests":["City Pop"],"recentTopics":["Weather"]}',
+          text: '{"attributes":["Tokyo"],"preferences":["City Pop","Weather"],"concerns":[],"important_memories":[]}',
         });
 
       const fakeGenAi = { models: { embedContent, generateContent } } as unknown as GoogleGenAI;
@@ -928,7 +1052,28 @@ describe('Private Lounge Repositories, Auth Verifier, Batch Auth, AI Adapters & 
         createdAt: '2026-11-24T00:00:00.000Z',
         updatedAt: '2026-11-24T00:00:00.000Z',
       };
-      expect(await geminiAdapter.classifyEmotion('Yay!')).toBe('EXCITED');
+      expect(
+        await geminiAdapter.classifyEmotion({
+          userPrompt: 'Yay!',
+          thought: 'happy mood',
+          replyText: 'やったね！',
+        }),
+      ).toBe('EXCITED');
+      expect(
+        await geminiAdapter.planImageSearch({
+          userPrompt: 'Sunny today',
+          thought: 'smiling',
+          replyText: 'いい天気だね！',
+        }),
+      ).toBe('Rebecca smiling outdoors sunny');
+      expect(
+        await geminiAdapter.verifyImageRelevance({
+          candidateCaption: 'Rebecca smiling outside on a bright sunny morning',
+          thought: 'smiling',
+          replyText: 'いい天気だね！',
+        }),
+      ).toBe(true);
+
       const reply = await geminiAdapter.generateReply({
         uid: 'uid_ai_1',
         session: mockSession,
@@ -936,29 +1081,34 @@ describe('Private Lounge Repositories, Auth Verifier, Batch Auth, AI Adapters & 
         responseLanguage: 'ja',
         userTimezone: 'Asia/Tokyo',
         allowWebSearch: true,
-        localePromptDirective: 'Reply in Japanese.',
-        memoryPromptDirective: '<untrusted_memory_context>Coffee lover</untrusted_memory_context>',
         privateMemory: {
-          coreProfile: { interests: ['Espresso'] },
+          coreProfile: { attributes: ['Espresso lover'] },
           recentRawMessages: [],
           vectorMemories: [],
         },
         publicXMemory: null,
       });
       expect(reply.usedWebSearch).toBe(true);
-      expect(reply.emotion).toBe('HAPPY');
+      expect(reply.thought).toBe('warm reply after checking forecast');
+      expect(reply.replyText).toBe('東京は18℃で晴れみたいだよ！');
       expect(reply.tokenUsage.totalTokens).toBe(70);
 
-      // LocalEmulatorLoungeAiAdapter coverage across heuristics & dreaming
+      // Verify ReAct tool round separated tools from responseSchema
+      const toolRoundCallConfig = generateContent.mock.calls[3][0].config;
+      expect(toolRoundCallConfig.tools).toBeDefined();
+      expect(toolRoundCallConfig.responseSchema).toBeUndefined();
+      expect(toolRoundCallConfig.responseMimeType).toBeUndefined();
+      const synthesisCallConfig = generateContent.mock.calls[5][0].config;
+      expect(synthesisCallConfig.responseMimeType).toBe('application/json');
+      expect(synthesisCallConfig.responseSchema).toBeDefined();
+
+      // LocalEmulatorLoungeAiAdapter: neutral, character-agnostic, no regex heuristics
       const localAi = new LocalEmulatorLoungeAiAdapter();
       expect(await localAi.embedQuery('')).toEqual([]);
       expect((await localAi.embedQuery('hello')).length).toBe(768);
-      expect(await localAi.classifyEmotion('すごい！')).toBe('EXCITED');
-      expect(await localAi.classifyEmotion('どうしてかな？')).toBe('THOUGHTFUL');
-      expect(await localAi.classifyEmotion('ありがとう')).toBe('HAPPY');
-      expect(await localAi.classifyEmotion('まさか')).toBe('SURPRISED');
-      expect(await localAi.classifyEmotion('照れるな')).toBe('SHY');
-      expect(await localAi.classifyEmotion('ふふっ')).toBe('TEASING');
+      expect(await localAi.classifyEmotion()).toBe('NEUTRAL');
+      expect(await localAi.planImageSearch()).toBeNull();
+      expect(await localAi.verifyImageRelevance()).toBe(true);
       const localReply = await localAi.generateReply({
         uid: 'uid_emu',
         session: { ...mockSession, id: 'uid_emu', uid: 'uid_emu' },
@@ -966,14 +1116,13 @@ describe('Private Lounge Repositories, Auth Verifier, Batch Auth, AI Adapters & 
         responseLanguage: 'en',
         userTimezone: 'UTC',
         allowWebSearch: true,
-        localePromptDirective: 'English',
-        memoryPromptDirective: '',
         privateMemory: { coreProfile: {}, recentRawMessages: [], vectorMemories: [] },
         publicXMemory: null,
       });
-      expect(localReply.usedWebSearch).toBe(true);
+      expect(localReply.usedWebSearch).toBe(false);
+      expect(localReply.replyText).toContain('[Emulator en]');
 
-      // Nightly Batch Dreaming via HTTP /batch/dreaming route
+      // Nightly Batch Dreaming via HTTP /batch/lounge-dreaming route
       const { firestore } = createVectorCapableFirestore();
       const cols = getCollections(firestore);
       await cols.loungeUsers.doc('uid_dream_1').set({
@@ -1010,39 +1159,36 @@ describe('Private Lounge Repositories, Auth Verifier, Batch Auth, AI Adapters & 
       );
 
       const batchRes = await request(batchApp)
-        .post('/api/v1/lounge/batch/dreaming')
+        .post('/api/v1/lounge/batch/lounge-dreaming')
         .set('x-batch-secret', 'sec-1');
       expect(batchRes.status).toBe(200);
       expect(batchRes.body.succeeded).toBe(1);
       expect(batchRes.body.processedUsers).toBe(1);
       const updatedUser = (await cols.loungeUsers.doc('uid_dream_1').get()).data()!;
-      expect((updatedUser.coreProfile as { interests?: string[] })?.interests).toContain('City Pop');
+      expect((updatedUser.coreProfile as { preferences?: string[] })?.preferences).toContain('City Pop');
 
-      // Exercise Gemini tool-loop retry fallback + Dreaming malformed fallback + Batch 500 error masking
+      // Early structured JSON return skips redundant synthesis round; Dreaming fail-fast throws on malformed JSON
       generateContent
-        .mockResolvedValueOnce({ text: 'not valid json for tool loop' })
         .mockResolvedValueOnce({
-          text: '{"thought":"recovered","reply":"ツールなしで答えるよ！","emotion":"NEUTRAL"}',
+          text: '{"thought":"direct answer","reply":"すぐ答えるよ！"}',
           usageMetadata: { promptTokenCount: 5, candidatesTokenCount: 5, totalTokenCount: 10 },
         })
         .mockResolvedValueOnce({ text: 'invalid-dreaming-json' });
 
-      const retryReply = await geminiAdapter.generateReply({
+      const directReply = await geminiAdapter.generateReply({
         uid: 'uid_ai_1',
         session: mockSession,
-        userPrompt: 'Fallback check',
+        userPrompt: 'Direct reply check',
         responseLanguage: 'ja',
         userTimezone: 'Asia/Tokyo',
         allowWebSearch: true,
-        localePromptDirective: 'Japanese',
-        memoryPromptDirective: '',
         privateMemory: { coreProfile: {}, recentRawMessages: [], vectorMemories: [] },
         publicXMemory: null,
       });
-      expect(retryReply.replyText).toBe('ツールなしで答えるよ！');
-      expect(
-        await geminiAdapter.generateDreaming('Prompt', [], { preserved: true }),
-      ).toEqual({ preserved: true });
+      expect(directReply.replyText).toBe('すぐ答えるよ！');
+      await expect(
+        geminiAdapter.generateDreaming('Prompt', [], { preserved: true }),
+      ).rejects.toThrow(/empty or malformed JSON/);
 
       const failingBatchApp = express();
       failingBatchApp.use(
@@ -1062,25 +1208,55 @@ describe('Private Lounge Repositories, Auth Verifier, Batch Auth, AI Adapters & 
       expect(errBatchRes.status).toBe(500);
       expect(errBatchRes.body).toEqual({ error: 'Internal server error' });
 
-      // Gemini empty/error fallback & LocalEmulator dreaming
+      // Fail-fast LLM validation & web search graceful degradation
       expect(await geminiAdapter.embedQuery('   ')).toEqual([]);
-      expect(await geminiAdapter.classifyEmotion('   ')).toBe('NEUTRAL');
       generateContent.mockRejectedValueOnce(new Error('classifier down'));
-      expect(await geminiAdapter.classifyEmotion('Yay!')).toBe('EXCITED');
-      expect(await geminiAdapter.executeWebSearch('   ')).toContain('クエリ');
+      await expect(
+        geminiAdapter.classifyEmotion({ userPrompt: 'Yay!', thought: '', replyText: 'Yay!' }),
+      ).rejects.toThrow(/classifier down/);
+      generateContent.mockResolvedValueOnce({ text: '{"emotion":"BOGUS"}' });
+      await expect(
+        geminiAdapter.classifyEmotion({ userPrompt: 'Yay!', thought: '', replyText: 'Yay!' }),
+      ).rejects.toThrow(/unrecognized emotion/);
+      generateContent.mockResolvedValueOnce({ text: '{"shouldAttachImage":false,"searchQuery":""}' });
+      expect(
+        await geminiAdapter.planImageSearch({ userPrompt: 'Ok', thought: '', replyText: 'Got it!' }),
+      ).toBeNull();
+      generateContent.mockResolvedValueOnce({ text: 'invalid-plan' });
+      await expect(
+        geminiAdapter.planImageSearch({ userPrompt: 'Ok', thought: '', replyText: 'Got it!' }),
+      ).rejects.toThrow(/malformed JSON/);
+      expect(
+        await geminiAdapter.verifyImageRelevance({ candidateCaption: '  ', thought: '', replyText: 'Hi' }),
+      ).toBe(false);
+      generateContent.mockResolvedValueOnce({ text: 'bad-relevance' });
+      await expect(
+        geminiAdapter.verifyImageRelevance({ candidateCaption: 'Rebecca portrait', thought: '', replyText: 'Hi' }),
+      ).rejects.toThrow(/malformed JSON/);
+      expect(await geminiAdapter.executeWebSearch('   ')).toContain('No search query');
       generateContent.mockRejectedValueOnce(new Error('search down'));
-      expect(await geminiAdapter.executeWebSearch('Tokyo weather')).toContain('検索エラー');
+      expect(await geminiAdapter.executeWebSearch('Tokyo weather')).toContain('temporary search error');
       const emuDreamed = await localAi.generateDreaming(
         'sys',
         [{ role: 'user', content: 'Jazz bars' }],
-        { hobby: 'vinyl' },
+        { preferences: ['vinyl'] },
       );
-      expect((emuDreamed as { recentTopics?: string[] }).recentTopics).toEqual(['Jazz bars']);
+      expect(emuDreamed['preferences']).toEqual(['vinyl', 'Jazz bars']);
+      expect(emuDreamed).not.toHaveProperty('recentTopics');
+      expect(() => parseAndNormalizeCoreProfile('bad')).toThrow(/JSON object/);
+      expect(() =>
+        parseAndNormalizeCoreProfile({
+          attributes: 'not-array',
+          preferences: [],
+          concerns: [],
+          important_memories: [],
+        }),
+      ).toThrow(/array of strings/);
 
       // Auth & Account missing-user and error propagation paths
       const { firestore: edgeFs } = createVectorCapableFirestore();
       const edgeCols = getCollections(edgeFs);
-      const edgeKeyring = loadTrialHmacKeyring({ NODE_ENV: 'test' });
+      const edgeKeyring = loadTrialHmacKeyring({ NODE_ENV: 'test' }, true);
       const edgeAuthMock = {
         revokeRefreshTokens: jest.fn().mockRejectedValue(new Error('firebase rpc fail')),
         deleteUser: jest.fn().mockRejectedValue(new Error('firebase delete fail')),
@@ -1103,7 +1279,7 @@ describe('Private Lounge Repositories, Auth Verifier, Batch Auth, AI Adapters & 
       await expect(edgeAuthRepo.deleteUser('uid_err')).rejects.toThrow(/Failed to delete/);
       expect(await edgeAccountRepo.getSubscriptionByUid('uid_none')).toBeNull();
       expect(await edgeAccountRepo.listActiveCreditLotsByUid('uid_none')).toEqual([]);
-      await edgeAccountRepo.incrementDailySearchCount('uid_none');
+      await edgeAccountRepo.incrementDailySearchCount('uid_none', new Date('2026-11-24T00:00:00.000Z'));
     });
 
     it('covers gallery multi-item sort, prod vector X memory & image filtering, and generateReply without tools', async () => {
@@ -1149,8 +1325,43 @@ describe('Private Lounge Repositories, Auth Verifier, Batch Auth, AI Adapters & 
       });
       prodStore.set(COLLECTIONS.RAG_MEMORIES, xRagMap);
       const prodXReader = new FirestorePublicXMemoryReadAdapter(prodFs, prodCols, false);
-      const xSnap = await prodXReader.readPublicXMemorySnapshot('x_prod_rag', [1, 0, 0]);
-      expect(xSnap?.userVectorMemories).toEqual(['Mentioned midnight jazz']);
+      await prodCols.users.doc('x_prod_rag').set({
+        id: 'x_prod_rag',
+        name: 'Jazz Listener',
+        username: 'jazz_fan',
+        coreProfile: { hobbies: ['Vinyl collecting'] },
+        episodicBuffer: [
+          { role: 'user', content: 'Listening to records', timestamp: '2026-11-23T20:00:00.000Z' },
+          {
+            role: 'model',
+            content: 'Cool pick!',
+            thought: 'music fan',
+            timestamp: '2026-11-23T20:00:05.000Z',
+          },
+        ],
+        lastReplyDate: '2026-11-20T00:00:00.000Z',
+      });
+      await prodCols.system.doc('persona').set({
+        id: 'persona',
+        extended_prompt: 'Layer 1 Trend Guidance',
+        timeline_summary: 'Layer 2 Self Reflection Summary',
+      } as never);
+      await prodCols.timelineHistory.doc('post_jazz').set({
+        text: 'Morning espresso playlist online!',
+        timestamp: '2026-11-24T08:00:00.000Z',
+        expireAt: '2031-11-24T08:00:00.000Z',
+      });
+      const xSnap = await prodXReader.readPublicXMemorySnapshot(
+        'x_prod_rag',
+        [1, 0, 0],
+        'America/New_York',
+      );
+      expect(xSnap?.xDisplayName).toBe('Jazz Listener');
+      expect(xSnap?.xUsername).toBe('jazz_fan');
+      expect(xSnap?.userVectorMemories).toHaveLength(1);
+      expect(xSnap?.userVectorMemories[0]).toContain('Mentioned midnight jazz');
+      // Timestamp formatted in America/New_York (EST UTC-5: 2026-11-24T00:00Z -> 2026-11-23 19:00)
+      expect(xSnap?.userVectorMemories[0]).toContain('2026-11-23 19:00');
 
       await prodCols.images.doc('img_skip_fail').set({
         url: 'assets/fail.webp',
@@ -1183,10 +1394,10 @@ describe('Private Lounge Repositories, Auth Verifier, Batch Auth, AI Adapters & 
         0.45,
         false,
       );
-      expect(await prodImgSearch.findBestMatchingImage('Tea time', 'NEUTRAL')).toBeNull();
+      expect(await prodImgSearch.findCandidateImages('Tea time', new Set(), 3)).toEqual([]);
 
       const generateContent = jest.fn().mockResolvedValueOnce({
-        text: '{"thought":"calm","reply":"こんばんは！","emotion":"UNKNOWN_EMOTION"}',
+        text: '{"thought":"calm","reply":"こんばんは！"}',
         usageMetadata: { promptTokenCount: 12, candidatesTokenCount: 8, totalTokenCount: 20 },
       });
       const embedContent = jest.fn().mockResolvedValue({
@@ -1217,13 +1428,15 @@ describe('Private Lounge Repositories, Auth Verifier, Batch Auth, AI Adapters & 
           updatedAt: '2026-11-24T00:00:00.000Z',
         },
         userPrompt: 'Tea chat',
+        userDisplayName: 'Tea Fan',
+        userXHandle: '@tea_fan',
+        queryEmbedding: buildDeterministicTestEmbedding('Tea chat'),
         responseLanguage: 'ja',
-        userTimezone: 'Asia/Tokyo',
+        userTimezone: 'Invalid/Zone_Fallback',
         allowWebSearch: false,
-        localePromptDirective: 'Japanese',
-        memoryPromptDirective: 'Memory context',
         privateMemory: {
-          coreProfile: {},
+          coreProfile: { attributes: ['Prefers tea at night'] },
+          lastReplyAt: '2026-11-20T00:00:00.000Z',
           recentRawMessages: [
             {
               id: 'm1',
@@ -1260,8 +1473,456 @@ describe('Private Lounge Repositories, Auth Verifier, Batch Auth, AI Adapters & 
         },
         publicXMemory: xSnap,
       });
-      expect(noToolReply.emotion).toBe('NEUTRAL');
+      expect(noToolReply.thought).toBe('calm');
+      expect(noToolReply.replyText).toBe('こんばんは！');
       expect(noToolReply.usedWebSearch).toBe(false);
+      // Pre-computed queryEmbedding prevented redundant embedContent calls
+      expect(embedContent).not.toHaveBeenCalled();
+
+      const composedPrompt = String(generateContent.mock.calls[0][0].config.systemInstruction);
+      expect(composedPrompt).toContain('動的Few-Shotペルソナアンカー');
+      expect(composedPrompt).toContain('Tea Fan');
+      expect(composedPrompt).toContain('@tea_fan');
+      expect(composedPrompt).toContain('【集合無意識トレンド】');
+      expect(composedPrompt).toContain('Layer 1 Trend Guidance');
+      expect(composedPrompt).toContain('【最近の自分の公開X投稿（参考）】');
+      expect(composedPrompt).toContain('Layer 2 Self Reflection Summary');
+      expect(composedPrompt).toContain('Morning espresso playlist online!');
+      expect(composedPrompt).toContain('【プライベートラウンジ】');
+      expect(composedPrompt).toContain('Prefers Earl Grey tea');
+      expect(composedPrompt).toContain('【公開X】');
+      expect(composedPrompt).toContain('Mentioned midnight jazz');
+      expect(composedPrompt).not.toContain('<untrusted_memory_context>');
+
+      // JSON leak guard rejects raw serialized reply structures
+      generateContent.mockResolvedValueOnce({
+        text: '{"thought":"t","reply":"{\\"thought\\":\\"leak\\",\\"reply\\":\\"oops\\"}"}',
+      });
+      await expect(
+        geminiNoTool.generateReply({
+          uid: 'uid_no_tool',
+          session: {
+            id: 'uid_no_tool',
+            uid: 'uid_no_tool',
+            title: 'Private Lounge',
+            messageCount: 0,
+            currentEmotion: 'NEUTRAL',
+            publicXMemorySyncedAt: '2026-11-24T00:00:00.000Z',
+            lastMessagePreview: '',
+            createdAt: '2026-11-24T00:00:00.000Z',
+            updatedAt: '2026-11-24T00:00:00.000Z',
+          },
+          userPrompt: 'Leak check',
+          responseLanguage: 'en',
+          userTimezone: 'UTC',
+          allowWebSearch: false,
+          privateMemory: { coreProfile: {}, recentRawMessages: [], vectorMemories: [] },
+          publicXMemory: null,
+        }),
+      ).rejects.toThrow(/empty or malformed structured reply/);
+    });
+
+    it('enforces Batch B regressions: cursor pagination, active guards, dreaming starvation/merge, and token metering', async () => {
+      const { firestore } = createVectorCapableFirestore();
+      const cols = getCollections(firestore);
+      const keyring = loadTrialHmacKeyring({ NODE_ENV: 'test' }, true);
+      const authMock = {
+        revokeRefreshTokens: jest.fn().mockResolvedValue(undefined),
+        deleteUser: jest.fn().mockResolvedValue(undefined),
+      };
+      const authRepo = new LoungeAuthRepository(firestore, cols, keyring, authMock);
+      const galleryRepo = new LoungeGalleryRepository(firestore, cols);
+
+      // recordLoginTimestamp rejects SUSPENDED account & preserves concurrent fields
+      await authRepo.createUserWithConsent({
+        uid: 'uid_b_1',
+        xUserId: 'x_b_1',
+        xHandle: '@b1',
+        displayName: 'B1 User',
+        avatarUrl: 'assets/gemitec_icon.svg',
+        disclaimerConsent: createConsent(1),
+        onboardingCompleted: true,
+        allowServiceImprovementAnalytics: true,
+      });
+      await authRepo.updateUserStatus('uid_b_1', 'SUSPENDED');
+      await expect(
+        authRepo.recordLoginTimestamp('uid_b_1', '2026-11-25T00:00:00.000Z'),
+      ).rejects.toMatchObject({ statusCode: 403 });
+
+      // unlockGalleryItem returns null without writing when owner is SUSPENDED/DELETING or missing
+      expect(
+        await galleryRepo.unlockGalleryItem('uid_b_1', 'img_s', 'assets/s.webp', 'uid_b_1'),
+      ).toBeNull();
+      expect(
+        await galleryRepo.unlockGalleryItem('uid_missing', 'img_s', 'assets/s.webp', 'uid_missing'),
+      ).toBeNull();
+
+      // Gallery cursor pagination and AssetStatus.SUCCESS allowlist
+      await authRepo.updateUserStatus('uid_b_1', 'ACTIVE');
+      await cols.images.doc('img_ok').set({
+        url: 'assets/ok.webp',
+        caption: 'ok',
+        status: AssetStatus.SUCCESS,
+        embedding: [1, 0, 0],
+        lastUsedAt: null,
+        useCount: 0,
+      });
+      await cols.images.doc('img_unknown_status').set({
+        url: 'assets/unknown.webp',
+        caption: 'unknown',
+        status: 'ARCHIVED' as unknown as AssetStatus,
+        embedding: [1, 0, 0],
+        lastUsedAt: null,
+        useCount: 0,
+      });
+      await galleryRepo.unlockGalleryItem('uid_b_1', 'img_1', 'assets/1.webp', 'uid_b_1');
+      await galleryRepo.unlockGalleryItem('uid_b_1', 'img_2', 'assets/2.webp', 'uid_b_1');
+      const gPage1 = await galleryRepo.listGalleryByUid('uid_b_1', { limit: 1 });
+      expect(gPage1.meta.hasMore).toBe(true);
+      expect(gPage1.summary.totalCount).toBe(2);
+      const gPage2 = await galleryRepo.listGalleryByUid('uid_b_1', {
+        limit: 1,
+        cursor: gPage1.meta.nextCursor ?? undefined,
+      });
+      expect(gPage2.data).toHaveLength(1);
+      expect(gPage2.data[0].id).not.toBe(gPage1.data[0].id);
+
+      // Dreaming cursor scan skips already-dreamed users (>pageSize) and merges concurrent buffer appends
+      for (const id of ['u_01_done', 'u_02_done', 'u_03_pending']) {
+        await cols.loungeUsers.doc(id).set({
+          uid: id,
+          xUserId: `x_${id}`,
+          xHandle: `@${id}`,
+          displayName: id,
+          avatarUrl: 'assets/gemitec_icon.svg',
+          status: 'ACTIVE',
+          language: 'ja',
+          timezone: 'Asia/Tokyo',
+          onboardingCompleted: true,
+          allowServiceImprovementAnalytics: true,
+          coreProfile: { attributes: [] },
+          episodicBuffer: [
+            { role: 'user', content: `Turn for ${id}`, timestamp: '2026-11-24T01:00:00.000Z' },
+          ],
+          lastDreamedAt: id === 'u_03_pending' ? '2026-11-20T00:00:00.000Z' : '2026-11-25T00:00:00.000Z',
+          disclaimerConsent: createConsent(1),
+          createdAt: '2026-11-20T00:00:00.000Z',
+          updatedAt: id === 'u_03_pending' ? '2026-11-24T02:00:00.000Z' : '2026-11-24T01:00:00.000Z',
+          lastLoginAt: '2026-11-24T01:00:00.000Z',
+        });
+      }
+      const pagedStore = new FirestoreLoungeDreamingStore(firestore, cols, 5, 2);
+      const candidates = await pagedStore.listConsolidationCandidates();
+      expect(candidates.map((c) => c.id)).toEqual(['u_03_pending']);
+
+      const existingPending = (await cols.loungeUsers.doc('u_03_pending').get()).data()!;
+      await cols.loungeUsers.doc('u_03_pending').set({
+        ...existingPending,
+        episodicBuffer: [
+          ...(existingPending.episodicBuffer ?? []),
+          { role: 'user', content: 'Concurrent turn!', timestamp: '2026-11-24T03:00:00.000Z' },
+        ],
+        updatedAt: '2026-11-24T03:00:00.000Z',
+      });
+      await pagedStore.updateCoreProfile(
+        'u_03_pending',
+        { attributes: ['Merged'], preferences: [], concerns: [], important_memories: [] },
+        existingPending.episodicBuffer ?? [],
+        '2026-11-24T04:00:00.000Z',
+      );
+      const mergedUser = (await cols.loungeUsers.doc('u_03_pending').get()).data()!;
+      expect(mergedUser.episodicBuffer?.some((e) => e.content === 'Concurrent turn!')).toBe(true);
+      expect(Date.parse(mergedUser.updatedAt)).toBeGreaterThan(Date.parse(mergedUser.lastDreamedAt!));
+
+      // Auxiliary token metering + failed search_web does NOT consume quota
+      const mockUsage = jest.fn();
+      const searchFailGenAi = {
+        models: {
+          embedContent: jest.fn(),
+          generateContent: jest
+            .fn()
+            .mockResolvedValueOnce({
+              text: '{"emotion":"HAPPY"}',
+              usageMetadata: { promptTokenCount: 5, candidatesTokenCount: 3, totalTokenCount: 8 },
+            })
+            .mockResolvedValueOnce({
+              functionCalls: [{ name: 'search_web', args: { query: 'news' } }],
+              candidates: [{ content: { role: 'model', parts: [{ functionCall: { name: 'search_web' } }] } }],
+              usageMetadata: { promptTokenCount: 10, candidatesTokenCount: 2, totalTokenCount: 12 },
+            })
+            .mockRejectedValueOnce(new Error('Google Search timeout'))
+            .mockResolvedValueOnce({
+              text: '{"thought":"fallback cleanly","reply":"今は検索できないみたい！"}',
+              usageMetadata: { promptTokenCount: 14, candidatesTokenCount: 6, totalTokenCount: 20 },
+            }),
+        },
+      } as unknown as GoogleGenAI;
+      const adapterB = new GeminiLoungeAiAdapter(
+        {
+          apiKey: 'k',
+          chatModel: 'm',
+          searchModel: 'm',
+          embeddingModel: 'e',
+          maxOutputTokens: 450,
+          activePersonaId: 'rebecca',
+        },
+        searchFailGenAi,
+      );
+      await adapterB.classifyEmotion({
+        userPrompt: 'hi',
+        thought: 't',
+        replyText: 'r',
+        onTokenUsage: mockUsage,
+      });
+      expect(mockUsage).toHaveBeenCalledWith({ promptTokens: 5, candidatesTokens: 3, totalTokens: 8 });
+      const searchFailReply = await adapterB.generateReply({
+        uid: 'uid_b_1',
+        session: {
+          id: 'uid_b_1',
+          uid: 'uid_b_1',
+          title: 'Private Lounge',
+          messageCount: 0,
+          currentEmotion: 'NEUTRAL',
+          publicXMemorySyncedAt: '2026-11-24T00:00:00.000Z',
+          lastMessagePreview: '',
+          createdAt: '2026-11-24T00:00:00.000Z',
+          updatedAt: '2026-11-24T00:00:00.000Z',
+        },
+        userPrompt: 'Latest news?',
+        responseLanguage: 'en',
+        userTimezone: 'UTC',
+        allowWebSearch: true,
+        privateMemory: { coreProfile: {}, recentRawMessages: [], vectorMemories: [] },
+        publicXMemory: null,
+      });
+      expect(searchFailReply.usedWebSearch).toBe(false);
+    });
+  });
+
+  describe('LoungePromptComposer & LoungeIllustrationMatcherService', () => {
+    it('assembles JP and EN prompts cleanly and respects cached query embeddings', async () => {
+      const persona = getActivePersona('rebecca');
+
+      const jaWithSearch = buildLoungeChannelGuidelines(persona, 'ja', 'ja', true);
+      const jaNoSearch = buildLoungeChannelGuidelines(persona, 'ja', 'ja', false);
+      const enWithSearch = buildLoungeChannelGuidelines(persona, 'en', 'en', true);
+      const enNoSearch = buildLoungeChannelGuidelines(persona, 'en', 'en', false);
+
+      expect(jaWithSearch).toContain('search_web');
+      expect(jaNoSearch).toContain('検索上限到達');
+      expect(enWithSearch).toContain('search_web');
+      expect(enNoSearch).toContain('Search Budget Reached');
+
+      const embedderMock = jest.fn(async () => [0.25, 0.5]);
+      const composedEn = await composeLoungeDialoguePrompt({
+        input: {
+          uid: 'uid_prompt_001',
+          session: {
+            id: 'singleton',
+            uid: 'uid_prompt_001',
+            title: 'Private Lounge',
+            messageCount: 2,
+            currentEmotion: 'HAPPY',
+            publicXMemorySyncedAt: '2026-01-01T00:00:00.000Z',
+            lastMessagePreview: 'Morning!',
+            createdAt: '2026-01-01T00:00:00.000Z',
+            updatedAt: '2026-01-01T00:01:00.000Z',
+          },
+          userPrompt: 'Tell me about your morning coffee!',
+          userDisplayName: 'Prompt User',
+          userXHandle: 'prompt_user',
+          queryEmbedding: [0.1, 0.2, 0.3],
+          privateMemory: {
+            coreProfile: { preferences: ['morning coffee'] },
+            recentRawMessages: [
+              {
+                id: 'm1',
+                sessionId: 'singleton',
+                uid: 'uid_prompt_001',
+                role: 'USER',
+                content: 'Good morning',
+                emotion: 'NEUTRAL',
+                createdAt: '2026-01-01T00:00:10.000Z',
+              },
+              {
+                id: 'm2',
+                sessionId: 'singleton',
+                uid: 'uid_prompt_001',
+                role: 'ASSISTANT',
+                content: 'Morning!',
+                thought: 'Glad to chat early',
+                emotion: 'HAPPY',
+                createdAt: '2026-01-01T00:00:15.000Z',
+              },
+            ],
+            vectorMemories: [
+              {
+                id: 'rag_blank',
+                uid: 'uid_prompt_001',
+                sessionId: 'singleton',
+                category: 'EPISODE',
+                summary: '   ',
+                embedding: [0.1, 0.2],
+                salienceScore: 0.5,
+                createdAt: '2026-01-01T00:00:00.000Z',
+                updatedAt: '2026-01-01T00:00:00.000Z',
+              },
+              {
+                id: 'rag_latte',
+                uid: 'uid_prompt_001',
+                sessionId: 'singleton',
+                category: 'EPISODE',
+                summary: 'Likes latte',
+                embedding: [0.1, 0.2],
+                salienceScore: 0.8,
+                createdAt: '2026-01-01T00:00:05.000Z',
+                updatedAt: '2026-01-01T00:00:05.000Z',
+              },
+            ],
+            lastReplyAt: '2026-01-01T00:00:15.000Z',
+            lastDreamedAt: '2026-01-01T00:00:00.000Z',
+          },
+          publicXMemory: {
+            xUserId: 'x_prompt_001',
+            xDisplayName: 'Prompt User',
+            xUsername: 'prompt_user',
+            lastPublicReplyAt: '2026-01-01T00:00:00.000Z',
+            userStructuredProfile: { attributes: ['early bird'] },
+            userRecentTurns: [{ role: 'user', content: 'Hi on X', timestamp: '2026-01-01T00:00:00.000Z' }],
+            userVectorMemories: ['Mentioned espresso on X'],
+            personaLayer1ExtendedPrompt: 'Extended prompt memory',
+            personaLayer2TimelineSummary: 'Posted about cafes',
+            personaLayer3RecentPosts: ['Had iced coffee today!'],
+            syncedAt: '2026-01-01T00:00:00.000Z',
+          },
+          responseLanguage: 'en',
+          userTimezone: 'America/Los_Angeles',
+          allowWebSearch: true,
+        },
+        activePersonaId: 'rebecca',
+        embedQuery: embedderMock,
+      });
+
+      expect(composedEn.systemInstruction).toContain('[Recent Public X Posts (Chronological Reference)]');
+      expect(composedEn.initialTurns).toHaveLength(2);
+      expect(composedEn.initialTurns[1]?.role).toBe('assistant');
+      expect(embedderMock).not.toHaveBeenCalled();
+
+      const composedJa = await composeLoungeDialoguePrompt({
+        input: {
+          uid: 'uid_prompt_001',
+          session: {
+            id: 'singleton',
+            uid: 'uid_prompt_001',
+            title: 'Private Lounge',
+            messageCount: 0,
+            currentEmotion: 'NEUTRAL',
+            publicXMemorySyncedAt: '2026-01-01T00:00:00.000Z',
+            lastMessagePreview: '',
+            createdAt: '2026-01-01T00:00:00.000Z',
+            updatedAt: '2026-01-01T00:00:00.000Z',
+          },
+          userPrompt: 'こんにちは！',
+          privateMemory: {
+            coreProfile: {},
+            recentRawMessages: [],
+            vectorMemories: [],
+          },
+          publicXMemory: null,
+          responseLanguage: 'ja',
+          userTimezone: 'Invalid/Timezone',
+          allowWebSearch: false,
+        },
+        activePersonaId: 'rebecca',
+        embedQuery: embedderMock,
+      });
+      expect(composedJa.systemInstruction).toContain('プライベートラウンジ');
+      expect(embedderMock).toHaveBeenCalledTimes(1);
+    });
+
+    it('filters recent assets, selects verified match, returns null on none, and propagates search failures', async () => {
+      const tokenEvents: number[] = [];
+      const searchMock = jest.fn(async (_query: string, exclude: ReadonlySet<string>) => {
+        expect(exclude.has('img_seen')).toBe(true);
+        return [
+          { assetId: 'img_wrong', imageUrl: 'https://cdn.example/wrong.png', caption: 'snowy ski' },
+          { assetId: 'img_match', imageUrl: 'https://cdn.example/match.png', caption: 'coffee smile' },
+        ];
+      });
+      const planMock = jest
+        .fn<Promise<string | null>, [unknown]>()
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce('coffee smile')
+        .mockResolvedValueOnce('coffee smile');
+      const verifyMock = jest
+        .fn<Promise<boolean>, [{ readonly candidateCaption: string }]>()
+        .mockResolvedValueOnce(false)
+        .mockResolvedValueOnce(true)
+        .mockResolvedValueOnce(false)
+        .mockResolvedValueOnce(false);
+
+      const service = new LoungeIllustrationMatcherService(
+        { findCandidateImages: searchMock },
+        { planImageSearch: planMock, verifyImageRelevance: verifyMock },
+      );
+
+      await expect(
+        service.matchIllustration({
+          userPrompt: 'hi',
+          thought: 'short',
+          replyText: 'hey',
+          recentMessages: [],
+        }),
+      ).resolves.toBeNull();
+      expect(searchMock).not.toHaveBeenCalled();
+
+      await expect(
+        service.matchIllustration({
+          userPrompt: 'coffee!',
+          thought: 'warm',
+          replyText: 'Lets grab coffee!',
+          recentMessages: [{ imageAssetId: 'img_seen' }, {}],
+          onTokenUsage: (u) => tokenEvents.push(u.totalTokens),
+        }),
+      ).resolves.toEqual({
+        assetId: 'img_match',
+        imageUrl: 'https://cdn.example/match.png',
+        caption: 'coffee smile',
+      });
+
+      await expect(
+        service.matchIllustration({
+          userPrompt: 'coffee!',
+          thought: 'warm',
+          replyText: 'Lets grab coffee!',
+          recentMessages: [{ imageAssetId: 'img_seen' }],
+        }),
+      ).resolves.toBeNull();
+
+      const failingService = new LoungeIllustrationMatcherService(
+        {
+          async findCandidateImages() {
+            throw new Error('Vector search down');
+          },
+        },
+        {
+          async planImageSearch() {
+            return 'cafe';
+          },
+          async verifyImageRelevance() {
+            return true;
+          },
+        },
+      );
+      await expect(
+        failingService.matchIllustration({
+          userPrompt: 'cafe',
+          thought: '',
+          replyText: 'Sure!',
+          recentMessages: [],
+        }),
+      ).rejects.toThrow('Vector search down');
+      expect(tokenEvents).toEqual([]);
     });
   });
 });

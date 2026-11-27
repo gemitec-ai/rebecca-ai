@@ -1,21 +1,18 @@
 import { getApp, getApps, initializeApp, type App } from 'firebase-admin/app';
 import { getAuth, type Auth, type DecodedIdToken } from 'firebase-admin/auth';
-import type { ILoungeAuthVerifierPort, LoungeVerifiedIdentity } from '../../../middleware/loungeAuth';
+import type {
+  ILoungeAuthVerifierPort,
+  LoungeVerifiedIdentity,
+} from '../ports/loungeAuthVerifier.port';
 import { LoungeAuthError } from '../../../utils/errors';
+import type { IFirebaseIdentityClient } from '../ports/firebaseIdentity.port';
 
-/** Minimal Firebase Admin Auth contract injected for production verification and deterministic tests. */
-export interface IFirebaseAdminAuthLike {
-  verifyIdToken(idToken: string, checkRevoked?: boolean): Promise<DecodedIdToken>;
-  revokeRefreshTokens(uid: string): Promise<void>;
-  deleteUser(uid: string): Promise<void>;
-}
-
-/** Ensures a named or default Firebase Admin app exists and returns tenant-aware Auth client. */
-export function resolveFirebaseLoungeAuthClient(
+/** Ensures a named or default Firebase identity app exists and returns a tenant-aware client. */
+export function createFirebaseIdentityClient(
   projectId: string,
   tenantId?: string,
   appName = 'lounge-bff-auth',
-): IFirebaseAdminAuthLike {
+): IFirebaseIdentityClient {
   let app: App;
   const existing = getApps().find((candidate) => candidate.name === appName);
   if (existing) {
@@ -62,7 +59,7 @@ function normalizeHandle(raw: string | undefined, fallbackUid: string): string {
  */
 export class FirebaseLoungeAuthVerifier implements ILoungeAuthVerifierPort {
   constructor(
-    private readonly authClient: IFirebaseAdminAuthLike,
+    private readonly authClient: IFirebaseIdentityClient,
     private readonly isEmulator: boolean = false,
   ) {}
 
