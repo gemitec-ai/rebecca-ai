@@ -70,6 +70,11 @@ Run all verification commands from the repository root before opening or updatin
      - *Admin Routes (BFF)*: `verifyAuth` enforces valid Firebase ID token signatures, `email_verified === true`, real-time Firestore `admin_users` record verification, `status === 'ACTIVE'`, and `role === 'ADMIN'`.
      - *Internal Batch/Worker Routes (Bot)*: Strictly require verified Google Cloud OIDC tokens (`batchAuth`, `workerAuth`).
      - *Public Routes*: Enforce tiered IP rate limiting (`publicRateLimiter`), CORS allowlisting, and deterministic input sanitization.
+6. **File Naming & Role Suffix Conventions**:
+   - Preserve ecosystem base casing: **`camelCase`** for Node/TypeScript backends (`apps/*-backend`, `apps/functions`, `packages/*`) and **`kebab-case`** for Angular SPAs (`apps/dashboard-frontend`, `apps/lounge-frontend`).
+   - **Multi-definition utility/module collections (Plural Dot-Suffix)**: Always use `*.types.ts`, `*.utils.ts`, `*.helpers.ts`, `*.errors.ts`, and `*.constants.ts` (never use singular `.type.ts`, `.util.ts`, `.helper.ts`, `.error.ts`, `.constant.ts`, or `.model.ts`).
+   - **Architectural role modules (Singular Dot-Suffix)**: Always use `*.port.ts`, `*.adapter.ts`, `*.validator.ts`, `*.store.ts`, `*.service.ts`, `*.controller.ts`, `*.repository.ts`, `*.usecase.ts`, and `*.router.ts`—alongside Angular standard `*.component.ts`, `*.guard.ts`, `*.interceptor.ts`, and `*.pipe.ts` (never pluralize role suffixes such as `.adapters.ts` or `.ports.ts`).
+   - **Paired Unit/Integration Tests**: Append `.test.ts` (Backend/Packages) or `.spec.ts` (Angular Frontend) directly to the target source filename so tests stay 1:1 with their subject (e.g., `stripe-redirect-url.validator.ts` -> `stripe-redirect-url.validator.spec.ts`).
 
 ## 4. Testing Strategy & Behavioral Verification (Google SWE Standards)
 

@@ -4,7 +4,7 @@ Scoped architectural and contract rules for the **Rebecca Private Lounge** Backe
 
 ## 1. Architecture, Isolation & Security Invariants
 
-- **Hexagonal Feature Layout**: Keep transport (`routers/`, `controllers/`), domain (`usecases/`), and persistence/AI ports (`repositories/`, `ports/`) strictly separated under `src/features/{auth,account,sessions,gallery}/`.
+- **Hexagonal Feature Layout & File Naming**: Keep transport (`routers/`, `controllers/`), domain (`usecases/`, `domain/`), and persistence/AI ports (`repositories/`, `ports/`, `adapters/`) strictly separated under `src/features/{auth,account,billing,sessions,dreaming,gallery}/`. Follow `camelCase` basenames with standardized dot-suffixes: singular roles (`*.controller.ts`, `*.usecase.ts`, `*.repository.ts`, `*.port.ts`, `*.adapter.ts`, `*.validator.ts`, `*.router.ts`, `*.service.ts`) and plural collections (`*.helpers.ts`, `*.constants.ts`, `*.types.ts`, `*.utils.ts`, `*.errors.ts`), with unit tests under `tests/unit/*.test.ts`.
 - **1:1 Account & Single-Session Invariant**:
   - Enforce 1 Private Lounge account per X account (`HTTP 409 Conflict` when registering an already-linked `xUserId` or `uid`).
   - Provide a single continuous session per user (`GET /api/v1/lounge/session`, `GET/POST /api/v1/lounge/session/messages`) with irreversible cascade deletion (`DELETE /api/v1/lounge/account`) removing user profile, subscription, session, raw messages, Dreaming/RAG memories, and gallery records without refunding unused paid turns.

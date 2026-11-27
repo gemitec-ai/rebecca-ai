@@ -5,7 +5,7 @@ Angular 22 Zoneless single-page application for **Rebecca Private Lounge** (`POR
 ## Architecture & Core Capabilities
 
 - **6 Hexagonal Domain Ports (`src/app/core/ports/`)**:
-  Auth, Account, Session/Chat, Gallery, Health/Runtime Config, and Billing (`LoungeBillingPort`), decoupled cleanly behind `HttpLoungeBffAdapter` (`src/app/infrastructure/http/http-lounge-bff.adapter.ts`) + `LoungeFacadeService`.
+  Auth, Account, Session/Chat, Gallery, Health/Runtime Config, and Billing (`LoungeBillingPort`), decoupled cleanly behind domain HTTP adapters (`src/app/infrastructure/http/http-lounge-*.adapter.ts` + `lounge-http-client.helpers.ts`) and `LoungeFacadeService` + signal stores.
 - **Modular Firebase X Auth & Request Interceptor**:
   - `LoungeAuthService` initializes a named Firebase app (`private-lounge`), supports `OAuthProvider('twitter.com')` in Firebase Auth Emulator mode (`?emuXUser=` / `sessionStorage`) and `TwitterAuthProvider` popup in production.
   - `loungeAuthInterceptor` attaches Firebase ID tokens only when `isTrustedLoungeApiDestination` matches `/api/v1/lounge` on a verified origin and an authenticated user is present.
